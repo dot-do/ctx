@@ -1,0 +1,85 @@
+---
+title: Organization
+description: A structured group of people working together toward common goals
+schemaType: Organization
+properties:
+  - name: name
+    type: string
+    description: Official name of the organization
+    required: true
+  - name: foundingDate
+    type: date
+    description: Date when the organization was founded
+    required: false
+  - name: address
+    type: PostalAddress
+    description: Physical address of the organization
+    required: false
+  - name: employees
+    type: array<Person>
+    description: List of people employed by the organization
+    required: false
+metadata:
+  ns: noun
+  visibility: public
+tags:
+  - schema-org
+  - business
+  - entity
+---
+
+# Organization
+
+An **Organization** is a structured group of people working together toward common goals. Organizations can be companies, non-profits, government agencies, or other institutional entities.
+
+## Properties
+
+### Core Properties
+
+- **name**: The official registered name
+- **legalName**: Legal name if different from display name
+- **url**: Official website
+- **logo**: Brand logo image
+
+### Contact Information
+
+- **email**: Primary contact email
+- **telephone**: Main phone number
+- **address**: Physical location
+
+### Classification
+
+- **industry**: NAICS industry classification
+- **organizationType**: Type (corporation, LLC, non-profit, etc.)
+- **foundingDate**: When the organization was established
+
+## Relationships
+
+Organizations can have relationships with:
+
+- **employees**: People who work for the organization
+- **members**: Members (for associations)
+- **parentOrganization**: Larger organization this is part of
+- **subOrganization**: Smaller organizations within this one
+- **founders**: People who founded the organization
+
+## Example
+
+```json
+{
+  "@type": "Organization",
+  "name": "ACME Corporation",
+  "legalName": "ACME Corp",
+  "url": "https://acme.example.com",
+  "foundingDate": "2010-01-01",
+  "industry": "Information Technology",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "123 Tech Street",
+    "addressLocality": "San Francisco",
+    "addressRegion": "CA",
+    "postalCode": "94103",
+    "addressCountry": "US"
+  }
+}
+```

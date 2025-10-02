@@ -1,0 +1,35 @@
+{
+  "name": "ctx.do",
+  "version": "0.1.0",
+  "description": "Entity definitions in MDX with Velite + Zod validation",
+  "type": "module",
+  "scripts": {
+    "build": "velite",
+    "dev": "velite --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "keywords": [
+    "mdx",
+    "velite",
+    "zod",
+    "entities",
+    "schema-validation"
+  ],
+  "dependencies": {
+    "velite": "^0.1.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dot-do/ctx.git"
+  },
+  "author": "dot-do",
+  "license": "MIT"
+}

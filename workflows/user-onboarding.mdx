@@ -1,0 +1,110 @@
+---
+title: User Onboarding Workflow
+description: Complete workflow for onboarding new users to the platform
+trigger: user.signup
+steps:
+  - name: Create Account
+    description: Create user account in database
+    function: createUser
+    inputs:
+      email: '{{event.email}}'
+      name: '{{event.name}}'
+  - name: Send Welcome Email
+    description: Send welcome email with getting started guide
+    function: sendEmail
+    inputs:
+      to: '{{user.email}}'
+      subject: Welcome to Our Platform
+      template: welcome
+  - name: Create Workspace
+    description: Create default workspace for the user
+    function: createWorkspace
+    inputs:
+      userId: '{{user.id}}'
+      name: My Workspace
+  - name: Add to Onboarding Cohort
+    description: Add user to current onboarding cohort for tracking
+    function: addToCohort
+    inputs:
+      userId: '{{user.id}}'
+      cohort: onboarding-{{month}}
+metadata:
+  ns: workflow
+  visibility: public
+tags:
+  - onboarding
+  - user
+  - automation
+---
+
+# User Onboarding Workflow
+
+This workflow handles the complete onboarding process for new users signing up to the platform.
+
+## Trigger
+
+The workflow is triggered when a user completes the signup form (`user.signup` event).
+
+## Steps
+
+### 1. Create Account
+
+Creates the user account in the database with initial properties.
+
+**Function**: `createUser`
+**Inputs**:
+- `email`: User's email address
+- `name`: User's display name
+- `password`: Hashed password
+
+**Output**: User object with generated ID
+
+### 2. Send Welcome Email
+
+Sends a personalized welcome email with links to getting started resources.
+
+**Function**: `sendEmail`
+**Template**: `welcome`
+**Personalizations**:
+- User name
+- Verification link
+- Getting started guide link
+
+### 3. Create Workspace
+
+Creates a default workspace for the user to start working in.
+
+**Function**: `createWorkspace`
+**Settings**:
+- Name: "My Workspace"
+- Owner: New user
+- Visibility: Private
+
+### 4. Add to Onboarding Cohort
+
+Adds the user to the current month's onboarding cohort for analytics and targeted communications.
+
+**Function**: `addToCohort`
+**Cohort naming**: `onboarding-{YYYY-MM}`
+
+## Error Handling
+
+If any step fails:
+1. Log the error with full context
+2. Send alert to ops team
+3. Mark user account as "incomplete-signup"
+4. Queue retry for failed step (up to 3 attempts)
+
+## Metrics
+
+Track:
+- Signup to activation time
+- Step completion rates
+- Email open rates
+- First workspace creation time
+
+## Related Workflows
+
+- **Email Verification**: Triggered when user clicks verify link
+- **Profile Setup**: Guided profile completion
+- **First Project**: Help user create their first project
