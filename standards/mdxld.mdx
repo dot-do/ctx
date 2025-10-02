@@ -1,0 +1,93 @@
+---
+title: MDXLD Standard
+description: Complete MDXLD (MDX Linked Data) specification and documentation
+type: standard
+version: 1.0.0
+status: published
+category: format-specification
+relatedTo:
+  - yaml-ld
+  - json-ld
+  - mdx
+  - schema-org
+metadata:
+  ns: standard
+  visibility: public
+  source: https://mdxld.org
+  generatedFrom: https://mdxld.org/llms.txt
+tags:
+  - mdxld
+  - linked-data
+  - json-ld
+  - yaml-ld
+  - mdx
+  - schema-org
+  - specification
+dateCreated: 2025-10-02
+dateModified: 2025-10-02
+---
+
+# MDXLD Standard
+
+**MDXLD** (MDX Linked Data) is a standard for embedding structured, machine-readable metadata into MDX documents using YAML-LD frontmatter.
+
+## Overview
+
+MDXLD combines:
+- **YAML-LD** - YAML syntax for JSON-LD with `$` prefix
+- **Markdown** - Human-readable content
+- **Code** - JavaScript/TypeScript imports/exports
+- **JSX** - React components for interactive UI
+
+## Core Entity Types
+
+1. **Function** - Executable code with inputs/outputs
+2. **Component** - UI components (React, Vue, Svelte)
+3. **Workflow** - Multi-step orchestrations
+4. **Agent** - AI agents with tools and capabilities
+5. **API** - RESTful endpoints
+6. **Tool** - Software utilities
+7. **Model** - AI/ML models
+8. **Prompt** - AI prompt templates
+
+## Documentation
+
+The complete MDXLD specification and documentation is available in:
+
+- **Full Text**: [mdxld.txt](./mdxld.txt) (144KB, 6540 lines)
+- **Website**: https://mdxld.org
+- **Specification**: https://mdxld.org/spec
+- **GitHub**: https://github.com/mdxld/mdxld
+
+## Quick Start
+
+```bash
+npm install mdxld
+```
+
+```mdx
+---
+$context: http://mdxld.org/context.jsonld
+$type: Function
+$id: https://example.com/functions/hello
+title: Hello World
+---
+
+# Hello World Function
+
+\`\`\`typescript
+export function hello(name: string): string {
+  return `Hello, ${name}!`
+}
+\`\`\`
+```
+
+## Community
+
+- **GitHub**: [github.com/mdxld/mdxld](https://github.com/mdxld/mdxld)
+- **Discord**: [discord.gg/mdxld](https://discord.gg/mdxld)
+- **Twitter**: [@mdxld](https://twitter.com/mdxld)
+
+## License
+
+MIT - The MDXLD specification is open source and freely available for use in any project.
