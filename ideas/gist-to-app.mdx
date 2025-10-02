@@ -1,1 +1,72 @@
+---
+title: Deploy App from Gist
+description: Deploy an entire application from a GitHub Gist using MDXLD abstractions
+status: concept
+priority: high
+category: deployment
+relatedTo:
+  - mdxld
+  - gist-sync
+metadata:
+  ns: idea
+  visibility: public
+tags:
+  - gist
+  - mdxld
+  - deployment
+  - automation
+---
+
+# Deploy App from Gist
+
 We could deploy an app entirely from a gist using MDXLD abstractions!
+
+## Concept
+
+GitHub Gists provide a simple way to share code snippets and small projects. By combining Gists with MDXLD (MDX Linked Data) abstractions, we can create a powerful deployment pipeline:
+
+1. **Create a Gist** with MDX files defining the app structure
+2. **MDXLD parses** the Gist and extracts entity definitions
+3. **Automatic deployment** to Cloudflare Workers/Pages
+4. **Live app** running from the Gist source
+
+## Benefits
+
+- **Zero infrastructure setup** - Just create a Gist
+- **Version control** - Gists have built-in versioning
+- **Shareable** - Easy to fork and modify
+- **Rapid prototyping** - From idea to deployed app in minutes
+
+## Implementation
+
+### Step 1: Gist Structure
+```
+my-app.gist/
+├── app.mdx          # Main app definition
+├── api.mdx          # API routes
+├── components.mdx   # UI components
+└── schema.mdx       # Data schema
+```
+
+### Step 2: MDXLD Processing
+- Parse MDX files
+- Extract entity definitions
+- Generate deployable artifacts
+
+### Step 3: Deployment
+- Deploy to Cloudflare Workers
+- Configure routes and bindings
+- Serve the app
+
+## Use Cases
+
+- **Quick demos** - Deploy a demo app in seconds
+- **Code examples** - Executable documentation
+- **Prototypes** - Rapid iteration on ideas
+- **Teaching** - Interactive tutorials
+
+## Status
+
+**Current**: Concept
+**Priority**: High
+**Next Steps**: Build proof-of-concept with simple app
