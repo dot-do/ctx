@@ -23,8 +23,9 @@ Commit to ctx repo → Webhook → Parse MDX → Validate → Upsert to DB
 Database change → Queue job → Generate MDX → Create PR → Review → Merge
 ```
 
-### Entity Types (7 Total)
+### Entity Types (9 Total)
 
+**Core Entities:**
 1. **Brands** - Brand identity and metadata
 2. **Functions** - Code/generative/human/agentic functions
 3. **Nouns** - Entities and types (Schema.org vocabulary)
@@ -32,6 +33,12 @@ Database change → Queue job → Generate MDX → Create PR → Review → Merg
 5. **Workflows** - Orchestration patterns
 6. **Agents** - Autonomous AI workers
 7. **Ideas** - Concepts and opportunities
+
+**Business-as-Code:**
+8. **Companies** - Business entities with OKRs, roles, offerings, operations (business-as-code/)
+
+**Services-as-Software:**
+9. **Services** - AI-deliverable services mapped to ONET occupations and GDPval tasks (services-as-software/)
 
 ## Directory Structure
 
@@ -58,6 +65,30 @@ ctx/
 ├── ideas/
 │   ├── ai-code-review.mdx
 │   └── [idea-name].mdx
+├── business-as-code/     # Business-as-Code entities
+│   ├── companies/        # Company definitions
+│   │   ├── dot-do.mdx
+│   │   └── [company-name].mdx
+│   ├── objectives/       # OKRs and key results
+│   ├── roles/           # Organizational roles
+│   ├── offerings/       # Products and services
+│   ├── operations/      # Business processes
+│   ├── metrics/         # KPIs and tracking
+│   ├── resources/       # Budget and allocation
+│   ├── governance/      # Policies and authority
+│   ├── types.ts         # TypeScript interfaces
+│   └── README.md        # Documentation
+├── services-as-software/ # Services-as-Software entities
+│   ├── services/        # Service definitions
+│   │   ├── tax-return-preparation.mdx
+│   │   └── [service-name].mdx
+│   ├── tasks/           # Task decomposition
+│   ├── deliverables/    # Output specs
+│   ├── quality/         # Standards and SLAs
+│   ├── pricing/         # Pricing models
+│   ├── delivery/        # Execution mechanisms
+│   ├── types.ts         # TypeScript interfaces
+│   └── README.md        # Documentation
 ├── .velite/              # Generated (gitignored)
 ├── velite.config.ts      # Velite configuration
 ├── package.json

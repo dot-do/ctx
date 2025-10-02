@@ -1,0 +1,161 @@
+---
+$context: http://schema.org.ai/context/ai-context.jsonld
+$type: Plan
+$id: https://ctx.do/workflows/content-pipeline
+title: Content Creation Pipeline
+description: End-to-end workflow for creating and publishing blog content
+planType: sequential
+
+objective: Produce high-quality, SEO-optimized blog posts ready for publication
+
+steps:
+  - id: topic-research
+    type: Task
+    taskType: analysis
+    name: Research topic and gather information
+    assignedTo: research-agent
+    estimatedDuration: 300
+    description: Research topic, identify key points, find credible sources
+
+  - id: outline-creation
+    type: Task
+    taskType: generation
+    name: Create detailed outline
+    assignedTo: content-writer
+    dependencies: [topic-research]
+    estimatedDuration: 180
+    description: Structure content with headings, subheadings, and key points
+
+  - id: draft-writing
+    type: Task
+    taskType: generation
+    name: Write first draft
+    assignedTo: content-writer
+    dependencies: [outline-creation]
+    estimatedDuration: 900
+    description: Write complete first draft following outline
+
+  - id: seo-optimization
+    type: Task
+    taskType: transformation
+    name: SEO optimization
+    assignedTo: seo-agent
+    dependencies: [draft-writing]
+    estimatedDuration: 240
+    description: Optimize for keywords, meta descriptions, internal links
+
+  - id: fact-checking
+    type: Task
+    taskType: analysis
+    name: Verify facts and sources
+    assignedTo: research-agent
+    dependencies: [seo-optimization]
+    estimatedDuration: 300
+    description: Verify all claims and ensure proper citations
+
+  - id: editorial-review
+    type: Task
+    taskType: analysis
+    name: Editorial review
+    assignedTo: editor-agent
+    dependencies: [fact-checking]
+    estimatedDuration: 300
+    description: Review for quality, clarity, and consistency
+
+  - id: final-revisions
+    type: Task
+    taskType: transformation
+    name: Apply final revisions
+    assignedTo: content-writer
+    dependencies: [editorial-review]
+    estimatedDuration: 240
+    description: Incorporate editor feedback and polish
+
+  - id: publication
+    type: Task
+    taskType: execution
+    name: Publish to CMS
+    assignedTo: publishing-agent
+    dependencies: [final-revisions]
+    requiresApproval: true
+    estimatedDuration: 120
+    description: Publish to content management system
+
+successCriteria:
+  - Minimum 1500 words
+  - SEO score >= 80
+  - Readability score >= 60
+  - All facts verified
+  - Human approval obtained
+
+estimatedDuration: 2580
+rollbackStrategy: revert-to-previous-version
+
+metadata:
+  ns: workflow
+  visibility: public
+
+tags:
+  - content-creation
+  - automation
+  - multi-agent
+  - seo
+---
+
+# Content Creation Pipeline
+
+An automated workflow orchestrating multiple AI agents to create publication-ready blog content.
+
+## Workflow Stages
+
+### Stage 1: Research & Planning
+- **Topic Research** (5 min): Research agent gathers information and sources
+- **Outline Creation** (3 min): Content writer structures the article
+
+### Stage 2: Content Creation
+- **Draft Writing** (15 min): Content writer produces first draft
+- **SEO Optimization** (4 min): SEO agent optimizes for search engines
+
+### Stage 3: Quality Assurance
+- **Fact Checking** (5 min): Research agent verifies accuracy
+- **Editorial Review** (5 min): Editor agent reviews quality
+
+### Stage 4: Finalization
+- **Final Revisions** (4 min): Content writer applies feedback
+- **Publication** (2 min): Publishing agent deploys to CMS (requires approval)
+
+## Agents Involved
+
+- **Research Agent**: Information gathering and fact-checking
+- **Content Writer**: Primary content creation
+- **SEO Agent**: Search engine optimization
+- **Editor Agent**: Quality review
+- **Publishing Agent**: CMS deployment
+
+## Success Metrics
+
+The workflow ensures:
+- ✅ Comprehensive research
+- ✅ Structured, engaging content
+- ✅ SEO optimization
+- ✅ Fact accuracy
+- ✅ Editorial quality
+- ✅ Human approval
+
+## Integration
+
+```typescript
+import { Plan, Task } from 'schema.org.ai'
+
+async function runContentPipeline(topic: string) {
+  const workflow = await loadWorkflow('content-pipeline')
+
+  const result = await workflow.execute({
+    input: { topic },
+    monitoring: true,
+    notifications: ['team@example.com']
+  })
+
+  return result
+}
+```

@@ -181,6 +181,71 @@ const ideas = defineCollection({
   }))
 })
 
+// Business-as-Code: Company entities
+const companies = defineCollection({
+  name: 'Company',
+  pattern: 'business-as-code/companies/**/*.mdx',
+  schema: s.object({
+    title: s.string(),
+    slug: s.path(),
+    description: s.string(),
+    legalName: s.string().optional(),
+    type: s.enum(['holding', 'operating', 'subsidiary', 'division']),
+    parent: s.string().optional(),
+    industry: s.string(),
+    vertical: s.string().optional(),
+    mission: s.string().optional(),
+    vision: s.string().optional(),
+    values: s.array(s.string()).default([]),
+    metadata: s.object({
+      ns: s.string().default('company'),
+      visibility: s.enum(['public', 'private', 'unlisted']).default('public')
+    }).default({}),
+    tags: s.array(s.string()).default([]),
+    content: s.mdx()
+  }).transform(data => ({
+    ...data,
+    url: `/business/${data.slug}`
+  }))
+})
+
+// Services-as-Software: Service entities
+const services = defineCollection({
+  name: 'Service',
+  pattern: 'services-as-software/services/**/*.mdx',
+  schema: s.object({
+    title: s.string(),
+    slug: s.path(),
+    description: s.string(),
+    tagline: s.string().optional(),
+    category: s.string(),
+    specialty: s.string().optional(),
+    onetCode: s.string().optional(), // ONET occupation code
+    onetTitle: s.string().optional(),
+    gdpvalTaskId: s.string().optional(),
+    estimatedValue: s.number().optional(), // Economic value per transaction
+    automationLevel: s.number().optional(), // 0-1
+    deliveryType: s.enum(['automated', 'agent-driven', 'human-assisted', 'fully-managed']),
+    turnaroundTime: s.string().optional(), // e.g., "24 hours"
+    pricing: s.object({
+      model: s.enum(['fixed', 'hourly', 'per-unit', 'subscription', 'value-based', 'tiered', 'custom']),
+      basePrice: s.number().optional(),
+      currency: s.string().default('USD')
+    }).optional(),
+    metadata: s.object({
+      ns: s.string().default('service'),
+      visibility: s.enum(['public', 'private', 'unlisted']).default('public'),
+      status: s.enum(['draft', 'active', 'paused', 'archived']).default('draft'),
+      featured: s.boolean().default(false)
+    }).default({}),
+    tags: s.array(s.string()).default([]),
+    content: s.mdx()
+  }).transform(data => ({
+    ...data,
+    url: `/services/${data.slug}`
+  }))
+})
+
 export default defineConfig({
   root: '.',
   output: {
@@ -197,7 +262,9 @@ export default defineConfig({
     verbs,
     workflows,
     agents,
-    ideas
+    ideas,
+    companies,
+    services
   },
   mdx: {
     rehypePlugins: [],

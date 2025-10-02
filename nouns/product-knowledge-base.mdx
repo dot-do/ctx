@@ -1,0 +1,148 @@
+---
+$context: http://schema.org.ai/context/ai-context.jsonld
+$type: KnowledgeBase
+$id: https://ctx.do/kb/product-documentation
+title: Product Documentation Knowledge Base
+description: Comprehensive knowledge base of product documentation for customer support
+
+knowledgeType: factual
+knowledgeSource: https://docs.example.com
+vectorStore: pinecone
+indexStrategy: hybrid
+
+chunkSize: 512
+chunkOverlap: 128
+searchTopK: 5
+
+embeddingModel:
+  modelFamily: OpenAI
+  embeddingModel: text-embedding-3-large
+  embeddingDimensions: 3072
+  maxInputTokens: 8191
+  costPer1MTokens: 0.13
+
+rerankingModel:
+  modelFamily: Cohere
+  modelType: reranking
+  version: rerank-v3
+
+documentCount: 1847
+lastUpdated: 2025-10-02T00:00:00Z
+
+metadata:
+  ns: noun
+  visibility: public
+
+tags:
+  - knowledge-base
+  - documentation
+  - rag
+  - customer-support
+  - vector-search
+---
+
+# Product Documentation Knowledge Base
+
+A comprehensive RAG (Retrieval-Augmented Generation) knowledge base containing all product documentation, updated daily and used by customer support agents.
+
+## Overview
+
+This knowledge base indexes:
+- Product manuals and guides
+- API documentation
+- Troubleshooting articles
+- FAQ content
+- Video transcripts
+- Release notes
+
+## Architecture
+
+### Indexing Strategy
+
+**Hybrid approach** combining:
+- **Semantic search**: Vector similarity using embeddings
+- **Keyword search**: BM25 for exact matches
+- **Reranking**: Cohere rerank-v3 for relevance
+
+### Chunking Strategy
+
+- **Chunk size**: 512 tokens with 128-token overlap
+- **Metadata preserved**: Document title, section, category
+- **Dynamic chunking**: Respects natural boundaries (headings, paragraphs)
+
+### Update Process
+
+1. Daily sync from documentation repository
+2. Incremental updates for changed documents
+3. Automatic re-embedding and re-indexing
+4. Version tracking for rollback capability
+
+## Usage
+
+### Search Query
+
+```typescript
+const results = await knowledgeBase.search({
+  query: "How do I reset my account password?",
+  topK: 5,
+  rerank: true,
+  filters: {
+    category: 'authentication',
+    lastUpdated: { gte: '2025-01-01' }
+  }
+})
+```
+
+### Response Format
+
+```json
+{
+  "results": [
+    {
+      "content": "To reset your password, navigate to...",
+      "metadata": {
+        "title": "Account Security",
+        "section": "Password Reset",
+        "url": "https://docs.example.com/auth/reset",
+        "lastUpdated": "2025-09-15"
+      },
+      "score": 0.94,
+      "rerankedScore": 0.97
+    }
+  ],
+  "query": "How do I reset my account password?",
+  "totalResults": 5
+}
+```
+
+## Integration with Agents
+
+This knowledge base is used by:
+
+- **Customer Support Agent**: For answering questions
+- **Documentation Agent**: For content updates
+- **QA Agent**: For test case generation
+- **Training Agent**: For onboarding materials
+
+## Performance Metrics
+
+- **Average retrieval time**: 45ms
+- **Recall@5**: 0.92
+- **User satisfaction**: 4.6/5
+- **Query volume**: ~10,000/day
+
+## Data Sources
+
+The knowledge base automatically syncs from:
+
+1. **Git repository**: docs.example.com/repo
+2. **CMS**: content.example.com
+3. **Support tickets**: Common Q&A extracted
+4. **Video content**: Auto-transcribed tutorials
+
+## Maintenance
+
+- **Daily updates**: Automated at 2:00 AM UTC
+- **Quality checks**: Weekly accuracy audits
+- **Reindexing**: Monthly full reindex
+- **Backup**: Daily snapshots retained for 90 days

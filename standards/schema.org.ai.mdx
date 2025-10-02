@@ -1,0 +1,174 @@
+---
+title: schema.org.ai Standard
+description: Complete schema.org.ai (AI-native Schema.org) specification and documentation
+type: standard
+version: 1.0.0
+status: published
+category: vocabulary-specification
+relatedTo:
+  - mdxld
+  - schema-org
+  - json-ld
+  - yaml-ld
+  - ai-agents
+  - knowledge-graphs
+metadata:
+  ns: standard
+  visibility: public
+  source: https://schema.org.ai
+  generatedFrom: https://schema.org.ai/llms.txt
+tags:
+  - schema-org
+  - ai-agents
+  - linked-data
+  - json-ld
+  - yaml-ld
+  - vocabulary
+  - specification
+  - ai-models
+  - knowledge-graphs
+dateCreated: 2025-10-02
+dateModified: 2025-10-02
+---
+
+# schema.org.ai Standard
+
+**schema.org.ai** is an AI-native extension of Schema.org that provides structured vocabulary for AI agents, models, tools, workflows, and knowledge systems.
+
+## Overview
+
+schema.org.ai extends [Schema.org](https://schema.org) with:
+- **38 entity types** (17 AI-native + 21 Schema.org extensions)
+- **60+ properties** - role, capabilities, model, systemPrompt, etc.
+- **7 JSON-LD contexts** - Organized by category
+
+## Core Entity Types
+
+### Agents & Teams (4 types)
+1. **Agent** - Autonomous AI entity with tools and goals
+2. **AgentTeam** - Coordinated team of agents
+3. **Skill** - Specific capability an agent possesses
+4. **Policy** - Rule governing agent behavior
+
+### Models & Training (3 types)
+5. **Model** - AI/ML model for inference or generation
+6. **Embedding** - Model for vector representations
+7. **FineTuning** - Model customization process
+
+### Tools & Functions (1 type)
+8. **Tool** - Function or API agent can invoke
+
+### Workflows & Execution (2 types)
+9. **Task** - Discrete unit of work
+10. **Plan** - Structured sequence of tasks
+
+### Knowledge & Prompts (3 types)
+11. **KnowledgeBase** - Queryable knowledge collection
+12. **Prompt** - Template for AI interaction
+13. **PromptChain** - Sequence of prompts
+
+### Memory & Context (4 types)
+14. **Memory** - Stored knowledge or experience
+15. **Context** - Environmental information
+16. **Conversation** - Thread of messages
+17. **Message** - Single message in conversation
+
+## Schema.org Extensions (21 types)
+
+### Applications & Services
+18. **AIApplication** - AI-powered software application
+19. **AIService** - API service providing AI capabilities
+20. **AICapability** - Specific AI capability or feature
+
+### Content Generation
+21. **GeneratedWork** - AI-generated creative work (base type)
+22. **GeneratedArticle** - AI-generated article
+23. **GeneratedCode** - AI-generated source code
+24. **GeneratedImage** - AI-generated image
+25. **GeneratedVideo** - AI-generated video
+26. **GeneratedAudio** - AI-generated audio
+
+### Actions & Workflows
+27. **AgenticAction** - Action performed by AI agent
+28. **AIWorkflow** - Multi-step AI process
+29. **AIExperiment** - AI research experiment
+30. **AIDeployment** - Model deployment to production
+31. **AIMonitoring** - Production model monitoring
+
+### Data & Training
+32. **TrainingDataset** - Dataset for model training
+33. **ValidationDataset** - Dataset for validation
+34. **BenchmarkDataset** - Standardized evaluation dataset
+
+### Evaluation & Documentation
+35. **AIModelCard** - Model documentation and ethics
+36. **AIEvaluation** - Model performance evaluation
+37. **AIBenchmark** - Standardized benchmark test
+38. **AIMetric** - Performance measurement
+
+## Documentation
+
+The complete schema.org.ai specification and documentation is available in:
+
+- **Full Text**: [schema.org.ai.txt](./schema.org.ai.txt) (79KB, 3173 lines)
+- **Website**: https://schema.org.ai
+- **Specification**: https://schema.org.ai/spec
+- **GitHub**: https://github.com/mdxld/mdxld
+
+## JSON-LD Contexts
+
+Seven category-specific contexts:
+
+1. **ai-context.jsonld** - Master context importing all others
+2. **agents-context.jsonld** - Agent, AgentTeam, Skill, Policy
+3. **models-context.jsonld** - Model, Embedding, FineTuning
+4. **tools-context.jsonld** - Tool
+5. **memory-context.jsonld** - Memory, Context, Conversation, Message
+6. **workflows-context.jsonld** - Task, Plan
+7. **knowledge-context.jsonld** - KnowledgeBase, Prompt, PromptChain
+
+## Quick Start
+
+### JSON-LD
+
+```json
+{
+  "@context": "http://schema.org.ai/context/ai-context.jsonld",
+  "@type": "Agent",
+  "@id": "https://example.com/agents/support",
+  "role": "customer-support",
+  "model": "claude-3-5-sonnet-20241022"
+}
+```
+
+### MDXLD (YAML-LD)
+
+```yaml
+---
+$context: http://schema.org.ai/context/ai-context.jsonld
+$type: Agent
+$id: https://example.com/agents/support
+role: customer-support
+model: claude-3-5-sonnet-20241022
+---
+```
+
+## Integration
+
+Works seamlessly with:
+- **MDXLD** - MDX with linked data frontmatter
+- **Schema.org** - Web vocabulary foundation
+- **JSON-LD** - Standard linked data format
+- **Knowledge graphs** - Semantic data representation
+- **Vector databases** - Embeddings and search
+- **AI frameworks** - LangChain, LlamaIndex, Mastra
+
+## Community
+
+- **GitHub**: [github.com/mdxld/mdxld](https://github.com/mdxld/mdxld)
+- **Discord**: [discord.gg/mdxld](https://discord.gg/mdxld)
+- **Twitter**: [@mdxld](https://twitter.com/mdxld)
+
+## License
+
+MIT - The schema.org.ai specification is open source and freely available for use in any project.
