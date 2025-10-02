@@ -1,0 +1,165 @@
+---
+# GraphDL Noun → MDXLD Thing Template
+# Use this template to define entities (nouns) in your system
+
+$context: https://schema.org
+$type: Thing  # Replace with specific Schema.org type (Product, Person, Organization, etc.)
+$id: https://apis.do/NAMESPACE/IDENTIFIER  # Replace NAMESPACE and IDENTIFIER
+
+# Basic Properties
+title: Entity Title
+description: Brief description of this entity
+name: Display Name
+
+# Custom Properties (add as needed)
+# property1: value1
+# property2: value2
+
+# Metadata
+metadata:
+  ns: NAMESPACE  # e.g., 'products', 'users', 'organizations'
+  visibility: public  # public, private, unlisted
+
+# Tags for discovery
+tags:
+  - category1
+  - category2
+
+# Related Entities
+relatedTo:
+  - /path/to/related/entity1
+  - /path/to/related/entity2
+---
+
+# Entity Title
+
+Detailed description in Markdown. Explain what this entity represents,
+its purpose, and how it fits into your system.
+
+## Properties
+
+Document your entity's properties here:
+
+- **property1** - Description of property1
+- **property2** - Description of property2
+
+## Relationships
+
+Explain how this entity relates to others:
+
+- **uses** - Other entities this depends on
+- **usedBy** - Entities that depend on this
+- **extends** - Parent entities
+- **implements** - Interfaces or contracts
+
+## TypeScript Definition
+
+```typescript
+export interface EntityName {
+  // Core properties
+  id: string
+  title: string
+  description: string
+
+  // Custom properties
+  property1: string
+  property2: number
+
+  // Relationships
+  relatedEntities?: string[]
+
+  // Metadata
+  createdAt: Date
+  updatedAt: Date
+  visibility: 'public' | 'private' | 'unlisted'
+}
+```
+
+## Example Instance
+
+```json
+{
+  "id": "entity-123",
+  "title": "Example Entity",
+  "description": "An example of this entity type",
+  "property1": "value1",
+  "property2": 42,
+  "createdAt": "2025-10-02T00:00:00Z",
+  "updatedAt": "2025-10-02T00:00:00Z",
+  "visibility": "public"
+}
+```
+
+## Usage Examples
+
+### Creating an Instance
+
+```typescript
+const entity = await db.things.create({
+  ns: 'NAMESPACE',
+  id: 'my-entity',
+  type: 'Thing',
+  data: {
+    title: 'My Entity',
+    description: 'Description here',
+    property1: 'value',
+    property2: 123
+  }
+})
+```
+
+### Querying
+
+```typescript
+// Get by ID
+const entity = await db.things.find({
+  ns: 'NAMESPACE',
+  id: 'my-entity'
+})
+
+// Search by type
+const entities = await db.things.findAll({
+  type: 'Thing'
+})
+
+// Semantic search
+const similar = await db.search('description of what you want', {
+  type: 'Thing',
+  limit: 10
+})
+```
+
+### Updating
+
+```typescript
+await db.things.update({
+  ns: 'NAMESPACE',
+  id: 'my-entity'
+}, {
+  data: {
+    property1: 'new value',
+    updatedAt: new Date()
+  }
+})
+```
+
+## GraphDL Comparison
+
+**Old (GraphDL):**
+```yaml
+graph: MyGraph
+  nouns:
+    EntityName:
+      properties:
+        property1: string
+        property2: number
+```
+
+**New (MDXLD):**
+This file! Just write Markdown + YAML frontmatter + TypeScript.
+
+## See Also
+
+- [Function Template](./verb-function-template.mdx) - For actions
+- [Collection Template](./graph-collection-template.mdx) - For graphs
+- [Workflow Template](./workflow-template.mdx) - For processes

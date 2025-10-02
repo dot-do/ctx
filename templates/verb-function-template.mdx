@@ -1,0 +1,317 @@
+---
+# GraphDL Verb → MDXLD Function Template
+# Use this template to define actions (verbs) in your system
+
+$context: http://mdxld.org/context.jsonld
+$type: Function
+$id: https://apis.do/functions/FUNCTION-NAME  # Replace FUNCTION-NAME
+
+# Basic Properties
+title: Function Title
+description: Brief description of what this function does
+
+# Execution Type
+executionType: code  # code, generative, agentic, human
+
+# Inputs (parameters the function accepts)
+inputs:
+  - name: input1
+    type: string  # string, number, boolean, object, array
+    description: Description of input1
+    required: true
+  - name: input2
+    type: number
+    description: Description of input2
+    required: false
+    default: 0
+
+# Outputs (what the function returns)
+outputs:
+  - name: output1
+    type: string
+    description: Description of output1
+  - name: output2
+    type: object
+    description: Description of output2
+
+# Subject/Object (GraphDL verb pattern)
+subject: EntityType  # What acts (e.g., User, System)
+object: EntityType   # What is acted upon (e.g., Product, Order)
+creates: EntityType  # What is created (optional)
+
+# Metadata
+metadata:
+  ns: functions
+  visibility: public
+  category: utility  # utility, business, integration, etc.
+
+# Tags
+tags:
+  - category1
+  - category2
+
+# Related Entities
+relatedTo:
+  - /types/EntityType1
+  - /types/EntityType2
+  - /workflows/related-workflow
+---
+
+# Function Title
+
+Detailed description in Markdown. Explain:
+- What this function does
+- When to use it
+- Prerequisites
+- Expected behavior
+
+## How It Works
+
+Step-by-step explanation:
+
+1. **Step 1** - First thing that happens
+2. **Step 2** - Second thing that happens
+3. **Step 3** - Final result
+
+## Implementation
+
+```typescript
+export interface Input1Input {
+  input1: string
+  input2?: number
+}
+
+export interface FunctionNameOutput {
+  output1: string
+  output2: {
+    success: boolean
+    data?: any
+  }
+}
+
+export async function functionName({
+  input1,
+  input2 = 0
+}: Input1Input): Promise<FunctionNameOutput> {
+  // 1. Validate inputs
+  if (!input1) {
+    throw new Error('input1 is required')
+  }
+
+  // 2. Perform operation
+  const result = await performOperation(input1, input2)
+
+  // 3. Transform result
+  const transformed = transformResult(result)
+
+  // 4. Return output
+  return {
+    output1: transformed.value,
+    output2: {
+      success: true,
+      data: transformed.data
+    }
+  }
+}
+
+// Helper functions
+async function performOperation(input1: string, input2: number) {
+  // Implementation here
+  return { value: input1, data: { count: input2 } }
+}
+
+function transformResult(result: any) {
+  // Transform logic here
+  return result
+}
+```
+
+## Tests
+
+```typescript test
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { functionName } from './function-name'
+
+describe('functionName', () => {
+  beforeEach(() => {
+    // Setup
+  })
+
+  it('returns expected output for valid input', async () => {
+    const result = await functionName({
+      input1: 'test',
+      input2: 42
+    })
+
+    expect(result.output1).toBe('test')
+    expect(result.output2.success).toBe(true)
+    expect(result.output2.data.count).toBe(42)
+  })
+
+  it('throws error for missing required input', async () => {
+    await expect(
+      functionName({
+        input1: '',
+        input2: 0
+      })
+    ).rejects.toThrow('input1 is required')
+  })
+
+  it('uses default value for optional input', async () => {
+    const result = await functionName({
+      input1: 'test'
+    })
+
+    expect(result.output2.data.count).toBe(0)
+  })
+
+  it('handles edge cases', async () => {
+    // Test edge cases
+    const result = await functionName({
+      input1: 'edge-case',
+      input2: -1
+    })
+
+    expect(result).toBeDefined()
+  })
+})
+```
+
+## Usage Examples
+
+### Basic Usage
+
+```typescript
+import { functionName } from './function-name'
+
+const result = await functionName({
+  input1: 'example',
+  input2: 10
+})
+
+console.log(result.output1) // 'example'
+console.log(result.output2.success) // true
+```
+
+### With Error Handling
+
+```typescript
+try {
+  const result = await functionName({
+    input1: 'test'
+  })
+  // Use result
+} catch (error) {
+  console.error('Function failed:', error.message)
+  // Handle error
+}
+```
+
+### In a Workflow
+
+```typescript
+import { functionName } from './function-name'
+import { anotherFunction } from './another-function'
+
+export async function workflow(data: any) {
+  // Step 1: Run this function
+  const result1 = await functionName({
+    input1: data.value
+  })
+
+  // Step 2: Use output in next function
+  const result2 = await anotherFunction({
+    input: result1.output1
+  })
+
+  return result2
+}
+```
+
+### Via API
+
+```bash
+# POST request
+curl -X POST https://apis.do/functions/function-name \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input1": "example",
+    "input2": 42
+  }'
+```
+
+### Via MCP/RPC
+
+```typescript
+import { client } from '@dot-do/api-client'
+
+const result = await client.execute('function-name', {
+  input1: 'example',
+  input2: 42
+})
+```
+
+## API Documentation
+
+### Endpoint
+
+`POST /functions/function-name`
+
+### Request Schema
+
+```json
+{
+  "input1": "string (required)",
+  "input2": "number (optional, default: 0)"
+}
+```
+
+### Response Schema
+
+```json
+{
+  "output1": "string",
+  "output2": {
+    "success": "boolean",
+    "data": "object"
+  }
+}
+```
+
+### Error Responses
+
+- `400 Bad Request` - Invalid input
+- `500 Internal Server Error` - Function execution failed
+
+## Performance
+
+- **Execution Time:** < 100ms (typical)
+- **Rate Limit:** 1000 requests/minute
+- **Timeout:** 30 seconds
+- **Retries:** 3 attempts with exponential backoff
+
+## GraphDL Comparison
+
+**Old (GraphDL):**
+```yaml
+graph: MyGraph
+  verbs:
+    functionName:
+      subject: User
+      object: Product
+      creates: Order
+      implementation: ./handlers/function-name.ts
+      validation: |
+        (input) => {
+          if (!input.input1) throw new Error('Required')
+        }
+```
+
+**New (MDXLD):**
+This file! Write TypeScript directly with type safety and tests.
+
+## See Also
+
+- [Thing Template](./noun-thing-template.mdx) - For entities
+- [Collection Template](./graph-collection-template.mdx) - For graphs
+- [Workflow Template](./workflow-template.mdx) - For multi-step processes
