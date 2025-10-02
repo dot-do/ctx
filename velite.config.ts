@@ -246,6 +246,36 @@ const services = defineCollection({
   }))
 })
 
+// Business-as-Code: OKR entities (Objectives & Key Results)
+const okrs = defineCollection({
+  name: 'Objective',
+  pattern: 'business-as-code/okrs/**/*.mdx',
+  schema: s.object({
+    title: s.string(),
+    slug: s.path(),
+    level: s.enum(['holding', 'company', 'department', 'team', 'ic']),
+    owner: s.string(),
+    objective: s.string(),
+    timeframe: s.object({
+      start: s.string(), // ISO date string
+      end: s.string(),
+      quarter: s.enum(['Q1', 'Q2', 'Q3', 'Q4']).optional(),
+      year: s.number().optional()
+    }),
+    status: s.enum(['draft', 'active', 'at-risk', 'completed', 'failed', 'cancelled']).default('draft'),
+    progress: s.number().default(0), // 0-100
+    metadata: s.object({
+      ns: s.string().default('objective'),
+      visibility: s.enum(['public', 'private', 'unlisted']).default('public')
+    }).default({}),
+    tags: s.array(s.string()).default([]),
+    content: s.mdx()
+  }).transform(data => ({
+    ...data,
+    url: `/okrs/${data.slug}`
+  }))
+})
+
 export default defineConfig({
   root: '.',
   output: {
@@ -264,7 +294,8 @@ export default defineConfig({
     agents,
     ideas,
     companies,
-    services
+    services,
+    okrs
   },
   mdx: {
     rehypePlugins: [],

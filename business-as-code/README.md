@@ -42,6 +42,417 @@ Business-as-Code provides:
 - Agents for autonomous execution
 - Metrics for performance tracking
 
+## OKRs as Ground Truth for Reinforcement Learning
+
+### The Problem with Contrived Evals
+
+Traditional AI agent evaluation relies on **synthetic benchmarks** and **contrived tests**:
+
+❌ **Contrived Evals:**
+- Disconnected from real business outcomes
+- Optimized for test scores, not value creation
+- Static datasets that don't reflect production
+- No alignment with stakeholder goals
+- Can't measure economic impact
+
+✅ **OKR-Based Ground Truth:**
+- Real business outcomes (revenue, users, quality)
+- Natural reward signals from actual value creation
+- Aligned with human stakeholders' goals
+- Measurable economic impact via GDPval
+- Continuous feedback from live operations
+
+### Why OKRs Are Superior
+
+**1. Real-World Validation**
+```typescript
+// Contrived eval: Pass unit tests
+testCoverage > 80%  // ❌ Gaming the metric
+
+// OKR ground truth: Actual business impact
+revenue > $1M  // ✅ Economic value created
+customerSatisfaction > 90%  // ✅ Real user outcomes
+```
+
+**2. Natural Reward Signals**
+
+Every OKR update generates RL feedback:
+```typescript
+// Key Result update
+current: $750K → $850K
+target: $1M
+progress: 75% → 85%
+
+→ Reward signal: +0.10 (10% progress toward target)
+→ Economic value: $100K additional revenue
+→ Feedback: "Revenue growth strategy working"
+→ Learning: Continue current approach
+```
+
+**3. Aligned Incentives**
+
+Agents optimize for what you actually care about:
+- Contrived evals → test scores
+- OKR ground truth → business success
+
+### How Reward Signals Work
+
+**Automatic Reward Generation:**
+
+```typescript
+interface RewardSignal {
+  source: 'kr-update' | 'kr-completion' | 'okr-completion'
+  strength: number  // -1 to 1
+  delta: {
+    metric: 'revenue'
+    previous: 750000
+    current: 850000
+    target: 1000000
+    percentComplete: 85
+  }
+  economicValue: 100000  // GDPval impact
+  feedback: "Revenue growth on track"
+  agents: ['sales-agent', 'marketing-agent']
+}
+```
+
+**When Rewards Fire:**
+1. **KR Update**: Metric moves toward target (+reward) or away (-penalty)
+2. **Milestone Hit**: 25%, 50%, 75%, 100% progress (+bonus reward)
+3. **OKR Completion**: Objective achieved (+large reward)
+4. **OKR Exceeded**: Surpass target (+extra reward)
+5. **Setback**: Metric declines (-penalty signal)
+
+**Reward Magnitude:**
+```typescript
+// Linear reward function
+reward = (current - baseline) / (target - baseline)
+
+// Example: Revenue KR
+baseline = $0
+current = $850K
+target = $1M
+reward = ($850K - $0) / ($1M - $0) = 0.85
+
+// Weighted by importance
+krWeight = 0.3  // 30% of parent objective
+finalReward = 0.85 * 0.3 = 0.255
+```
+
+### Evaluation Framework
+
+**Ground Truth Evaluation:**
+
+```typescript
+interface EvaluationFramework {
+  basis: 'okr-achievement'  // NOT 'contrived-evals'
+  groundTruth: 'business-kpis'
+  metrics: [
+    { keyResult: 'revenue', weight: 0.4, threshold: 0.7 },
+    { keyResult: 'users', weight: 0.3, threshold: 0.6 },
+    { keyResult: 'quality', weight: 0.3, threshold: 0.8 }
+  ]
+  rewardFunction: {
+    type: 'weighted-sum'
+    normalization: 'none'
+  }
+  frequency: 'realtime'
+  thresholds: {
+    excellent: 0.9,  // >90% OKR achievement
+    good: 0.7,       // >70%
+    acceptable: 0.5,  // >50%
+    poor: 0.5        // <50%
+  }
+}
+```
+
+**Performance Assessment:**
+```typescript
+// Agent performance = weighted sum of KR achievement
+const performance = keyResults.reduce((sum, kr) => {
+  const achievement = kr.current / kr.target
+  return sum + (achievement * kr.weight)
+}, 0)
+
+// 0.85 = Excellent performance (>90% of weighted OKRs achieved)
+```
+
+### Learning Loops
+
+**Continuous Improvement from Real Outcomes:**
+
+```typescript
+interface LearningLoop {
+  trigger: 'kr-update'  // Learn from every metric update
+  frequency: 'realtime'
+
+  feedback: [
+    {
+      timestamp: '2025-10-02T10:00:00Z',
+      source: 'kr-update',
+      metric: 'revenue',
+      delta: +$100K,
+      reward: +0.10,
+      economicValue: $100K
+    }
+  ]
+
+  insights: [
+    {
+      observation: "Revenue spike after new pricing launch",
+      hypothesis: "Tiered pricing converts better than flat rate",
+      experiment: "A/B test pricing variations"
+    }
+  ]
+
+  improvements: [
+    {
+      change: "Implemented tiered pricing model",
+      impact: +0.15,  // 15% improvement
+      status: 'deployed'
+    }
+  ]
+
+  learningRate: 0.1,    // How quickly to adapt
+  exploration: 0.2      // 20% exploration, 80% exploitation
+}
+```
+
+**A/B Testing with Real Business Metrics:**
+```typescript
+experiments: [
+  {
+    hypothesis: "AI-generated sales emails convert better",
+    variants: ['human-written', 'ai-generated'],
+    metrics: ['conversion-rate', 'response-rate'],
+
+    // Results measured against KRs
+    results: {
+      'human-written': { conversion: 0.12, kr_contribution: +$50K },
+      'ai-generated': { conversion: 0.18, kr_contribution: +$75K }
+    },
+
+    winner: 'ai-generated',  // Based on real business outcomes
+    status: 'deployed'
+  }
+]
+```
+
+### Example: Revenue KR Training Loop
+
+**Scenario: $1M ARR Objective**
+
+```typescript
+objective: {
+  id: 'okr-2025-q4-revenue',
+  objective: 'Achieve $1M ARR by December 2025',
+  keyResults: [
+    {
+      id: 'kr-revenue',
+      metric: 'ARR',
+      baseline: $0,
+      target: $1_000_000,
+      current: $0,
+      rewardFunction: {
+        type: 'linear',
+        weight: 1.0
+      }
+    }
+  ]
+}
+```
+
+**Week 1: First Customer**
+```typescript
+// Event: First customer signs up ($10K ARR)
+current: $0 → $10K
+progress: 0% → 1%
+reward: +0.01
+
+// Agent learns:
+- What marketing channel worked
+- Which pricing tier converted
+- Customer acquisition playbook
+```
+
+**Week 10: Milestone Hit**
+```typescript
+// Event: $250K ARR (25% milestone)
+current: $240K → $250K
+progress: 24% → 25%
+reward: +0.01 + 0.05 (milestone bonus)
+
+// Agent learns:
+- Successful patterns validated
+- Scale what's working
+- Predictable path to target
+```
+
+**Week 40: Target Achieved**
+```typescript
+// Event: $1M ARR reached
+current: $980K → $1M
+progress: 98% → 100%
+reward: +0.02 + 0.2 (completion bonus)
+economicValue: $1M
+
+// Agent learns:
+- Entire playbook validated
+- Strategies work at scale
+- Ready for next objective ($5M ARR)
+```
+
+**Week 52: Target Exceeded**
+```typescript
+// Event: $1.2M ARR (20% over target)
+current: $1M → $1.2M
+progress: 100% → 120%
+reward: +0.2 (exceeded bonus)
+
+// Agent learns:
+- Exceeded expectations
+- Unlock stretch goals
+- Compound growth patterns
+```
+
+### Implementation Guide
+
+**1. Link Everything to OKRs**
+
+```typescript
+// Every role has OKR accountability
+role: {
+  title: "Head of Sales",
+  objectives: ['okr-2025-q4-revenue'],
+  keyResults: ['kr-revenue'],
+  performanceEvaluation: {
+    basis: 'okr-achievement',
+    targetCompletion: 0.7  // 70% = good performance
+  }
+}
+
+// Every operation drives OKRs
+operation: {
+  name: "Sales Outreach Campaign",
+  objectives: ['okr-2025-q4-revenue'],
+  keyResults: ['kr-revenue'],
+  successMetrics: [
+    { keyResult: 'kr-revenue', contribution: 0.4 }  // 40% of revenue KR
+  ]
+}
+
+// Every metric measures OKRs
+metric: {
+  name: "Monthly Recurring Revenue",
+  keyResults: ['kr-revenue'],
+  mapping: [
+    { keyResult: 'kr-revenue', contribution: 'primary' }
+  ]
+}
+```
+
+**2. Set Up Automated Tracking**
+
+```typescript
+// Real-time KR updates
+const revenue = await stripe.getARR()
+const previousValue = await getKeyResult('kr-revenue').current
+const target = await getKeyResult('kr-revenue').target
+
+// Calculate reward
+const reward = (revenue - previousValue) / target
+
+// Update KR and generate signal
+await updateKeyResult('kr-revenue', revenue, {
+  generateReward: true,
+  reward: {
+    strength: reward,
+    economicValue: revenue - previousValue,
+    feedback: revenue > previousValue ?
+      "Revenue growing" : "Revenue declined",
+    agents: ['sales-agent', 'marketing-agent']
+  }
+})
+```
+
+**3. Build Learning Loops**
+
+```typescript
+// On every KR update, learn
+onKeyResultUpdate(async (kr, signal) => {
+  // Extract insight
+  const insight = await analyzeSignal(signal)
+
+  // Form hypothesis
+  if (signal.strength > 0.1) {
+    await proposeExperiment({
+      hypothesis: "Recent changes drove growth",
+      variants: ['continue', 'accelerate'],
+      metrics: [kr.id]
+    })
+  }
+
+  // Deploy improvement
+  if (insight.confidence > 0.8) {
+    await deployImprovement(insight.recommendation)
+  }
+})
+```
+
+**4. Evaluate Agents on Real Outcomes**
+
+```typescript
+// NOT this (contrived eval)
+const testScore = await runUnitTests()
+const agentPerformance = testScore / 100
+
+// YES this (OKR ground truth)
+const okrAchievement = await calculateOKRProgress()
+const agentPerformance = okrAchievement.weightedScore
+
+// Performance review
+if (agentPerformance > 0.9) {
+  // Excellent: >90% OKR achievement
+  await grantBonus(agent, 0.2)
+} else if (agentPerformance < 0.5) {
+  // Poor: <50% OKR achievement
+  await initiateImprovement(agent)
+}
+```
+
+### Benefits
+
+**1. True Alignment**
+- Agents optimize for business success, not test scores
+- Natural incentives match stakeholder goals
+- Economic value directly measured
+
+**2. Continuous Feedback**
+- Every metric update provides RL signal
+- Real-time learning from production
+- Faster iteration than batch evals
+
+**3. Scalable Evaluation**
+- Same framework works across all business types
+- Standardized reward calculation
+- Comparable performance metrics
+
+**4. Measurable Impact**
+- Track economic value via GDPval
+- Revenue, users, quality as KRs
+- ROI of AI agent improvements
+
+### Next Steps
+
+1. Define OKRs for your business
+2. Link all roles/operations/metrics to OKRs
+3. Set up automated KR tracking
+4. Implement reward signal generation
+5. Build learning loops
+6. Evaluate agents on OKR achievement
+
+See [`types.ts`](./types.ts) for complete type definitions including `RewardSignal`, `EvaluationFramework`, and `LearningLoop`.
+
 ## Directory Structure
 
 ```

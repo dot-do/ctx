@@ -44,6 +44,105 @@ Fully automated tax preparation service powered by AI agents, delivering CPA-lev
 
 **Target:** 10,000 returns in 2025 tax season = $990K revenue
 
+## 2025 Objectives & Key Results
+
+### O1: Achieve $990K Revenue from Tax Season
+
+**KR1.1**: File 10,000 tax returns
+- Baseline: 0
+- Current: 0 (pre-season)
+- Target: 10,000
+- Status: Draft
+
+**KR1.2**: Achieve $990K total revenue
+- Baseline: $0
+- Current: $0
+- Target: $990K
+- Status: Draft
+
+**KR1.3**: Maintain 95%+ customer satisfaction (CSAT)
+- Baseline: N/A (new service)
+- Current: N/A
+- Target: 95%
+- Status: Draft
+
+**KR1.4**: Keep error rate <0.5%
+- Baseline: Unknown
+- Current: N/A
+- Target: <0.5%
+- Status: Draft
+
+### OKRs as Ground Truth for RL
+
+These objectives provide **real business validation**, not synthetic benchmarks:
+
+**Why Real Outcomes > Contrived Evals:**
+- ✅ $990K revenue = Economic value created (not test scores)
+- ✅ 10,000 returns = Real customers served (not mock data)
+- ✅ 95% CSAT = Actual user satisfaction (not synthetic NPS)
+- ✅ <0.5% errors = IRS-validated accuracy (not unit tests)
+
+**Evaluation Framework:**
+```typescript
+{
+  basis: 'okr-achievement',  // NOT 'contrived-evals'
+  groundTruth: 'business-kpis',
+  metrics: [
+    { keyResult: 'KR1.1', weight: 0.25, threshold: 0.7 },  // Volume
+    { keyResult: 'KR1.2', weight: 0.35, threshold: 0.7 },  // Revenue (highest weight)
+    { keyResult: 'KR1.3', weight: 0.25, threshold: 0.85 }, // Quality
+    { keyResult: 'KR1.4', weight: 0.15, threshold: 0.99 }  // Accuracy
+  ],
+  rewardFunction: {
+    type: 'weighted-sum',
+    formula: '(0.25 * returns) + (0.35 * revenue) + (0.25 * csat) + (0.15 * accuracy)'
+  },
+  frequency: 'daily'  // During tax season
+}
+```
+
+**Reward Signals:**
+
+Real-time feedback from business outcomes:
+```typescript
+// Example: First 1,000 returns filed
+{
+  source: 'kr-update',
+  keyResult: 'KR1.1',
+  strength: +0.10,  // 10% progress toward target
+  economicValue: 99000,  // ~$99K revenue
+  agents: ['tax-prep.do', 'tax-review.do'],
+  feedback: "Filing velocity strong - automation working",
+  improvements: [
+    "Deduction optimizer finding avg $850 more per return",
+    "Review process cleared 98% of returns without escalation"
+  ]
+}
+
+// Example: Customer satisfaction scores arriving
+{
+  source: 'kr-update',
+  keyResult: 'KR1.3',
+  strength: +0.24,  // 96% CSAT (above target)
+  agents: ['tax-prep.do', 'support.do'],
+  feedback: "Customers love fast turnaround and clear explanations",
+  improvements: [
+    "AI explanations rated 'very helpful' by 92%",
+    "24-hour turnaround time exceeding expectations"
+  ]
+}
+```
+
+**Learning Loops:**
+
+Continuous improvement from tax season outcomes:
+- **Returns Volume**: Track conversion rate, drop-off points, pricing sensitivity
+- **Revenue**: Analyze which services drive highest revenue, upsell success
+- **CSAT**: Correlate satisfaction with turnaround time, accuracy, communication
+- **Accuracy**: Learn from IRS rejections, flagged returns, human escalations
+
+**Agents learn what makes customers happy AND generates revenue**, not what scores well on synthetic tests.
+
 ### Competitive Positioning
 
 **vs. TurboTax:**

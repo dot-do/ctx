@@ -52,6 +52,65 @@ AI-native holding company building the infrastructure for autonomous business op
 
 **Target: $1M ARR by December 2025**
 
+### OKRs as Ground Truth for RL
+
+These objectives provide **natural reward signals** from real business outcomes, not contrived evals:
+
+**Why Real Outcomes > Synthetic Tests:**
+- ✅ $1M ARR = Economic value created (not test coverage %)
+- ✅ 200+ services = Market validation (not unit test scores)
+- ✅ 4.5+ rating = Customer satisfaction (not synthetic benchmarks)
+- ✅ 100+ providers = Network effects (not mock data performance)
+
+**Evaluation Framework:**
+```typescript
+{
+  basis: 'okr-achievement',  // NOT 'contrived-evals'
+  groundTruth: 'business-kpis',
+  metrics: [
+    { objective: 'O1', weight: 0.3, threshold: 0.7 },
+    { objective: 'O2', weight: 0.5, threshold: 0.7 },  // Revenue weighted highest
+    { objective: 'O3', weight: 0.2, threshold: 0.6 }
+  ],
+  rewardFunction: {
+    type: 'weighted-sum',
+    formula: '(0.3 * O1) + (0.5 * O2) + (0.2 * O3)'
+  },
+  frequency: 'daily'
+}
+```
+
+**Reward Signals Generated:**
+
+When KRs update, agents receive RL feedback:
+```typescript
+// Example: GMV increases from $300K → $400K
+{
+  source: 'kr-update',
+  keyResult: 'KR2.2',
+  strength: +0.20,  // 20% progress toward $500K target
+  economicValue: $100K,  // Real revenue increase
+  agents: ['marketplace-agent', 'sales-agent'],
+  feedback: "GMV growth accelerating - marketplace gaining traction",
+  improvements: ["Provider onboarding automation working"]
+}
+```
+
+**Learning Loops:**
+
+Continuous improvement from real outcomes:
+- **O1 (API.Services)**: SDK downloads, function executions, developer feedback
+- **O2 (Services.Delivery)**: GMV, ratings, provider growth, dispute resolution time
+- **O3 (Services.Studio)**: Creator signups, service publish rate, revenue per creator
+
+Agents optimize for business success, not test scores.
+
+**Detailed OKR Tracking:**
+
+See standalone OKR files for comprehensive reward signals, evaluation, and learning loops:
+- [Q4 2025 Revenue Objective](../okrs/q4-2025-revenue.mdx) - Comprehensive revenue OKR with RL framework
+- [Q4 2025 Product Objective](../okrs/q4-2025-product.mdx) - Quality and reliability OKR with RL framework
+
 ## Organizational Structure
 
 ### Holding Company

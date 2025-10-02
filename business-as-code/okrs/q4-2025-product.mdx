@@ -1,0 +1,476 @@
+---
+title: Q4 2025 Product Excellence Objective
+level: department
+owner: vp-product
+objective: Achieve product-market fit with 40+ NPS and 95%+ uptime
+timeframe:
+  start: 2025-10-01
+  end: 2025-12-31
+  quarter: Q4
+  year: 2025
+status: active
+progress: 58
+metadata:
+  ns: objective
+  visibility: public
+tags:
+  - product
+  - quality
+  - q4-2025
+---
+
+# Q4 2025 Product Excellence Objective
+
+**Owner**: VP of Product
+**Level**: Department
+**Status**: Active (58% complete)
+**Timeframe**: Q4 2025 (Oct 1 - Dec 31)
+
+## Objective
+
+**Achieve product-market fit with 40+ NPS score and 95%+ uptime**
+
+Drive product excellence through quality, reliability, and user satisfaction. This is our quality foundation for scaling revenue.
+
+## Key Results
+
+### KR 2.1: Net Promoter Score (NPS)
+
+**Target**: NPS = 40 (World-class SaaS)
+**Current**: NPS = 32 (58% complete)
+**Baseline**: NPS = 12
+**Status**: On track 🟢
+
+**Reward Function**:
+```typescript
+{
+  type: 'step',  // Discrete milestones for NPS bands
+  formula: `
+    if (nps >= 50) return 1.2    // Exceptional
+    if (nps >= 40) return 1.0    // Target
+    if (nps >= 30) return 0.7    // Good
+    if (nps >= 20) return 0.4    // Fair
+    return 0.1                    // Poor
+  `,
+  weight: 0.4  // 40% of total objective
+}
+```
+
+**Data Source**:
+- Type: Analytics
+- Query: Delighted NPS survey API
+- Update Frequency: Weekly
+
+**Progress History**:
+| Date | NPS | Band | Reward | Note |
+|------|-----|------|--------|------|
+| 2025-10-01 | 12 | Poor | 0.04 | Baseline |
+| 2025-10-15 | 22 | Fair | 0.16 | Improving |
+| 2025-11-01 | 28 | Good | 0.28 | Feature launches working |
+| 2025-11-15 | 32 | Good | 0.28 | Current |
+
+**Agents Assigned**:
+- `product-agent` - Prioritizes features based on feedback
+- `support-agent` - Resolves customer issues quickly
+- `ux-agent` - Optimizes user experience
+
+### KR 2.2: Platform Uptime
+
+**Target**: 99.5% uptime (SLA requirement)
+**Current**: 99.2% uptime (94% complete)
+**Baseline**: 97.5% uptime
+**Status**: At risk 🟡
+
+**Reward Function**:
+```typescript
+{
+  type: 'exponential',  // Uptime gets exponentially harder
+  formula: 'Math.pow((current - baseline) / (target - baseline), 2)',
+  weight: 0.35  // 35% of total objective
+}
+```
+
+**Data Source**:
+- Type: API
+- Endpoint: `https://status.apis.do/metrics/uptime`
+- Update Frequency: Realtime
+
+**Progress History**:
+| Date | Uptime | Progress | Reward | Incidents |
+|------|--------|----------|--------|-----------|
+| 2025-10-01 | 97.5% | 0% | 0.00 | Baseline |
+| 2025-10-15 | 98.8% | 65% | 0.42 | 2 incidents |
+| 2025-11-01 | 99.0% | 75% | 0.56 | 1 incident |
+| 2025-11-15 | 99.2% | 85% | 0.72 | 0 incidents |
+
+**Agents Assigned**:
+- `monitoring-agent` - Detects issues before they escalate
+- `auto-remediation-agent` - Fixes common problems automatically
+- `sre-agent` - Optimizes infrastructure reliability
+
+### KR 2.3: Feature Adoption Rate
+
+**Target**: 70% of active users adopt new features within 30 days
+**Current**: 48% adoption rate (48% complete)
+**Baseline**: 25% adoption
+**Status**: Behind pace 🔴
+
+**Reward Function**:
+```typescript
+{
+  type: 'linear',
+  formula: '(current - baseline) / (target - baseline)',
+  weight: 0.25  // 25% of total objective
+}
+```
+
+**Data Source**:
+- Type: Analytics
+- Query: Mixpanel feature adoption funnel
+- Update Frequency: Daily
+
+**Progress History**:
+| Date | Adoption | Progress | Reward | Top Features |
+|------|----------|----------|--------|--------------|
+| 2025-10-01 | 25% | 0% | 0.00 | Baseline |
+| 2025-10-15 | 35% | 22% | 0.06 | AI search launched |
+| 2025-11-01 | 42% | 38% | 0.09 | Workflow builder |
+| 2025-11-15 | 48% | 51% | 0.13 | Current |
+
+**Agents Assigned**:
+- `onboarding-agent` - Guides users to new features
+- `engagement-agent` - Sends targeted feature announcements
+- `analytics-agent` - Tracks feature usage patterns
+
+## Reward Signals Generated
+
+### Recent Signals (Last 30 Days)
+
+**Total Rewards**: +0.58 (weighted sum across all KRs)
+
+**Signal 1: NPS Band Upgrade**
+```typescript
+{
+  id: 'reward-signal-101',
+  timestamp: '2025-11-01T00:00:00Z',
+  source: 'milestone',
+  objective: 'q4-2025-product',
+  keyResult: 'kr-2-1-nps',
+  strength: +0.12,  // Jump from Fair → Good band
+  delta: {
+    metric: 'nps',
+    previous: 22,
+    current: 28,
+    target: 40,
+    percentComplete: 57
+  },
+  economicValue: undefined,  // Quality metric, not direct revenue
+  agents: ['product-agent', 'support-agent', 'ux-agent'],
+  feedback: "Crossed into 'Good' NPS band - recent feature launches resonating",
+  improvements: [
+    "AI search feature driving positive feedback",
+    "Support response time cut from 4h to 45min"
+  ]
+}
+```
+
+**Signal 2: Uptime Improvement**
+```typescript
+{
+  id: 'reward-signal-102',
+  timestamp: '2025-11-15T00:00:00Z',
+  source: 'kr-update',
+  objective: 'q4-2025-product',
+  keyResult: 'kr-2-2-uptime',
+  strength: +0.16,  // Exponential reward for uptime gains
+  delta: {
+    metric: 'uptime',
+    previous: 99.0,
+    current: 99.2,
+    target: 99.5,
+    percentComplete: 85
+  },
+  economicValue: undefined,
+  agents: ['monitoring-agent', 'auto-remediation-agent', 'sre-agent'],
+  feedback: "Zero incidents this period - monitoring and auto-remediation working",
+  improvements: [
+    "Auto-remediation handled 47 issues before user impact",
+    "Circuit breakers prevented cascading failures"
+  ]
+}
+```
+
+**Signal 3: Feature Adoption Struggling**
+```typescript
+{
+  id: 'reward-signal-103',
+  timestamp: '2025-11-15T00:00:00Z',
+  source: 'kr-update',
+  objective: 'q4-2025-product',
+  keyResult: 'kr-2-3-adoption',
+  strength: +0.04,  // Small gain, still behind pace
+  delta: {
+    metric: 'adoption_rate',
+    previous: 42,
+    current: 48,
+    target: 70,
+    percentComplete: 51
+  },
+  economicValue: undefined,
+  agents: ['onboarding-agent', 'engagement-agent', 'analytics-agent'],
+  feedback: "Adoption growing but not fast enough - need better onboarding",
+  improvements: [
+    "In-app tutorials increased adoption 6%"
+  ]
+}
+```
+
+## Evaluation Framework
+
+```typescript
+{
+  basis: 'okr-achievement',
+  groundTruth: 'business-kpis',
+  metrics: [
+    { keyResult: 'kr-2-1-nps', weight: 0.4, threshold: 0.6 },
+    { keyResult: 'kr-2-2-uptime', weight: 0.35, threshold: 0.85 },
+    { keyResult: 'kr-2-3-adoption', weight: 0.25, threshold: 0.5 }
+  ],
+  rewardFunction: {
+    type: 'weighted-sum',
+    formula: '(0.4 * kr1) + (0.35 * kr2) + (0.25 * kr3)',
+    normalization: 'none'
+  },
+  frequency: 'weekly',
+  thresholds: {
+    excellent: 0.9,   // >90% weighted achievement
+    good: 0.7,        // >70%
+    acceptable: 0.5,  // >50%
+    poor: 0.5         // <50%
+  },
+  benchmark: {
+    type: 'peer',
+    baseline: 0.65  // Industry average for SaaS product KPIs
+  }
+}
+```
+
+**Current Performance**: 0.58 (Good - above industry average)
+
+## Learning Loop
+
+### Trigger
+```typescript
+{
+  trigger: 'kr-update',
+  frequency: 'weekly'  // Less frequent than revenue (quality takes time)
+}
+```
+
+### Recent Insights
+
+**Insight 1: NPS Drivers**
+```typescript
+{
+  timestamp: '2025-11-05T00:00:00Z',
+  observation: "Users mentioning 'AI search' in positive NPS feedback at 3x rate",
+  hypothesis: "AI-powered features are key NPS driver",
+  experiment: "Prioritize AI enhancements in product roadmap"
+}
+```
+
+**Insight 2: Uptime Correlation**
+```typescript
+{
+  timestamp: '2025-11-10T00:00:00Z',
+  observation: "Churn rate drops 40% when uptime >99%",
+  hypothesis: "Reliability is table-stakes for retention",
+  experiment: "Invest in redundancy and auto-remediation"
+}
+```
+
+**Insight 3: Adoption Friction**
+```typescript
+{
+  timestamp: '2025-11-12T00:00:00Z',
+  observation: "Users who complete onboarding tutorial have 85% adoption vs 30% without",
+  hypothesis: "Lack of guidance is adoption bottleneck",
+  experiment: "Make interactive onboarding mandatory for new users"
+}
+```
+
+### Deployed Improvements
+
+**Improvement 1: AI-Powered Search**
+```typescript
+{
+  timestamp: '2025-10-22T00:00:00Z',
+  change: "Launched semantic search with AI-generated suggestions",
+  impact: +0.15,  // 15% NPS improvement
+  status: 'deployed'
+}
+```
+
+**Improvement 2: Auto-Remediation**
+```typescript
+{
+  timestamp: '2025-11-03T00:00:00Z',
+  change: "AI agent detects and fixes 80% of common issues automatically",
+  impact: +0.18,  // 18% uptime improvement
+  status: 'deployed'
+}
+```
+
+**Improvement 3: Interactive Onboarding**
+```typescript
+{
+  timestamp: '2025-11-14T00:00:00Z',
+  change: "Replaced video tutorials with interactive guided walkthroughs",
+  impact: +0.06,  // 6% adoption improvement
+  status: 'deployed'
+}
+```
+
+### Active Experiments
+
+**Experiment 1: AI Copilot**
+```typescript
+{
+  id: 'exp-101',
+  hypothesis: "In-app AI copilot increases feature discovery and adoption",
+  variants: ['control', 'copilot'],
+  metrics: ['feature-adoption', 'time-to-value', 'nps'],
+  status: 'running',
+  preliminary: {
+    'control': { adoption: 0.48, ttv: '7 days', nps: 30 },
+    'copilot': { adoption: 0.62, ttv: '3 days', nps: 38 }
+  }
+}
+```
+
+**Experiment 2: Proactive Support**
+```typescript
+{
+  id: 'exp-102',
+  hypothesis: "AI detects user struggles and offers help before they ask",
+  variants: ['reactive', 'proactive'],
+  metrics: ['support-tickets', 'resolution-time', 'nps'],
+  status: 'running'
+}
+```
+
+### Learning Parameters
+
+```typescript
+{
+  learningRate: 0.05,   // Slower learning for quality metrics
+  exploration: 0.3,     // More exploration for product experiments
+  adaptiveStrategy: 'thompson-sampling'  // Bayesian optimization
+}
+```
+
+## Parent Objective
+
+This department-level objective supports:
+
+**Company Level**: [Q4 2025 Revenue Objective](./q4-2025-revenue.mdx)
+- Rationale: Quality and reliability enable sustainable revenue growth
+- Connection: High NPS → referrals → revenue; High uptime → retention → MRR
+
+## Child Objectives
+
+### Team Level
+- **Product Team**: O2.1 - Ship 5 AI-powered features
+- **Engineering Team**: O2.2 - Achieve 99.9% API uptime
+- **Design Team**: O2.3 - Improve UI/UX score to 8.5/10
+
+### Individual Level
+- **Product Manager**: O2.1.1 - Own AI search roadmap
+- **SRE Lead**: O2.2.1 - Reduce MTTR to <15min
+- **UX Designer**: O2.3.1 - Design 3 conversion-optimized flows
+
+## Success Criteria
+
+### Excellent (>90%)
+- NPS ≥ 45 (Exceptional)
+- Uptime ≥ 99.5% (SLA exceeded)
+- Adoption ≥ 65% (Strong engagement)
+
+### Good (>70%)
+- NPS ≥ 35 (Strong)
+- Uptime ≥ 99.3%
+- Adoption ≥ 55%
+
+### At Risk (<50%)
+- NPS < 25 (Concerning)
+- Uptime < 98.5%
+- Adoption < 40%
+
+## Correlation with Revenue
+
+**NPS Impact on Revenue:**
+```typescript
+// Historical data shows strong correlation
+const npsToRevenueGrowth = {
+  nps_40_plus: { growth: 0.35, churn: 0.05 },  // 35% YoY growth, 5% churn
+  nps_30_to_40: { growth: 0.20, churn: 0.10 },
+  nps_20_to_30: { growth: 0.08, churn: 0.18 },
+  nps_below_20: { growth: -0.05, churn: 0.30 }  // Negative growth!
+}
+
+// Current NPS of 32 → expect ~20% growth, 10% churn
+```
+
+**Uptime Impact on MRR:**
+```typescript
+// Each 9 of uptime saves significant churn
+const uptimeToChurn = {
+  '99.9%': 0.03,  // 3% annual churn
+  '99.5%': 0.05,  // 5% annual churn (target)
+  '99.0%': 0.08,
+  '98.0%': 0.15,
+  '97.0%': 0.25   // Catastrophic churn
+}
+
+// Current 99.2% → ~6% annual churn ($33K MRR loss)
+// Target 99.5% → ~5% annual churn ($28K MRR loss)
+// Improvement = $5K saved MRR
+```
+
+## Ground Truth vs Contrived Evals
+
+**❌ Contrived Product Evals:**
+- Unit test coverage > 80%
+- Static code analysis score
+- Synthetic load test performance
+- Mock user testing scores
+
+**✅ Real Business Outcomes:**
+- Actual user NPS from production
+- Real uptime measured in production
+- True feature adoption from active users
+- Economic impact on churn and growth
+
+**Why Real Outcomes Win:**
+- Users vote with their wallets (MRR impact)
+- No gaming possible (can't fake NPS or uptime)
+- Aligned with business success
+- Measurable ROI of improvements
+
+## Next Actions
+
+1. **Boost NPS to 35+** - Launch AI copilot to all users
+2. **Hit 99.5% Uptime** - Deploy redundancy upgrades
+3. **Improve Adoption to 55%** - Make onboarding mandatory
+4. **Run Correlation Analysis** - Quantify NPS → Revenue impact
+
+## Related Entities
+
+- **Parent**: [Q4 2025 Revenue Objective](./q4-2025-revenue.mdx)
+- **Roles**: [VP Product](../roles/vp-product.mdx), [Head of Engineering](../roles/head-of-engineering.mdx)
+- **Operations**: [Feature Launch Process](../operations/feature-launch.mdx)
+- **Metrics**: [Product Health Dashboard](../metrics/product-health.mdx)
+
+---
+
+**Ground Truth for RL**: Product quality metrics provide natural reward signals. AI agents learn what actually makes users happy and systems reliable, not what scores well on synthetic tests.

@@ -1,0 +1,415 @@
+---
+title: Q4 2025 Revenue Objective
+level: company
+owner: ceo
+objective: Achieve $1M ARR by December 2025
+timeframe:
+  start: 2025-10-01
+  end: 2025-12-31
+  quarter: Q4
+  year: 2025
+status: active
+progress: 42
+metadata:
+  ns: objective
+  visibility: public
+tags:
+  - revenue
+  - growth
+  - q4-2025
+---
+
+# Q4 2025 Revenue Objective
+
+**Owner**: CEO
+**Level**: Company
+**Status**: Active (42% complete)
+**Timeframe**: Q4 2025 (Oct 1 - Dec 31)
+
+## Objective
+
+**Achieve $1M Annual Recurring Revenue (ARR) by December 31, 2025**
+
+This is our primary company objective for Q4 2025. Success means establishing a sustainable $1M ARR baseline to build upon in 2026.
+
+## Key Results
+
+### KR 1.1: Services Marketplace GMV
+
+**Target**: $500K GMV with 15-20% take rate
+**Current**: $210K GMV (42% complete)
+**Baseline**: $45K GMV
+**Status**: On track 🟢
+
+**Reward Function**:
+```typescript
+{
+  type: 'linear',
+  formula: '(current - baseline) / (target - baseline)',
+  weight: 0.5  // 50% of total objective
+}
+```
+
+**Data Source**:
+- Type: Database
+- Query: `SELECT SUM(transaction_amount) FROM orders WHERE status='completed'`
+- Update Frequency: Realtime
+
+**Progress History**:
+| Date | GMV | Progress | Reward | Note |
+|------|-----|----------|--------|------|
+| 2025-10-01 | $45K | 0% | 0.00 | Baseline |
+| 2025-10-15 | $120K | 16% | +0.08 | First milestone |
+| 2025-11-01 | $180K | 30% | +0.07 | Steady growth |
+| 2025-11-15 | $210K | 42% | +0.06 | Current |
+
+**Agents Assigned**:
+- `marketplace-agent` - Manages seller onboarding
+- `sales-agent` - Drives buyer acquisition
+- `pricing-agent` - Optimizes take rate
+
+### KR 1.2: Direct Services Revenue
+
+**Target**: $350K direct services revenue
+**Current**: $140K (40% complete)
+**Baseline**: $0
+**Status**: On track 🟢
+
+**Reward Function**:
+```typescript
+{
+  type: 'linear',
+  formula: '(current - baseline) / (target - baseline)',
+  weight: 0.35  // 35% of total objective
+}
+```
+
+**Data Source**:
+- Type: API
+- Endpoint: `https://apis.do/metrics/revenue`
+- Update Frequency: Daily
+
+**Progress History**:
+| Date | Revenue | Progress | Reward | Note |
+|------|---------|----------|--------|------|
+| 2025-10-01 | $0 | 0% | 0.00 | Launch |
+| 2025-10-15 | $50K | 14% | +0.05 | Early traction |
+| 2025-11-01 | $95K | 27% | +0.05 | Growing |
+| 2025-11-15 | $140K | 40% | +0.05 | Current |
+
+**Agents Assigned**:
+- `service-delivery-agent` - Manages fulfillment
+- `quality-agent` - Ensures customer satisfaction
+
+### KR 1.3: Recurring Subscriptions
+
+**Target**: $150K MRR from subscriptions
+**Current**: $55K MRR (37% complete)
+**Baseline**: $10K MRR
+**Status**: At risk 🟡
+
+**Reward Function**:
+```typescript
+{
+  type: 'exponential',
+  formula: 'Math.pow((current - baseline) / (target - baseline), 1.5)',
+  weight: 0.15  // 15% of total objective
+}
+```
+
+**Data Source**:
+- Type: API
+- Endpoint: `https://stripe.com/api/mrr`
+- Update Frequency: Daily
+
+**Progress History**:
+| Date | MRR | Progress | Reward | Note |
+|------|-----|----------|--------|------|
+| 2025-10-01 | $10K | 0% | 0.00 | Baseline |
+| 2025-10-15 | $28K | 13% | +0.02 | Slow start |
+| 2025-11-01 | $42K | 23% | +0.02 | Behind pace |
+| 2025-11-15 | $55K | 32% | +0.02 | Catching up |
+
+**Agents Assigned**:
+- `subscription-agent` - Manages pricing and retention
+- `churn-prevention-agent` - Reduces cancellations
+
+## Reward Signals Generated
+
+### Recent Signals (Last 30 Days)
+
+**Total Rewards**: +0.42 (weighted sum across all KRs)
+
+**Signal 1: GMV Milestone**
+```typescript
+{
+  id: 'reward-signal-001',
+  timestamp: '2025-11-01T00:00:00Z',
+  source: 'milestone',
+  objective: 'q4-2025-revenue',
+  keyResult: 'kr-1-1-gmv',
+  strength: +0.15,  // 0.07 progress + 0.08 bonus for 25% milestone
+  delta: {
+    metric: 'gmv',
+    previous: 120000,
+    current: 180000,
+    target: 500000,
+    percentComplete: 30
+  },
+  economicValue: 60000,
+  agents: ['marketplace-agent', 'sales-agent'],
+  feedback: "Crossed 25% milestone - marketplace gaining traction",
+  improvements: [
+    "Seller onboarding automation effective",
+    "Buyer acquisition ads performing well"
+  ]
+}
+```
+
+**Signal 2: Direct Services Growth**
+```typescript
+{
+  id: 'reward-signal-002',
+  timestamp: '2025-11-15T00:00:00Z',
+  source: 'kr-update',
+  objective: 'q4-2025-revenue',
+  keyResult: 'kr-1-2-direct',
+  strength: +0.05,
+  delta: {
+    metric: 'revenue',
+    previous: 95000,
+    current: 140000,
+    target: 350000,
+    percentComplete: 40
+  },
+  economicValue: 45000,
+  agents: ['service-delivery-agent', 'quality-agent'],
+  feedback: "Steady growth in direct services",
+  improvements: [
+    "Quality score above 9.0 driving referrals"
+  ]
+}
+```
+
+**Signal 3: Subscription Churn Reduced**
+```typescript
+{
+  id: 'reward-signal-003',
+  timestamp: '2025-11-10T00:00:00Z',
+  source: 'kr-update',
+  objective: 'q4-2025-revenue',
+  keyResult: 'kr-1-3-subscriptions',
+  strength: +0.02,
+  delta: {
+    metric: 'mrr',
+    previous: 42000,
+    current: 55000,
+    target: 150000,
+    percentComplete: 32
+  },
+  economicValue: 13000,
+  agents: ['subscription-agent', 'churn-prevention-agent'],
+  feedback: "Churn prevention working - retention improved from 85% to 92%",
+  improvements: [
+    "Proactive engagement reduced cancellations"
+  ]
+}
+```
+
+## Evaluation Framework
+
+```typescript
+{
+  basis: 'okr-achievement',
+  groundTruth: 'business-kpis',
+  metrics: [
+    { keyResult: 'kr-1-1-gmv', weight: 0.5, threshold: 0.7 },
+    { keyResult: 'kr-1-2-direct', weight: 0.35, threshold: 0.7 },
+    { keyResult: 'kr-1-3-subscriptions', weight: 0.15, threshold: 0.6 }
+  ],
+  rewardFunction: {
+    type: 'weighted-sum',
+    formula: '(0.5 * kr1) + (0.35 * kr2) + (0.15 * kr3)',
+    normalization: 'none'
+  },
+  frequency: 'daily',
+  thresholds: {
+    excellent: 0.9,   // >90% weighted achievement
+    good: 0.7,        // >70%
+    acceptable: 0.5,  // >50%
+    poor: 0.5         // <50%
+  },
+  benchmark: {
+    type: 'target',
+    baseline: 1.0  // 100% = target achieved
+  }
+}
+```
+
+**Current Performance**: 0.42 (On track - 42% complete)
+
+## Learning Loop
+
+### Trigger
+```typescript
+{
+  trigger: 'kr-update',
+  frequency: 'daily'
+}
+```
+
+### Recent Insights
+
+**Insight 1: Marketplace Network Effects**
+```typescript
+{
+  timestamp: '2025-11-01T00:00:00Z',
+  observation: "GMV growth accelerating as more sellers join",
+  hypothesis: "Marketplace exhibits network effects - more sellers → more buyers → more sellers",
+  experiment: "Double down on seller acquisition marketing spend"
+}
+```
+
+**Insight 2: Quality Drives Referrals**
+```typescript
+{
+  timestamp: '2025-11-10T00:00:00Z',
+  observation: "Direct services growth correlates with quality scores above 9.0",
+  hypothesis: "High-quality delivery generates organic word-of-mouth referrals",
+  experiment: "Implement bonus rewards for quality scores >9.5"
+}
+```
+
+**Insight 3: Churn Prevention ROI**
+```typescript
+{
+  timestamp: '2025-11-12T00:00:00Z',
+  observation: "Proactive engagement reduced churn from 15% to 8%",
+  hypothesis: "Early intervention prevents cancellations",
+  experiment: "Expand churn-prevention-agent to monitor all accounts"
+}
+```
+
+### Deployed Improvements
+
+**Improvement 1: Automated Seller Onboarding**
+```typescript
+{
+  timestamp: '2025-10-20T00:00:00Z',
+  change: "Reduced seller onboarding from 3 days to 30 minutes with AI verification",
+  impact: +0.12,  // 12% improvement in GMV growth rate
+  status: 'deployed'
+}
+```
+
+**Improvement 2: Dynamic Pricing**
+```typescript
+{
+  timestamp: '2025-11-05T00:00:00Z',
+  change: "Implemented AI-driven dynamic pricing for services",
+  impact: +0.08,  // 8% improvement in revenue
+  status: 'deployed'
+}
+```
+
+**Improvement 3: Churn Prediction Model**
+```typescript
+{
+  timestamp: '2025-11-08T00:00:00Z',
+  change: "ML model predicts churn risk 7 days in advance",
+  impact: +0.07,  // 7% reduction in churn
+  status: 'deployed'
+}
+```
+
+### Active Experiments
+
+**Experiment 1: Tiered Pricing Test**
+```typescript
+{
+  id: 'exp-001',
+  hypothesis: "Tiered pricing ($49/$99/$199) converts better than flat $99",
+  variants: ['flat-99', 'tiered'],
+  metrics: ['conversion-rate', 'arr'],
+  status: 'running',
+  results: {
+    'flat-99': { conversion: 0.12, arr_contribution: +$50K },
+    'tiered': { conversion: 0.18, arr_contribution: +$75K }
+  },
+  winner: 'tiered',  // Based on real business outcomes
+  rollout: 'pending'
+}
+```
+
+**Experiment 2: Onboarding Flow**
+```typescript
+{
+  id: 'exp-002',
+  hypothesis: "Interactive onboarding increases activation rate",
+  variants: ['standard', 'interactive'],
+  metrics: ['activation-rate', 'gmv-per-user'],
+  status: 'running'
+}
+```
+
+### Learning Parameters
+
+```typescript
+{
+  learningRate: 0.1,    // How quickly to adapt (0-1)
+  exploration: 0.2,     // 20% exploration, 80% exploitation
+  adaptiveStrategy: 'epsilon-greedy'
+}
+```
+
+## Child Objectives
+
+This company-level objective cascades down to:
+
+### Department Level
+- **Engineering**: O1.1 - Ship 3 new marketplace features
+- **Sales**: O1.2 - Close $500K in new business
+- **Marketing**: O1.3 - Generate 2,000 qualified leads
+
+### Team Level
+- **Backend Team**: O1.1.1 - Scale to 10K concurrent users
+- **Sales Team A**: O1.2.1 - $150K quota
+- **Content Team**: O1.3.1 - 50 high-converting blog posts
+
+## Success Criteria
+
+### Excellent (>90%)
+- GMV > $450K (90% of $500K)
+- Direct Revenue > $315K (90% of $350K)
+- MRR > $135K (90% of $150K)
+- **Total ARR** > $900K
+
+### Good (>70%)
+- GMV > $350K
+- Direct Revenue > $245K
+- MRR > $105K
+- **Total ARR** > $700K
+
+### At Risk (<50%)
+- GMV < $250K
+- Direct Revenue < $175K
+- MRR < $75K
+- **Total ARR** < $500K
+
+## Next Actions
+
+1. **Accelerate GMV Growth** - Double seller acquisition spend
+2. **Expand Direct Services** - Hire 2 more service delivery agents
+3. **Fix Subscription Growth** - Launch annual plan discount (20% off)
+4. **Deploy Winning Experiments** - Roll out tiered pricing to all users
+
+## Related Entities
+
+- **Parent**: [Dot Do Holdings Annual OKR](../companies/dot-do.mdx)
+- **Roles**: [CEO](../roles/ceo.mdx), [Head of Sales](../roles/head-of-sales.mdx)
+- **Operations**: [Sales Outreach](../operations/sales-outreach.mdx)
+- **Metrics**: [ARR Dashboard](../metrics/arr-dashboard.mdx)
+
+---
+
+**Ground Truth for RL**: This OKR provides natural reward signals from real business outcomes. Every metric update trains agents on what actually drives revenue growth, not contrived test scores.

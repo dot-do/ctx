@@ -1,8 +1,15 @@
 /**
  * Business-as-Code TypeScript Interfaces
  *
- * Enables expressing entire businesses as executable specifications that AI agents
- * can autonomously imagine, build, launch, grow, scale, manage, and operate.
+ * OKRs as Ground Truth for Reinforcement Learning
+ *
+ * Unlike contrived evals, business KPIs and OKRs represent the ultimate ground truth
+ * for AI agent performance. This framework positions OKRs as the central organizing
+ * principle, with all operations, roles, and metrics linked to objectives.
+ *
+ * Key Insight: Real-world business outcomes provide natural reward signals for RL,
+ * eliminating the need for synthetic evaluation tasks. Agents optimize for actual
+ * business success, not test scores.
  *
  * Integration Points:
  * - ONET: Occupational taxonomy with 1,016 occupations and structured KSA data
@@ -11,87 +18,21 @@
  */
 
 // ============================================================================
-// Core Business Entities
+// OKRs: Central Organizing Principle & RL Ground Truth
 // ============================================================================
 
 /**
- * Company Definition
+ * Objective (OKR)
  *
- * Represents a company or business unit in a holding company structure.
- * Supports nested hierarchies from holding company → operating companies → subsidiaries.
- */
-export interface Company {
-  /** Unique identifier */
-  id: string
-
-  /** Company name */
-  name: string
-
-  /** Legal entity name */
-  legalName?: string
-
-  /** Company type in organizational hierarchy */
-  type: 'holding' | 'operating' | 'subsidiary' | 'division'
-
-  /** Parent company ID (if part of larger organization) */
-  parent?: string
-
-  /** Subsidiary company IDs */
-  subsidiaries?: string[]
-
-  /** Mission statement */
-  mission?: string
-
-  /** Vision statement */
-  vision?: string
-
-  /** Core values */
-  values?: string[]
-
-  /** Industry classification */
-  industry: string
-
-  /** Sub-industry or vertical */
-  vertical?: string
-
-  /** Objectives and Key Results at this level */
-  objectives: Objective[]
-
-  /** Organizational roles and structure */
-  roles: Role[]
-
-  /** Products and services offered */
-  offerings: Offering[]
-
-  /** Operational processes and workflows */
-  operations: Operation[]
-
-  /** Key performance indicators and metrics */
-  metrics: Metric[]
-
-  /** Financial and human resources */
-  resources: Resource[]
-
-  /** Governance structure and policies */
-  governance: Governance
-
-  /** Entity namespace (for database sync) */
-  metadata: {
-    ns: 'company'
-    visibility: 'public' | 'private' | 'unlisted'
-    created: Date
-    updated: Date
-  }
-
-  /** Tags for categorization */
-  tags: string[]
-}
-
-/**
- * Objective (OKRs)
+ * The central organizing principle of business-as-code. All operations, roles,
+ * and resources exist to achieve objectives. OKR progress provides ground truth
+ * reward signals for reinforcement learning.
  *
- * Cascading objectives from holding company down to individual contributor.
- * Enables programmatic tracking and automated progress reporting.
+ * Why OKRs > Contrived Evals:
+ * - Real business outcomes (revenue, users, quality) vs synthetic tests
+ * - Natural reward signals from actual value creation
+ * - Aligned with human stakeholders' goals
+ * - Measurable economic impact via GDPval
  */
 export interface Objective {
   /** Unique identifier */
@@ -129,6 +70,26 @@ export interface Objective {
   /** Progress percentage (0-100) */
   progress: number
 
+  // ═══ RL Ground Truth Integration ═══
+
+  /** Reward signals for RL training */
+  rewardSignals: RewardSignal[]
+
+  /** Evaluation framework (vs contrived tests) */
+  evaluation: EvaluationFramework
+
+  /** Learning loop from OKR feedback */
+  learningLoop: LearningLoop
+
+  /** Agents working toward this objective */
+  assignedAgents: string[]
+
+  /** Operations driven by this objective */
+  operations: string[] // Operation IDs
+
+  /** Metrics measuring this objective */
+  metrics: string[] // Metric IDs
+
   /** Related initiatives or projects */
   initiatives?: string[]
 
@@ -143,6 +104,7 @@ export interface Objective {
  * Key Result
  *
  * Measurable outcome that indicates progress toward an objective.
+ * Each KR update generates a reward signal for RL training.
  */
 export interface KeyResult {
   /** Unique identifier */
@@ -182,12 +144,257 @@ export interface KeyResult {
 
   /** Current status */
   status: 'on-track' | 'at-risk' | 'off-track' | 'completed'
+
+  // ═══ RL Integration ═══
+
+  /** Reward calculation when this KR updates */
+  rewardFunction: {
+    type: 'linear' | 'exponential' | 'step' | 'custom'
+    formula?: string // e.g., "(current - baseline) / (target - baseline)"
+    weight: number // Importance weight (0-1)
+  }
+
+  /** Historical progress for trend analysis */
+  history?: Array<{
+    timestamp: Date
+    value: number
+    delta: number // Change from previous
+    reward: number // RL reward signal
+  }>
 }
+
+/**
+ * Reward Signal
+ *
+ * Ground truth feedback from business outcomes for RL training.
+ * Generated when KRs update, milestones hit, or objectives complete.
+ */
+export interface RewardSignal {
+  /** Unique identifier */
+  id: string
+
+  /** Timestamp */
+  timestamp: Date
+
+  /** Source of reward */
+  source: 'kr-update' | 'kr-completion' | 'milestone' | 'okr-completion' | 'okr-exceeded'
+
+  /** Objective ID */
+  objective: string
+
+  /** Key Result ID (if applicable) */
+  keyResult?: string
+
+  /** Reward magnitude (-1 to 1, negative for setbacks) */
+  strength: number
+
+  /** What changed */
+  delta: {
+    metric: string
+    previous: number
+    current: number
+    target: number
+    percentComplete: number
+  }
+
+  /** Economic value impact (GDPval) */
+  economicValue?: number
+
+  /** Agents receiving this reward */
+  agents: string[]
+
+  /** What was learned from this outcome */
+  feedback: string
+
+  /** Suggested improvements */
+  improvements?: string[]
+}
+
+/**
+ * Evaluation Framework
+ *
+ * How agents are evaluated based on OKR achievement (not contrived tests).
+ * Ground truth = real business outcomes.
+ */
+export interface EvaluationFramework {
+  /** Evaluation basis */
+  basis: 'okr-achievement' // vs 'contrived-evals'
+
+  /** Ground truth source */
+  groundTruth: 'business-kpis' | 'real-world-outcomes'
+
+  /** Evaluation metrics (actual KRs) */
+  metrics: Array<{
+    keyResult: string
+    weight: number
+    threshold: number // Minimum to pass
+  }>
+
+  /** Overall reward function */
+  rewardFunction: {
+    type: 'weighted-sum' | 'multiplicative' | 'custom'
+    formula?: string
+    normalization?: 'none' | 'z-score' | 'min-max'
+  }
+
+  /** Evaluation frequency */
+  frequency: 'realtime' | 'daily' | 'weekly' | 'monthly' | 'quarterly'
+
+  /** Performance thresholds */
+  thresholds: {
+    excellent: number // e.g., >90% OKR achievement
+    good: number // e.g., >70%
+    acceptable: number // e.g., >50%
+    poor: number // e.g., <50%
+  }
+
+  /** Comparison benchmark */
+  benchmark?: {
+    type: 'historical' | 'peer' | 'target'
+    baseline: number
+  }
+}
+
+/**
+ * Learning Loop
+ *
+ * How feedback from OKR progress improves agent behavior.
+ * Continuous learning from real business outcomes.
+ */
+export interface LearningLoop {
+  /** Unique identifier */
+  id: string
+
+  /** What triggers learning */
+  trigger: 'kr-update' | 'okr-review' | 'milestone' | 'periodic'
+
+  /** Trigger frequency */
+  frequency: 'realtime' | 'hourly' | 'daily' | 'weekly'
+
+  /** Feedback signals */
+  feedback: RewardSignal[]
+
+  /** Insights extracted */
+  insights: Array<{
+    timestamp: Date
+    observation: string
+    hypothesis: string
+    experiment?: string
+  }>
+
+  /** Improvements implemented */
+  improvements: Array<{
+    timestamp: Date
+    change: string
+    impact: number // Measured improvement
+    status: 'proposed' | 'testing' | 'deployed' | 'validated'
+  }>
+
+  /** A/B tests running */
+  experiments?: Array<{
+    id: string
+    hypothesis: string
+    variants: string[]
+    metrics: string[]
+    status: 'running' | 'completed'
+    winner?: string
+  }>
+
+  /** Learning rate */
+  learningRate: number // How quickly to adapt (0-1)
+
+  /** Exploration vs exploitation */
+  exploration: number // How much to try new approaches (0-1)
+}
+
+// ============================================================================
+// Company Definition (OKR-Centric)
+// ============================================================================
+
+/**
+ * Company Definition
+ *
+ * Organized around OKRs as the central principle.
+ * All roles, operations, and resources exist to achieve objectives.
+ */
+export interface Company {
+  // ═══ Identity ═══
+  id: string
+  name: string
+  legalName?: string
+  type: 'holding' | 'operating' | 'subsidiary' | 'division'
+  parent?: string
+  subsidiaries?: string[]
+
+  // ═══ Strategic Direction ═══
+  mission?: string
+  vision?: string
+  values?: string[]
+  industry: string
+  vertical?: string
+
+  // ═══ OKRs: PRIMARY ORGANIZING PRINCIPLE ═══
+  /** Objectives are the central organizing principle */
+  objectives: Objective[]
+
+  /** Current planning period */
+  currentPeriod: {
+    quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'
+    year: number
+    startDate: Date
+    endDate: Date
+  }
+
+  /** OKR history and trends */
+  okrHistory?: Array<{
+    period: string
+    objectives: Objective[]
+    avgCompletion: number
+    totalReward: number
+  }>
+
+  // ═══ Roles (Assigned to OKRs) ═══
+  /** Organizational roles linked to objectives */
+  roles: Role[]
+
+  // ═══ Operations (Driven by OKRs) ═══
+  /** Operational processes linked to objectives */
+  operations: Operation[]
+
+  // ═══ Offerings (Contribute to OKRs) ═══
+  /** Products/services that drive KR achievement */
+  offerings: Offering[]
+
+  // ═══ Metrics (Measure OKRs) ═══
+  /** KPIs measuring objective progress */
+  metrics: Metric[]
+
+  // ═══ Resources (Allocated to OKRs) ═══
+  /** Financial and human resources */
+  resources: Resource[]
+
+  // ═══ Governance ═══
+  governance: Governance
+
+  // ═══ Metadata ═══
+  metadata: {
+    ns: 'company'
+    visibility: 'public' | 'private' | 'unlisted'
+    created: Date
+    updated: Date
+  }
+
+  tags: string[]
+}
+
+// ============================================================================
+// Roles (Linked to OKRs)
+// ============================================================================
 
 /**
  * Role Definition
  *
- * Organizational role with ONET taxonomy mapping.
+ * Organizational role linked to specific OKRs.
  * Can be filled by humans, AI agents, or hybrid teams.
  */
 export interface Role {
@@ -212,11 +419,28 @@ export interface Role {
   /** Primary responsibilities */
   responsibilities: string[]
 
+  // ═══ OKR Linkage ═══
+
+  /** Objectives owned by this role */
+  objectives: string[] // Objective IDs
+
+  /** Key Results this role is accountable for */
+  keyResults: string[] // KeyResult IDs
+
+  /** Performance evaluated by OKR achievement */
+  performanceEvaluation: {
+    basis: 'okr-achievement'
+    objectives: string[]
+    targetCompletion: number // e.g., 70%
+  }
+
+  // ═══ Assignment ═══
+
   /** Required knowledge, skills, abilities (from ONET) */
   ksa: {
-    knowledge: string[] // Domain knowledge required
-    skills: string[] // Technical and soft skills
-    abilities: string[] // Cognitive and physical abilities
+    knowledge: string[]
+    skills: string[]
+    abilities: string[]
   }
 
   /** Assignment type */
@@ -231,19 +455,16 @@ export interface Role {
   /** Workload allocation */
   workload?: {
     hoursPerWeek: number
-    ftePortion: number // 0-1 (0.5 = 50% FTE)
+    ftePortion: number // 0-1
   }
 
-  /** Compensation (if applicable) */
+  /** Compensation */
   compensation?: {
     type: 'salary' | 'hourly' | 'contract' | 'equity' | 'hybrid'
     amount?: number
     currency?: string
-    equity?: number // percentage
+    equity?: number
   }
-
-  /** Performance metrics */
-  metrics?: string[] // Metric IDs
 
   /** Entity namespace */
   metadata: {
@@ -252,178 +473,15 @@ export interface Role {
   }
 }
 
-/**
- * Offering (Product or Service)
- *
- * What the company sells - products, services, or hybrid offerings.
- */
-export interface Offering {
-  /** Unique identifier */
-  id: string
-
-  /** Offering name */
-  name: string
-
-  /** Description */
-  description: string
-
-  /** Offering type */
-  type: 'product' | 'service' | 'hybrid' | 'platform'
-
-  /** Category/vertical */
-  category: string
-
-  /** GDPval task mappings (economic value) */
-  gdpvalTasks?: string[]
-
-  /** Target customer segments */
-  segments: string[]
-
-  /** Value proposition */
-  valueProposition: string
-
-  /** Pricing model */
-  pricing: PricingModel
-
-  /** Delivery mechanisms */
-  delivery: DeliveryMechanism[]
-
-  /** Service level agreement */
-  sla?: ServiceLevel
-
-  /** Related offerings (upsell/cross-sell) */
-  related?: string[]
-
-  /** Revenue metrics */
-  revenue?: {
-    arr?: number // Annual Recurring Revenue
-    mrr?: number // Monthly Recurring Revenue
-    ltv?: number // Lifetime Value
-    cac?: number // Customer Acquisition Cost
-  }
-
-  /** Entity namespace */
-  metadata: {
-    ns: 'offering'
-    visibility: 'public' | 'private' | 'unlisted'
-  }
-}
-
-/**
- * Pricing Model
- *
- * How an offering is priced and billed.
- */
-export interface PricingModel {
-  /** Pricing type */
-  type: 'fixed' | 'subscription' | 'usage' | 'tiered' | 'freemium' | 'value-based' | 'dynamic'
-
-  /** Base price */
-  basePrice?: number
-
-  /** Currency */
-  currency: string
-
-  /** Billing frequency */
-  billingCycle?: 'one-time' | 'monthly' | 'quarterly' | 'annually'
-
-  /** Tiered pricing levels */
-  tiers?: Array<{
-    name: string
-    price: number
-    features: string[]
-    limits?: Record<string, number>
-  }>
-
-  /** Usage-based pricing */
-  usage?: {
-    metric: string
-    pricePerUnit: number
-    includedUnits?: number
-  }
-
-  /** Volume discounts */
-  volumeDiscounts?: Array<{
-    minQuantity: number
-    discountPercent: number
-  }>
-}
-
-/**
- * Delivery Mechanism
- *
- * How an offering is delivered to customers.
- */
-export interface DeliveryMechanism {
-  /** Primary delivery type */
-  type: 'digital' | 'physical' | 'hybrid' | 'managed-service'
-
-  /** Execution model */
-  execution: 'automated' | 'manual' | 'hybrid' | 'on-demand'
-
-  /** Technology stack */
-  technology?: {
-    platform?: string
-    apis?: string[]
-    integrations?: string[]
-  }
-
-  /** Fulfillment time */
-  fulfillment?: {
-    typical: string // e.g., "instant", "24 hours", "1-2 weeks"
-    guaranteed?: string
-  }
-
-  /** Capacity limits */
-  capacity?: {
-    concurrent?: number
-    daily?: number
-    monthly?: number
-  }
-}
-
-/**
- * Service Level Agreement
- *
- * Guaranteed service levels and SLAs.
- */
-export interface ServiceLevel {
-  /** Uptime guarantee (percentage) */
-  uptime?: number
-
-  /** Response time guarantees */
-  responseTime?: {
-    p50?: number // milliseconds
-    p95?: number
-    p99?: number
-  }
-
-  /** Support response times */
-  support?: {
-    critical?: string // e.g., "15 minutes"
-    high?: string
-    normal?: string
-    low?: string
-  }
-
-  /** Quality guarantees */
-  quality?: {
-    accuracy?: number // percentage
-    completeness?: number
-    customSatisfaction?: number // minimum rating
-  }
-
-  /** Penalties for SLA violations */
-  penalties?: Array<{
-    violation: string
-    remedy: string
-  }>
-}
+// ============================================================================
+// Operations (Driven by OKRs)
+// ============================================================================
 
 /**
  * Operation (Business Process)
  *
- * Operational processes and workflows that run the business.
+ * Operational processes that drive OKR achievement.
+ * Every operation should contribute to one or more objectives.
  */
 export interface Operation {
   /** Unique identifier */
@@ -437,6 +495,22 @@ export interface Operation {
 
   /** Category */
   category: 'sales' | 'marketing' | 'operations' | 'finance' | 'hr' | 'product' | 'engineering' | 'support' | 'other'
+
+  // ═══ OKR Linkage ═══
+
+  /** Objectives this operation supports */
+  objectives: string[] // Objective IDs
+
+  /** Key Results this operation impacts */
+  keyResults: string[] // KeyResult IDs
+
+  /** How success is measured (tied to KRs) */
+  successMetrics: Array<{
+    keyResult: string
+    contribution: number // % of KR this operation contributes
+  }>
+
+  // ═══ Execution ═══
 
   /** Workflow definition */
   workflow?: string // workflow ID
@@ -455,9 +529,6 @@ export interface Operation {
 
   /** Required resources */
   resources?: string[]
-
-  /** Performance metrics */
-  metrics: string[]
 
   /** Automation level */
   automation: {
@@ -507,10 +578,167 @@ export interface ProcessStep {
   condition?: string
 }
 
+// ============================================================================
+// Offerings (Contribute to OKRs)
+// ============================================================================
+
+/**
+ * Offering (Product or Service)
+ *
+ * What the company sells. Offerings should map to revenue or user KRs.
+ */
+export interface Offering {
+  /** Unique identifier */
+  id: string
+
+  /** Offering name */
+  name: string
+
+  /** Description */
+  description: string
+
+  /** Offering type */
+  type: 'product' | 'service' | 'hybrid' | 'platform'
+
+  /** Category/vertical */
+  category: string
+
+  /** GDPval task mappings (economic value) */
+  gdpvalTasks?: string[]
+
+  // ═══ OKR Linkage ═══
+
+  /** Objectives this offering supports */
+  objectives: string[] // Objective IDs
+
+  /** Key Results this offering impacts */
+  keyResults: string[] // KeyResult IDs (e.g., revenue, users, GMV)
+
+  /** Target contribution to each KR */
+  targets: Array<{
+    keyResult: string
+    target: number // Target contribution
+    current: number // Current contribution
+  }>
+
+  // ═══ Market ═══
+
+  /** Target customer segments */
+  segments: string[]
+
+  /** Value proposition */
+  valueProposition: string
+
+  /** Pricing model */
+  pricing: PricingModel
+
+  /** Delivery mechanisms */
+  delivery: DeliveryMechanism[]
+
+  /** Service level agreement */
+  sla?: ServiceLevel
+
+  /** Related offerings (upsell/cross-sell) */
+  related?: string[]
+
+  /** Revenue metrics */
+  revenue?: {
+    arr?: number
+    mrr?: number
+    ltv?: number
+    cac?: number
+  }
+
+  /** Entity namespace */
+  metadata: {
+    ns: 'offering'
+    visibility: 'public' | 'private' | 'unlisted'
+  }
+}
+
+/**
+ * Pricing Model
+ */
+export interface PricingModel {
+  type: 'fixed' | 'subscription' | 'usage' | 'tiered' | 'freemium' | 'value-based' | 'dynamic'
+  basePrice?: number
+  currency: string
+  billingCycle?: 'one-time' | 'monthly' | 'quarterly' | 'annually'
+  tiers?: Array<{
+    name: string
+    price: number
+    features: string[]
+    limits?: Record<string, number>
+  }>
+  usage?: {
+    metric: string
+    pricePerUnit: number
+    includedUnits?: number
+  }
+  volumeDiscounts?: Array<{
+    minQuantity: number
+    discountPercent: number
+  }>
+}
+
+/**
+ * Delivery Mechanism
+ */
+export interface DeliveryMechanism {
+  type: 'digital' | 'physical' | 'hybrid' | 'managed-service'
+  execution: 'automated' | 'manual' | 'hybrid' | 'on-demand'
+  technology?: {
+    platform?: string
+    apis?: string[]
+    integrations?: string[]
+  }
+  fulfillment?: {
+    typical: string
+    guaranteed?: string
+  }
+  capacity?: {
+    concurrent?: number
+    daily?: number
+    monthly?: number
+  }
+}
+
+/**
+ * Service Level Agreement
+ */
+export interface ServiceLevel {
+  uptime?: number
+  responseTime?: {
+    p50?: number
+    p95?: number
+    p99?: number
+  }
+  support?: {
+    critical?: string
+    high?: string
+    normal?: string
+    low?: string
+  }
+  quality?: {
+    accuracy?: number
+    completeness?: number
+    customSatisfaction?: number
+  }
+  penalties?: Array<{
+    violation: string
+    remedy: string
+  }>
+}
+
+// ============================================================================
+// Metrics (Measure OKRs)
+// ============================================================================
+
 /**
  * Metric (KPI)
  *
- * Business metric or key performance indicator.
+ * Business metric measuring OKR progress.
+ * Every metric should feed into at least one Key Result.
  */
 export interface Metric {
   /** Unique identifier */
@@ -534,15 +762,22 @@ export interface Metric {
   /** Current value */
   current: number
 
-  /** Target value */
+  /** Target value (from linked KRs) */
   target?: number
 
-  /** Threshold alerts */
-  thresholds?: {
-    critical?: number
-    warning?: number
-    good?: number
-  }
+  // ═══ OKR Linkage ═══
+
+  /** Key Results this metric feeds into */
+  keyResults: string[] // KeyResult IDs
+
+  /** How this metric maps to KRs */
+  mapping: Array<{
+    keyResult: string
+    contribution: 'primary' | 'secondary' | 'supporting'
+    formula?: string // e.g., "metric * 1.2" if conversion needed
+  }>
+
+  // ═══ Data Source ═══
 
   /** Data source */
   source: {
@@ -555,14 +790,18 @@ export interface Metric {
   /** Update frequency */
   updateFrequency: 'realtime' | 'hourly' | 'daily' | 'weekly' | 'monthly'
 
+  /** Threshold alerts */
+  thresholds?: {
+    critical?: number
+    warning?: number
+    good?: number
+  }
+
   /** Historical data */
   history?: Array<{
     timestamp: Date
     value: number
   }>
-
-  /** Related objectives */
-  objectives?: string[]
 
   /** Entity namespace */
   metadata: {
@@ -571,10 +810,14 @@ export interface Metric {
   }
 }
 
+// ============================================================================
+// Resources (Allocated to OKRs)
+// ============================================================================
+
 /**
  * Resource Allocation
  *
- * Financial and human resources allocated to the business.
+ * Resources allocated to achieve specific OKRs.
  */
 export interface Resource {
   /** Unique identifier */
@@ -582,6 +825,20 @@ export interface Resource {
 
   /** Resource type */
   type: 'budget' | 'headcount' | 'infrastructure' | 'capital'
+
+  // ═══ OKR Linkage ═══
+
+  /** Objectives this resource supports */
+  objectives: string[] // Objective IDs
+
+  /** Resource allocation by objective */
+  allocation: Array<{
+    objective: string
+    amount: number
+    percentage: number
+  }>
+
+  // ═══ Financial Resources ═══
 
   /** Financial budget */
   budget?: {
@@ -630,10 +887,12 @@ export interface Resource {
   }
 }
 
+// ============================================================================
+// Governance
+// ============================================================================
+
 /**
  * Governance Structure
- *
- * How decisions are made and policies are enforced.
  */
 export interface Governance {
   /** Decision-making authority */
@@ -670,7 +929,7 @@ export interface Governance {
 
   /** Compliance requirements */
   compliance?: Array<{
-    framework: string // e.g., "SOC2", "GDPR", "HIPAA"
+    framework: string
     status: 'compliant' | 'in-progress' | 'non-compliant'
     audits?: Array<{
       date: Date
@@ -685,8 +944,6 @@ export interface Governance {
 
 /**
  * ONET Knowledge-Skills-Abilities
- *
- * Structured taxonomy from ONET database.
  */
 export interface KSA {
   knowledge: Array<{
@@ -708,28 +965,13 @@ export interface KSA {
 
 /**
  * GDPval Task Mapping
- *
- * Economic value task from OpenAI's GDPval framework.
  */
 export interface GDPvalTask {
-  /** Task ID */
   id: string
-
-  /** Occupation code */
   occupation: string
-
-  /** Industry */
   industry: string
-
-  /** Task description */
   description: string
-
-  /** Economic value (estimated annual value in USD) */
   economicValue?: number
-
-  /** Complexity level */
   complexity: 'low' | 'medium' | 'high'
-
-  /** Automation potential */
   automationPotential: number // 0-1
 }
