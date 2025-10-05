@@ -1,0 +1,36 @@
+{
+  "name": "workers.do",
+  "version": "0.1.0",
+  "description": "Cloudflare Workers definitions in MDX format",
+  "type": "module",
+  "scripts": {
+    "build": "velite",
+    "dev": "velite --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "keywords": [
+    "mdx",
+    "velite",
+    "cloudflare-workers",
+    "workers",
+    "serverless"
+  ],
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "velite": "^0.1.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dot-do/ctx.git",
+    "directory": "workers"
+  },
+  "author": "dot-do",
+  "license": "MIT"
+}

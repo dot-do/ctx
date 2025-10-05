@@ -1,0 +1,900 @@
+---
+$type: Worker
+$id: auth
+name: auth
+main: src/index.ts
+compatibility_date: "2025-01-01"
+workers_dev: false
+account_id: b6641681fe423910342b9ffa1364c76d
+
+compatibility_flags:
+  - nodejs_compat
+
+observability:
+  enabled: true
+
+tail_consumers:
+  - service: logger
+
+services:
+  - binding: DB
+    service: db
+
+kv_namespaces:
+  - binding: RATE_LIMIT_KV
+    id: 15adb090b53f43ae862a07a260bd4534
+  - binding: SESSIONS_KV
+    id: 482dfcdea486493fbe1d548fa29a21e7
+---
+
+# Authentication Service
+
+Comprehensive authentication and authorization microservice for the dot-do platform, providing WorkOS integration, API key management, JWT sessions, and role-based access control.
+
+## Overview
+
+The **Authentication Service** is a core infrastructure service that handles ALL authentication and authorization for the platform. It provides secure, standards-compliant authentication through multiple methods while maintaining a clean, focused architecture.
+
+**Design Philosophy**: Single responsibility - authentication and authorization only. No business logic, no domain knowledge. Just secure identity management.
+
+## Features
+
+### 1. WorkOS Integration
+
+**OAuth 2.0 & SSO**:
+- Google, Microsoft, GitHub OAuth providers
+- SAML SSO for enterprise customers
+- Passwordless authentication via AuthKit
+- Session management and refresh tokens
+
+**Directory Sync (SCIM)**:
+- Automatic user provisioning from identity providers
+- Group sync for team management
+- Real-time updates via webhooks
+- Support for Okta, Azure AD, OneLogin
+
+**Audit Logging**:
+- Complete authentication event log
+- Compliance-ready audit trail
+- User activity tracking
+- Security event monitoring
+
+### 2. API Key Management
+
+**Secure Key Generation**:
+- SHA-256 hashing (never store plain text)
+- Cryptographically secure random generation
+- Prefix-based key identification (sk_live_, sk_test_)
+- Automatic expiration support
+
+**Key Features**:
+- Per-user key management
+- Named keys for organization
+- Usage tracking (last used timestamp)
+- Revocation support
+- Environment separation (live/test)
+
+### 3. JWT Session Management
+
+**Token Types**:
+- **Access Tokens** - Short-lived (1 hour), for API requests
+- **Refresh Tokens** - Long-lived (30 days), for token renewal
+- **ID Tokens** - User identity information
+
+**Security**:
+- HS256 signing algorithm (HMAC-SHA256)
+- Automatic token rotation
+- Session invalidation support
+- Multi-device session tracking
+
+**Session Metadata**:
+- Device information
+- IP address tracking
+- User agent logging
+- Session duration tracking
+
+### 4. Role-Based Access Control (RBAC)
+
+**Default Roles**:
+
+**Admin** (`admin`):
+- All permissions (`*`)
+- User management
+- Role assignment
+- System configuration
+
+**User** (`user`):
+- Read/write access to owned resources
+- AI feature usage
+- Search functionality
+- Collaboration features
+
+**Viewer** (`viewer`):
+- Read-only access
+- Search functionality
+- No write/delete operations
+
+**Permission Format**:
+```
+resource:action
+```
+
+Examples:
+- `things:read` - Read things
+- `things:write` - Create/update things
+- `things:delete` - Delete things
+- `relationships:read` - Read relationships
+- `ai:write` - Use AI generation
+- `*` - All permissions (admin only)
+
+**Custom Permissions**:
+- Per-user permission grants
+- Organization-scoped permissions
+- Resource-specific permissions
+- Action-level granularity
+
+### 5. Rate Limiting
+
+**Protection Levels**:
+- **Auth Endpoints** - 10 requests/minute per IP
+- **API Endpoints** - 60 requests/minute per IP
+- **Token Validation** - No limit (cached)
+
+**Implementation**:
+- KV-based rate limiting
+- Sliding window algorithm
+- Per-IP and per-user tracking
+- Automatic reset
+
+### 6. Multi-Interface Support
+
+**RPC Interface** (Service-to-Service):
+- Direct method calls via service binding
+- Low latency (<5ms)
+- Type-safe TypeScript interfaces
+- No HTTP overhead
+
+**HTTP API** (External Clients):
+- REST API with JSON responses
+- OAuth flow endpoints
+- Session management
+- API key operations
+
+**Security Middleware**:
+- Request validation
+- Token authentication
+- Rate limiting
+- CORS handling
+
+## Architecture
+
+```
+External Request / Service Call
+            ↓
+    ┌──────────────────┐
+    │  Auth Service    │
+    │                  │
+    │  ┌────────────┐  │
+    │  │ WorkOS SDK │  │ ◄── OAuth, SSO, SCIM
+    │  └────────────┘  │
+    │                  │
+    │  ┌────────────┐  │
+    │  │ JWT/jose   │  │ ◄── Token signing/verification
+    │  └────────────┘  │
+    │                  │
+    │  ┌────────────┐  │
+    │  │ API Keys   │  │ ◄── Key generation/validation
+    │  └────────────┘  │
+    │                  │
+    │  ┌────────────┐  │
+    │  │    RBAC    │  │ ◄── Permission checks
+    │  └────────────┘  │
+    └────────┬─────────┘
+             │
+    ┌────────┴─────────┐
+    │                  │
+    ▼                  ▼
+┌─────────┐     ┌───────────┐
+│   KV    │     │ DB Service│
+│(Rate    │     │(Users,    │
+│Limits,  │     │Sessions,  │
+│Sessions)│     │Keys,      │
+│         │     │Perms)     │
+└─────────┘     └───────────┘
+```
+
+## API
+
+### RPC Interface (Service-to-Service)
+
+#### Token Validation
+
+```typescript
+validateToken(token: string): Promise<ValidateTokenResponse>
+```
+
+Validate JWT or API key token and return user information.
+
+**Example**:
+```ts
+const result = await env.AUTH.validateToken('sk_live_abc123')
+// { valid: true, user: { id, email, role, permissions } }
+```
+
+#### API Key Management
+
+```typescript
+validateApiKey(apiKey: string): Promise<User | null>
+```
+
+Validate API key and return associated user.
+
+```typescript
+createApiKey(input: ApiKeyCreateInput): Promise<CreateApiKeyResponse>
+```
+
+Generate new API key for user.
+
+**Input**:
+```ts
+{
+  userId: string
+  name: string
+  expiresInDays?: number
+  environment?: 'live' | 'test'
+}
+```
+
+**Response**:
+```ts
+{
+  success: true,
+  apiKey: {
+    id: string
+    name: string
+    key: string  // Only returned on creation!
+    prefix: string
+    expiresAt: string
+    createdAt: string
+  }
+}
+```
+
+```typescript
+revokeApiKey(userId: string, keyId: string): Promise<boolean>
+```
+
+Revoke API key (soft delete).
+
+#### Session Management
+
+```typescript
+createSession(
+  userId: string,
+  device?: string,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<SessionResponse>
+```
+
+Create new session with access and refresh tokens.
+
+**Response**:
+```ts
+{
+  session: {
+    id: string
+    userId: string
+    expiresAt: string
+  },
+  token: string  // Access token (1 hour)
+  refreshToken: string  // Refresh token (30 days)
+}
+```
+
+```typescript
+getSession(sessionId: string): Promise<Session | null>
+```
+
+Get session details by ID.
+
+```typescript
+revokeSession(sessionId: string): Promise<boolean>
+```
+
+Revoke session (logout).
+
+```typescript
+refreshSession(refreshToken: string): Promise<{
+  token: string
+  refreshToken: string
+}>
+```
+
+Refresh access token using refresh token.
+
+#### Permission Checks
+
+```typescript
+checkPermission(check: PermissionCheck): Promise<boolean>
+```
+
+Check if user has permission to perform action on resource.
+
+**Input**:
+```ts
+{
+  userId: string
+  resource: string
+  action: string
+  organizationId?: string
+}
+```
+
+**Example**:
+```ts
+const hasAccess = await env.AUTH.checkPermission({
+  userId: 'user-123',
+  resource: 'things',
+  action: 'write',
+  organizationId: 'org-456'
+})
+```
+
+```typescript
+grantPermission(
+  userId: string,
+  resource: string,
+  action: string,
+  organizationId?: string
+): Promise<boolean>
+```
+
+Grant custom permission to user.
+
+```typescript
+revokePermission(
+  userId: string,
+  resource: string,
+  action: string,
+  organizationId?: string
+): Promise<boolean>
+```
+
+Revoke custom permission from user.
+
+#### WorkOS Integration
+
+```typescript
+getWorkOSAuthURL(redirectUri: string, state?: string): Promise<string>
+```
+
+Get WorkOS OAuth authorization URL for authentication flow.
+
+```typescript
+exchangeWorkOSCode(code: string): Promise<WorkOSAuthResponse>
+```
+
+Exchange OAuth code for tokens and user info.
+
+**Response**:
+```ts
+{
+  user: {
+    id: string
+    email: string
+    name: string
+    workosId: string
+    organizationId?: string
+  },
+  tokens: {
+    accessToken: string
+    refreshToken: string
+    expiresIn: number
+  }
+}
+```
+
+### HTTP API Endpoints
+
+#### Authentication Flow
+
+**GET /authorize**
+
+Initiate WorkOS OAuth flow.
+
+Query parameters:
+- `redirect_uri` - OAuth callback URL (default: `/callback`)
+- `state` - Optional state parameter for CSRF protection
+- `provider` - Optional provider (`authkit`, `google`, `microsoft`, `github`)
+
+Response: Redirect to WorkOS authorization page
+
+**GET /callback**
+
+OAuth callback handler.
+
+Query parameters:
+- `code` - Authorization code from WorkOS
+- `state` - State parameter from authorization
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi...",
+    "user": {
+      "id": "user-123",
+      "email": "user@example.com",
+      "name": "John Doe",
+      "role": "user"
+    }
+  },
+  "message": "Authentication successful"
+}
+```
+
+#### API Keys
+
+**POST /apikeys**
+
+Create new API key.
+
+Headers:
+- `Authorization: Bearer <token>`
+
+Body:
+```json
+{
+  "name": "Production API Key",
+  "expiresInDays": 90,
+  "environment": "live"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "key-123",
+    "name": "Production API Key",
+    "key": "sk_live_abc123...",
+    "prefix": "sk_live_",
+    "expiresAt": "2025-04-01T00:00:00Z",
+    "createdAt": "2025-01-01T00:00:00Z"
+  }
+}
+```
+
+**GET /apikeys**
+
+List user's API keys.
+
+Headers:
+- `Authorization: Bearer <token>`
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "keys": [
+      {
+        "id": "key-123",
+        "name": "Production API Key",
+        "prefix": "sk_live_",
+        "lastUsedAt": "2025-01-15T10:30:00Z",
+        "expiresAt": "2025-04-01T00:00:00Z",
+        "createdAt": "2025-01-01T00:00:00Z"
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+**DELETE /apikeys/:id**
+
+Revoke API key.
+
+Headers:
+- `Authorization: Bearer <token>`
+
+Response:
+```json
+{
+  "success": true,
+  "message": "API key revoked successfully"
+}
+```
+
+#### Sessions
+
+**GET /session**
+
+Get current session information.
+
+Headers:
+- `Authorization: Bearer <token>`
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "user-123",
+      "email": "user@example.com",
+      "name": "John Doe",
+      "role": "user"
+    },
+    "session": {
+      "id": "session-456",
+      "expiresAt": "2025-01-08T00:00:00Z",
+      "device": "iPhone 15 Pro",
+      "ipAddress": "192.168.1.1"
+    }
+  }
+}
+```
+
+**POST /logout**
+
+End current session.
+
+Headers:
+- `Authorization: Bearer <token>`
+
+Response:
+```json
+{
+  "success": true,
+  "message": "Logged out successfully"
+}
+```
+
+**POST /refresh**
+
+Refresh access token.
+
+Body:
+```json
+{
+  "refreshToken": "eyJhbGciOi..."
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi..."
+  }
+}
+```
+
+#### Permissions
+
+**POST /check-permission**
+
+Check if user has permission.
+
+Headers:
+- `Authorization: Bearer <token>`
+
+Body:
+```json
+{
+  "resource": "things",
+  "action": "write",
+  "organizationId": "org-456"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "hasPermission": true,
+    "resource": "things",
+    "action": "write"
+  }
+}
+```
+
+## Configuration
+
+### Secrets
+
+Set via `wrangler secret put`:
+
+```bash
+# WorkOS
+wrangler secret put WORKOS_API_KEY
+wrangler secret put WORKOS_CLIENT_ID
+wrangler secret put WORKOS_CLIENT_SECRET
+wrangler secret put WORKOS_WEBHOOK_SECRET  # Optional
+
+# JWT
+wrangler secret put JWT_SECRET
+wrangler secret put JWT_REFRESH_SECRET
+```
+
+### Database Schema
+
+Required tables (managed by DB service):
+
+```sql
+-- Users
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  image TEXT,
+  role TEXT DEFAULT 'user',
+  email_verified BOOLEAN DEFAULT FALSE,
+  workos_id TEXT UNIQUE,
+  organization_id TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_workos_id ON users(workos_id);
+
+-- Sessions
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id),
+  token TEXT NOT NULL,
+  refresh_token TEXT,
+  expires_at TIMESTAMP NOT NULL,
+  device TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_sessions_token ON sessions(token);
+
+-- API Keys
+CREATE TABLE api_keys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id),
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL,
+  prefix TEXT NOT NULL,
+  last_used_at TIMESTAMP,
+  expires_at TIMESTAMP,
+  revoked_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX idx_api_keys_prefix ON api_keys(prefix);
+
+-- Permissions
+CREATE TABLE permissions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id),
+  resource TEXT NOT NULL,
+  action TEXT NOT NULL,
+  organization_id TEXT,
+  granted_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_permissions_user_id ON permissions(user_id);
+CREATE INDEX idx_permissions_resource_action ON permissions(resource, action);
+```
+
+## Security
+
+### API Key Security
+
+**Generation**:
+- Cryptographically secure random generation via `crypto.getRandomValues()`
+- 32-byte random value encoded as base64
+- Prefixed for environment identification (sk_live_, sk_test_)
+
+**Storage**:
+- Keys are **never** stored in plain text
+- SHA-256 hashing before database storage
+- Only prefix visible after creation
+- No way to recover original key
+
+**Validation**:
+- Constant-time hash comparison
+- Automatic usage tracking (last_used_at)
+- Expiration checking
+- Revocation checking
+
+### JWT Security
+
+**Signing**:
+- HS256 (HMAC-SHA256) algorithm
+- Separate secrets for access and refresh tokens
+- Automatic key rotation support
+
+**Token Lifetime**:
+- Access tokens: 1 hour (short-lived)
+- Refresh tokens: 30 days (long-lived)
+- ID tokens: Match access token lifetime
+
+**Claims**:
+```json
+{
+  "sub": "user-123",
+  "email": "user@example.com",
+  "role": "user",
+  "iat": 1704067200,
+  "exp": 1704070800
+}
+```
+
+**Validation**:
+- Signature verification
+- Expiration checking
+- Issuer validation
+- Audience validation
+
+### Rate Limiting
+
+**Implementation**:
+- KV-based sliding window
+- Per-IP tracking
+- Automatic cleanup of old entries
+- 429 response on limit exceeded
+
+**Limits**:
+- Auth endpoints: 10 req/min per IP
+- General API: 60 req/min per IP
+- Token validation: Unlimited (cached)
+
+### Best Practices
+
+1. **Never log API keys** - Use redaction in logs
+2. **Rotate secrets regularly** - Update JWT_SECRET periodically
+3. **Use HTTPS only** - Never transmit tokens over HTTP
+4. **Implement token rotation** - Refresh before expiry
+5. **Monitor failed attempts** - Alert on suspicious patterns
+6. **Use WorkOS audit logs** - Track all auth events
+7. **Enable MFA** - Require for admin accounts
+8. **Review permissions** - Regular RBAC audits
+
+## Implementation
+
+Due to the complexity of this service (~2,669 LOC across 10 files), the implementation is organized into focused modules:
+
+- `src/index.ts` - Main entrypoint with RPC and HTTP interfaces (primary)
+- `src/workos.ts` - WorkOS SDK integration and OAuth flows
+- `src/apikeys.ts` - API key generation, validation, management
+- `src/sessions.ts` - Session creation, validation, refresh
+- `src/rbac.ts` - Role-based access control and permissions
+- `src/middleware.ts` - Authentication middleware for HTTP
+- `src/oauth-endpoints.ts` - OAuth flow HTTP endpoints
+- `src/oauth-universal.ts` - Universal OAuth implementation
+- `src/encryption.ts` - Hashing and encryption utilities
+- `src/types.ts` - TypeScript type definitions
+- `src/utils.ts` - Shared utility functions
+
+**Note**: This is a core infrastructure service that must remain stable and secure. Changes require thorough review and testing.
+
+## Testing
+
+```bash
+# Run test suite
+pnpm test
+
+# Watch mode
+pnpm test -- --watch
+
+# Coverage report
+pnpm test -- --coverage
+```
+
+**Test Coverage**: Basic tests implemented, 80%+ coverage target
+
+**Test Categories**:
+- OAuth flow integration
+- API key generation/validation
+- Session management
+- RBAC permission checks
+- Rate limiting
+- Token validation
+
+## Performance
+
+**Target Metrics**:
+- RPC latency: <5ms (p95) for token validation
+- HTTP latency: <50ms (p95) for auth endpoints
+- API key validation: <10ms (p95)
+- Session creation: <20ms (p95)
+
+**Optimizations**:
+- API key validation cached after first check
+- Sessions cached in KV (optional)
+- Database queries optimized with indexes
+- Rate limiting uses KV for fast lookups
+- Token validation parallelized
+
+## Monitoring
+
+**Health Check**:
+```bash
+curl https://auth.do/health
+```
+
+**Metrics**:
+- Authentication success/failure rate
+- Token validation latency
+- API key usage patterns
+- Session duration statistics
+- Rate limit violations
+
+**Logging**:
+- All authentication attempts
+- Permission checks
+- API key usage
+- Session creation/revocation
+- Security events
+
+## Troubleshooting
+
+### OAuth flow fails
+
+1. Check WorkOS API key and client credentials
+2. Verify redirect URI matches WorkOS dashboard
+3. Review state parameter for CSRF protection
+4. Check WorkOS webhook secret if using webhooks
+
+### Token validation fails
+
+1. Verify JWT_SECRET is set correctly
+2. Check token expiration
+3. Ensure token wasn't revoked
+4. Verify token format (Bearer scheme)
+
+### API key not working
+
+1. Check key hasn't expired
+2. Verify key wasn't revoked
+3. Ensure correct prefix (sk_live_ vs sk_test_)
+4. Check rate limits
+
+### Permission denied
+
+1. Verify user role and permissions
+2. Check resource and action names
+3. Review organization scoping
+4. Ensure RBAC is configured correctly
+
+## Related Services
+
+- **DB Service** - User, session, and permission storage
+- **Gateway Service** - Authentication middleware
+- **WorkOS** - OAuth, SSO, SCIM provider
+
+## References
+
+- [WorkOS Documentation](https://workos.com/docs)
+- [JWT Best Practices](https://tools.ietf.org/html/rfc8725)
+- [OAuth 2.0 Specification](https://oauth.net/2/)
+- [RBAC Design](https://en.wikipedia.org/wiki/Role-based_access_control)
+
+---
+
+**Service Type**: Core Infrastructure
+**LOC**: ~2,669 across 10 files
+**Test Coverage**: Basic (target 80%+)
+**Status**: Production Ready
+**Last Updated**: 2025-10-04

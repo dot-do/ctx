@@ -1,0 +1,4 @@
+node_modules
+.velite
+dist
+.wrangler

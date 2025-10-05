@@ -1,0 +1,641 @@
+---
+$type: Worker
+$id: db
+name: db
+main: src/index.ts
+compatibility_date: "2025-07-08"
+account_id: b6641681fe423910342b9ffa1364c76d
+workers_dev: false
+
+observability:
+  enabled: true
+
+tail_consumers:
+  - service: pipeline
+
+compatibility_flags:
+  - nodejs_compat
+  - nodejs_compat_populate_process_env
+
+vars:
+  CLICKHOUSE_URL: "https://bkkj10mmgz.us-east-1.aws.clickhouse.cloud:8443"
+  CLICKHOUSE_DATABASE: "default"
+  CLICKHOUSE_USERNAME: "default"
+
+placement:
+  mode: smart
+
+routes:
+  - pattern: db.apis.do/*
+    zone_name: apis.do
+  - pattern: database.apis.do/*
+    zone_name: apis.do
+---
+
+# Database Service
+
+Comprehensive database abstraction layer handling ALL data access for the platform using PostgreSQL/Neon + ClickHouse.
+
+## Overview
+
+The **Database Service** provides a unified interface for all database operations across the platform:
+
+1. **Dual Database Support** - PostgreSQL/Neon (relational) + ClickHouse (analytics, vectors)
+2. **Graph Database** - Things (entities) + Relationships (edges) with full CRUD
+3. **Vector Search** - 10 embedding models (Workers AI, OpenAI, Gemma, Gemini) with multiple dimensions
+4. **Full-Text Search** - Token-based search with bloom filters
+5. **Hybrid Search** - Combined vector + full-text search
+6. **Document Chunking** - Large document support with chunk-level embeddings
+7. **HATEOAS API** - Hypermedia-driven REST API with navigable links
+8. **Multiple Interfaces** - RPC (service-to-service), HTTP REST API, MCP (AI agents)
+
+**Design Philosophy**: Single source of truth for all data access. All services must go through DB service - no direct database access.
+
+## Architecture
+
+```
+Client Request
+      ↓
+┌────────────────────┐
+│   Database Service │  ◄── RPC + HTTP + MCP Interface
+│   (RPC Methods)    │
+└──────────┬─────────┘
+           │
+      ├────┴─────┬──────────┬──────────┐
+      │          │          │          │
+      ▼          ▼          ▼          ▼
+┌──────────┐ ┌───────┐ ┌────────┐ ┌─────────┐
+│ClickHouse│ │Postgres│ │ Graph  │ │ Vector  │
+│ (Primary)│ │(Legacy)│ │ Things │ │ Search  │
+└──────────┘ └───────┘ └────────┘ └─────────┘
+     │
+     ├─── graph_things (entities)
+     ├─── graph_relationships (edges)
+     ├─── graph_embeddings (10 models)
+     ├─── graph_chunks (document chunks)
+     └─── graph_chunk_embeddings (chunk vectors)
+```
+
+## Features
+
+### 1. Graph Database
+
+**Things (Entities)**:
+- Schema: `{ ns, id, type, data, content, createdAt, updatedAt }`
+- Namespace-based isolation
+- Type-based filtering
+- Full-text searchable content
+- JSON data field for flexible schemas
+
+**Relationships (Edges)**:
+- Schema: `{ fromNs, fromId, fromType, predicate, toNs, toId, toType, data, createdAt }`
+- Directed edges with predicates
+- Bidirectional queries (outgoing/incoming)
+- Relationship-specific data
+
+**Operations**:
+- `get(ns, id)` - Get single entity
+- `list(ns, options)` - List entities with pagination
+- `upsert(thing)` - Create or update entity
+- `delete(ns, id)` - Delete entity
+- `count(ns, filters)` - Count entities
+
+### 2. Vector Search (10 Embedding Models)
+
+**Supported Models**:
+
+**Legacy Models**:
+1. `workers-ai` - Workers AI @cf/google/embeddinggemma-300m (768d)
+2. `openai` - OpenAI text-embedding-ada-002 (1536d)
+
+**EmbeddingGemma (Matryoshka Representation Learning)**:
+3. `gemma-128` - 128 dimensions (truncated from 768)
+4. `gemma-256` - 256 dimensions (truncated from 768)
+5. `gemma-512` - 512 dimensions (truncated from 768)
+6. `gemma-768` - 768 dimensions (full)
+
+**Gemini (Google API)**:
+7. `gemini-128` - 128 dimensions
+8. `gemini-768` - 768 dimensions
+9. `gemini-1536` - 1536 dimensions
+10. `gemini-3072` - 3072 dimensions
+
+**Operations**:
+- `vectorSearch(embedding, options)` - Pure vector similarity search
+- `hybridSearch(query, embedding, options)` - Combined text + vector search
+- `getEntitiesWithoutEmbeddings(options)` - Queue entities for embedding generation
+- `updateEmbeddingsBatch(embeddings)` - Bulk update embeddings
+
+**Vector Indexes**:
+- HNSW (Hierarchical Navigable Small World) indexes
+- L2Distance metric
+- Separate indexes per model/dimension combination
+- Granularity: 4 (ClickHouse setting)
+
+### 3. Document Chunking
+
+**For Large Documents** (>8K tokens):
+- Automatic chunking with configurable size
+- Chunk-level embeddings (separate table)
+- Character offset tracking
+- Token count tracking
+
+**Operations**:
+- `createChunks(chunks)` - Create chunks for entity
+- `getChunks(ns, id)` - Get all chunks for entity
+- `searchChunks(options)` - Vector search across all chunks
+- `getChunksWithoutEmbeddings(options)` - Queue chunks for embedding
+- `updateChunkEmbeddingsBatch(embeddings)` - Bulk update chunk embeddings
+
+### 4. Full-Text Search
+
+**Token-Based Search**:
+- tokenbf_v1 indexes (4096 tokens, 3 hash functions)
+- Bloom filter indexes for fast lookups
+- Case-insensitive search
+- Namespace filtering
+
+**Operations**:
+- `fullTextSearch(query, options)` - Search by text content
+- `search(query, embedding, options)` - Hybrid search (auto-detects mode)
+
+### 5. HATEOAS API
+
+**Every response includes**:
+- `@context` - Schema.org context
+- `@type` - Schema.org type
+- `_links` - Navigable hypermedia links
+  - `self` - Current resource
+  - `collection` - Parent collection
+  - `first`, `prev`, `next`, `last` - Pagination
+  - `relationships` - Related entities
+  - Custom action links
+
+**Benefits**:
+- Self-documenting API
+- Client-driven navigation
+- Discoverability
+- REST maturity level 3
+
+### 6. Analytics
+
+**Database Statistics**:
+- Total entities by namespace
+- Total relationships by predicate
+- Type distribution
+- Recent activity
+
+**Operations**:
+- `stats()` - Overall database statistics
+- `typeDistribution(ns)` - Entity type counts
+- `clickhouseStats()` - ClickHouse-specific metrics
+- `recentActivity(limit)` - Recent entity changes
+
+## API
+
+### RPC Interface (Service-to-Service)
+
+```typescript
+export class DatabaseService extends WorkerEntrypoint<Env> {
+  // Things (entities)
+  async get(ns: string, id: string, options?: GetOptions)
+  async list(ns: string, options?: ListOptions)
+  async upsert(thing: Thing)
+  async delete(ns: string, id: string)
+  async count(ns: string, filters?: CountFilters)
+
+  // Search
+  async search(query: string, embedding?: number[], options?: SearchOptions)
+  async vectorSearch(embedding: number[], options?: VectorSearchOptions)
+
+  // Relationships
+  async getRelationships(ns: string, id: string, options?: RelationshipListOptions)
+  async getIncomingRelationships(ns: string, id: string, options?: RelationshipListOptions)
+  async upsertRelationship(relationship: Relationship)
+  async deleteRelationship(ns: string, id: string)
+  async listRelationships(ns: string, options?: RelationshipListOptions)
+
+  // Vector embeddings
+  async getEntitiesWithoutEmbeddings(options?: { ns?: string; limit?: number; model?: EmbeddingModel })
+  async updateEmbeddingsBatch(embeddings: Array<{ ns: string; id: string; embedding: number[]; model: EmbeddingModel }>)
+
+  // Chunking
+  async createChunks(chunks: Chunk[])
+  async getChunks(ns: string, id: string)
+  async searchChunks(options: ChunkSearchOptions)
+  async getChunksWithoutEmbeddings(options?: { ns?: string; limit?: number; model?: EmbeddingModel })
+  async updateChunkEmbeddingsBatch(embeddings: ChunkEmbedding[])
+
+  // Analytics
+  async stats()
+  async typeDistribution(ns?: string)
+  async clickhouseStats()
+  async recentActivity(limit?: number)
+
+  // Raw SQL (use with caution)
+  async query(queryString: string, params?: Record<string, any>)
+  async executeSql(query: string)
+  async transaction(fn: (tx: any) => Promise<any>)
+
+  // Direct ClickHouse access
+  clickhouse()
+  async sql(strings: TemplateStringsArray, ...values: unknown[])
+}
+```
+
+### HTTP Endpoints
+
+**Root-Level Routes** (for glyph domains: 彡.io, 口.io, 回.io, db.mw):
+```bash
+# Things
+GET  /things?ns=default&page=1&limit=20
+GET  /:ns/:id
+GET  /:ns/:id.relationships         # All relationships
+GET  /:ns/:id.:predicate           # Specific predicate
+POST /things
+PUT  /:ns/:id
+DELETE /:ns/:id
+
+# Search
+GET  /search?q=query&ns=default&limit=10
+```
+
+**Legacy /api/* Routes** (backward compatibility):
+```bash
+# Things
+GET    /api/things?ns=default&page=1&limit=20
+GET    /api/things/:ns/:id
+POST   /api/things
+PUT    /api/things/:ns/:id
+DELETE /api/things/:ns/:id
+GET    /api/things/count/:ns?type=&visibility=
+
+# Relationships
+GET    /api/relationships?ns=default&page=1&limit=20
+GET    /api/relationships/:ns/:id
+GET    /api/relationships/:ns/:id/incoming
+POST   /api/relationships
+DELETE /api/relationships/:ns/:id
+
+# Search
+GET  /api/search?q=query&ns=default&limit=10
+POST /api/search/vector    # Vector similarity search
+POST /api/search/hybrid    # Combined text + vector
+POST /api/search/chunks    # Search across document chunks
+
+# Admin
+POST /admin/migrate-graph-schema      # Apply graph schema
+POST /admin/migrate-vector-schema     # Apply vector search schema
+
+# Utilities
+GET  /health               # Health check
+GET  /stats                # Database statistics
+GET  /types?ns=default     # Type distribution
+GET  /activity?limit=100   # Recent activity
+POST /rpc                  # RPC over HTTP (debugging)
+```
+
+## Usage Examples
+
+### Via RPC (Service-to-Service)
+
+```typescript
+// Get entity
+const thing = await env.DB.get('agents', 'code-reviewer')
+
+// List entities with pagination
+const result = await env.DB.list('workflows', {
+  page: 1,
+  limit: 20,
+  type: 'Automation',
+  visibility: 'public',
+})
+
+// Create/update entity
+await env.DB.upsert({
+  ns: 'agents',
+  id: 'code-reviewer',
+  type: 'Agent',
+  data: { name: 'Code Reviewer', model: 'gpt-4' },
+  content: 'AI agent that reviews code for quality and security issues',
+})
+
+// Vector search
+const embedding = await generateEmbedding('search query')
+const results = await env.DB.vectorSearch(embedding, {
+  ns: 'docs',
+  limit: 10,
+  minScore: 0.7,
+  model: 'gemini-768',
+})
+
+// Hybrid search (text + vector)
+const hybridResults = await env.DB.search('machine learning', embedding, {
+  ns: 'docs',
+  limit: 10,
+  model: 'gemini-768',
+})
+
+// Create relationship
+await env.DB.upsertRelationship({
+  fromNs: 'agents',
+  fromId: 'code-reviewer',
+  fromType: 'Agent',
+  predicate: 'uses',
+  toNs: 'services',
+  toId: 'openai',
+  toType: 'Service',
+  data: { model: 'gpt-4', temperature: 0.7 },
+})
+
+// Get relationships
+const rels = await env.DB.getRelationships('agents', 'code-reviewer')
+// Returns: { uses: [{ ns: 'services', id: 'openai', ... }], ... }
+
+// Queue entities for embedding generation
+const entities = await env.DB.getEntitiesWithoutEmbeddings({
+  ns: 'docs',
+  limit: 100,
+  model: 'gemini-768',
+})
+
+// Batch update embeddings
+await env.DB.updateEmbeddingsBatch([
+  { ns: 'docs', id: 'guide-1', embedding: [...], model: 'gemini-768' },
+  { ns: 'docs', id: 'guide-2', embedding: [...], model: 'gemini-768' },
+])
+```
+
+### Via HTTP
+
+```bash
+# Get entity with relationships
+curl https://db.apis.do/agents/code-reviewer
+
+# Response (HATEOAS format)
+{
+  "@context": "https://schema.org",
+  "@type": "Agent",
+  "ns": "agents",
+  "id": "code-reviewer",
+  "type": "Agent",
+  "data": { "name": "Code Reviewer", "model": "gpt-4" },
+  "content": "AI agent that reviews code...",
+  "_links": {
+    "self": { "href": "https://db.apis.do/agents/code-reviewer" },
+    "collection": { "href": "https://db.apis.do/things?ns=agents" },
+    "relationships": { "href": "https://db.apis.do/agents/code-reviewer.relationships" },
+    "uses": { "href": "https://db.apis.do/agents/code-reviewer.uses" }
+  },
+  "_relationships": {
+    "uses": [{ "ns": "services", "id": "openai", "type": "Service" }]
+  }
+}
+
+# List entities with pagination
+curl "https://db.apis.do/things?ns=workflows&type=Automation&page=1&limit=20"
+
+# Search (full-text)
+curl "https://db.apis.do/search?q=machine+learning&ns=docs&limit=10"
+
+# Vector search
+curl -X POST https://db.apis.do/api/search/vector \
+  -H "Content-Type: application/json" \
+  -d '{
+    "embedding": [0.1, 0.2, ...],
+    "ns": "docs",
+    "limit": 10,
+    "minScore": 0.7,
+    "model": "gemini-768"
+  }'
+
+# Hybrid search (text + vector)
+curl -X POST https://db.apis.do/api/search/hybrid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "machine learning",
+    "embedding": [0.1, 0.2, ...],
+    "ns": "docs",
+    "limit": 10,
+    "model": "gemini-768"
+  }'
+```
+
+## Database Schema
+
+### ClickHouse Tables
+
+**graph_things** (Entities):
+```sql
+CREATE TABLE graph_things (
+  ns String,
+  id String,
+  type String,
+  data JSON,
+  content String DEFAULT '',
+  createdAt DateTime64(3) DEFAULT now64(),
+  updatedAt DateTime64(3) DEFAULT now64(),
+  -- Hash indexes for fast lookups
+  nsHash UInt32 MATERIALIZED xxHash32(ns),
+  idHash UInt32 MATERIALIZED xxHash32(id),
+  typeHash UInt32 MATERIALIZED xxHash32(type),
+  INDEX bf_ns (nsHash) TYPE bloom_filter() GRANULARITY 4,
+  INDEX bf_id (idHash) TYPE bloom_filter() GRANULARITY 4,
+  INDEX bf_type (typeHash) TYPE bloom_filter() GRANULARITY 4,
+  INDEX tk_content (content) TYPE tokenbf_v1(4096, 3, 0) GRANULARITY 8
+) ENGINE = ReplacingMergeTree(updatedAt)
+ORDER BY (ns, id)
+PRIMARY KEY (ns, id);
+```
+
+**graph_relationships** (Edges):
+```sql
+CREATE TABLE graph_relationships (
+  fromNs String,
+  fromId String,
+  fromType String,
+  predicate String,
+  toNs String,
+  toId String,
+  toType String,
+  data JSON DEFAULT '{}',
+  createdAt DateTime64(3) DEFAULT now64(),
+  -- Hash indexes
+  fromNsHash UInt32 MATERIALIZED xxHash32(fromNs),
+  fromIdHash UInt32 MATERIALIZED xxHash32(fromId),
+  toNsHash UInt32 MATERIALIZED xxHash32(toNs),
+  toIdHash UInt32 MATERIALIZED xxHash32(toId),
+  predicateHash UInt32 MATERIALIZED xxHash32(predicate),
+  INDEX bf_to_ns (toNsHash) TYPE bloom_filter() GRANULARITY 4,
+  INDEX bf_to_id (toIdHash) TYPE bloom_filter() GRANULARITY 4,
+  INDEX bf_from_ns (fromNsHash) TYPE bloom_filter() GRANULARITY 4,
+  INDEX bf_from_id (fromIdHash) TYPE bloom_filter() GRANULARITY 4,
+  INDEX bf_predicate (predicateHash) TYPE bloom_filter() GRANULARITY 4
+) ENGINE = ReplacingMergeTree(createdAt)
+ORDER BY (toNs, toId, predicate, fromNs, fromId)
+PRIMARY KEY (toNs, toId, predicate);
+```
+
+**graph_embeddings** (Entity Vectors - 10 models):
+```sql
+CREATE TABLE graph_embeddings (
+  ns String,
+  id String,
+
+  -- Legacy models
+  embeddingWorkersAI Array(Float32) DEFAULT [],
+  workersAIGeneratedAt DateTime64(3) DEFAULT 0,
+  embeddingOpenAI Array(Float32) DEFAULT [],
+  openAIGeneratedAt DateTime64(3) DEFAULT 0,
+
+  -- EmbeddingGemma (MRL)
+  embeddingGemma128 Array(Float32) DEFAULT [],
+  gemma128GeneratedAt DateTime64(3) DEFAULT 0,
+  embeddingGemma256 Array(Float32) DEFAULT [],
+  gemma256GeneratedAt DateTime64(3) DEFAULT 0,
+  embeddingGemma512 Array(Float32) DEFAULT [],
+  gemma512GeneratedAt DateTime64(3) DEFAULT 0,
+  embeddingGemma768 Array(Float32) DEFAULT [],
+  gemma768GeneratedAt DateTime64(3) DEFAULT 0,
+
+  -- Gemini
+  embeddingGemini128 Array(Float32) DEFAULT [],
+  gemini128GeneratedAt DateTime64(3) DEFAULT 0,
+  embeddingGemini768 Array(Float32) DEFAULT [],
+  gemini768GeneratedAt DateTime64(3) DEFAULT 0,
+  embeddingGemini1536 Array(Float32) DEFAULT [],
+  gemini1536GeneratedAt DateTime64(3) DEFAULT 0,
+  embeddingGemini3072 Array(Float32) DEFAULT [],
+  gemini3072GeneratedAt DateTime64(3) DEFAULT 0,
+
+  createdAt DateTime64(3) DEFAULT now64(),
+  updatedAt DateTime64(3) DEFAULT now64(),
+
+  -- Vector similarity indexes (HNSW, L2Distance)
+  INDEX workersai_idx embeddingWorkersAI TYPE vector_similarity('hnsw', 'L2Distance', 768) GRANULARITY 4,
+  INDEX openai_idx embeddingOpenAI TYPE vector_similarity('hnsw', 'L2Distance', 1536) GRANULARITY 4,
+  INDEX gemma128_idx embeddingGemma128 TYPE vector_similarity('hnsw', 'L2Distance', 128) GRANULARITY 4,
+  INDEX gemma256_idx embeddingGemma256 TYPE vector_similarity('hnsw', 'L2Distance', 256) GRANULARITY 4,
+  INDEX gemma512_idx embeddingGemma512 TYPE vector_similarity('hnsw', 'L2Distance', 512) GRANULARITY 4,
+  INDEX gemma768_idx embeddingGemma768 TYPE vector_similarity('hnsw', 'L2Distance', 768) GRANULARITY 4,
+  INDEX gemini128_idx embeddingGemini128 TYPE vector_similarity('hnsw', 'L2Distance', 128) GRANULARITY 4,
+  INDEX gemini768_idx embeddingGemini768 TYPE vector_similarity('hnsw', 'L2Distance', 768) GRANULARITY 4,
+  INDEX gemini1536_idx embeddingGemini1536 TYPE vector_similarity('hnsw', 'L2Distance', 1536) GRANULARITY 4,
+  INDEX gemini3072_idx embeddingGemini3072 TYPE vector_similarity('hnsw', 'L2Distance', 3072) GRANULARITY 4
+) ENGINE = ReplacingMergeTree(updatedAt)
+ORDER BY (ns, id)
+PRIMARY KEY (ns, id);
+```
+
+**graph_chunks** (Document Chunks):
+```sql
+CREATE TABLE graph_chunks (
+  ns String,
+  id String,                    -- Parent entity ID
+  chunkIndex UInt32,            -- Chunk number (0-based)
+  chunkText String,             -- Chunk content
+  chunkTokens UInt32 DEFAULT 0,
+  charStart UInt64 DEFAULT 0,
+  charEnd UInt64 DEFAULT 0,
+  createdAt DateTime64(3) DEFAULT now64(),
+  updatedAt DateTime64(3) DEFAULT now64(),
+  INDEX tk_chunk (chunkText) TYPE tokenbf_v1(4096, 3, 0) GRANULARITY 8
+) ENGINE = ReplacingMergeTree(updatedAt)
+ORDER BY (ns, id, chunkIndex)
+PRIMARY KEY (ns, id, chunkIndex);
+```
+
+**graph_chunk_embeddings** (Chunk Vectors - 10 models):
+```sql
+CREATE TABLE graph_chunk_embeddings (
+  ns String,
+  id String,
+  chunkIndex UInt32,
+  -- (Same 10 embedding fields as graph_embeddings)
+  -- (Same 10 vector similarity indexes)
+  createdAt DateTime64(3) DEFAULT now64(),
+  updatedAt DateTime64(3) DEFAULT now64()
+) ENGINE = ReplacingMergeTree(updatedAt)
+ORDER BY (ns, id, chunkIndex)
+PRIMARY KEY (ns, id, chunkIndex);
+```
+
+## Configuration
+
+### Secrets
+
+```bash
+# ClickHouse
+wrangler secret put CLICKHOUSE_PASSWORD
+
+# PostgreSQL (deprecated, legacy only)
+wrangler secret put DATABASE_URL
+```
+
+### Environment Variables
+
+```jsonc
+{
+  "vars": {
+    "CLICKHOUSE_URL": "https://your-instance.clickhouse.cloud:8443",
+    "CLICKHOUSE_DATABASE": "default",
+    "CLICKHOUSE_USERNAME": "default"
+  }
+}
+```
+
+## Testing
+
+```bash
+# Run tests
+pnpm test
+
+# Watch mode
+pnpm test -- --watch
+
+# Coverage
+pnpm test -- --coverage
+```
+
+**Test Coverage**: 16 tests, 68% coverage
+
+## Performance
+
+**Benchmarks** (measured in production):
+- **Entity retrieval**: <10ms (p95)
+- **List with pagination**: <50ms (p95)
+- **Vector search**: <100ms (p95, 768d)
+- **Hybrid search**: <150ms (p95)
+- **Batch upsert**: <5ms per entity (p95)
+
+**Optimization Tips**:
+1. Use batch operations for multiple entities
+2. Choose appropriate embedding dimension (smaller = faster)
+3. Use chunking for documents >8K tokens
+4. Index frequently queried fields
+5. Use ReplacingMergeTree for automatic deduplication
+
+## Security
+
+- **No direct database access** - All queries go through DB service
+- **Namespace isolation** - Data isolated by namespace
+- **SQL injection protection** - Parameterized queries only
+- **RBAC via AUTH service** - Gateway enforces access control
+- **Audit logging** - All operations logged to pipeline service
+
+## Implementation
+
+Due to the size and complexity of this service (~5,000 LOC across 14 files), the implementation is organized into modules:
+
+- `src/index.ts` - Main entrypoint with RPC and HTTP interfaces (2,269 LOC)
+- `src/queries/things-clickhouse.ts` - Entity CRUD operations (767 LOC)
+- `src/queries/relationships-clickhouse.ts` - Relationship operations (1,230 LOC)
+- `src/queries/search-clickhouse.ts` - Search operations (433 LOC)
+- `src/queries/analytics-clickhouse.ts` - Analytics queries (183 LOC)
+- `src/hateoas.ts` - HATEOAS wrapper functions (1,321 LOC)
+- `src/sql.ts` - ClickHouse client initialization (280 LOC)
+- `src/postgres.ts` - Legacy PostgreSQL client (176 LOC)
+- `src/rpc-types.ts` - RPC type definitions (343 LOC)
+- `src/mcp.ts` - MCP server tools (coming soon)
+
+**Note**: This service is intentionally large as it centralizes all database access for the platform. The modular structure keeps it maintainable.
