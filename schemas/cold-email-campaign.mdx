@@ -1,0 +1,255 @@
+---
+$type: Schema
+$id: schema/cold-email-campaign
+title: Cold Email Campaign
+description: Defines a cold email outreach campaign with sequences, targeting, A/B testing, and analytics
+type: custom/ColdEmailCampaign
+properties:
+  - name: id
+    type: string
+    description: Unique campaign identifier
+  - name: name
+    type: string
+    description: Campaign name
+  - name: status
+    type: string
+    description: Campaign status (draft, active, paused, completed, archived)
+  - name: from
+    type: object
+    description: Sender configuration
+    properties:
+      - name: domain
+        type: string
+        description: Sending domain ID
+      - name: email
+        type: string
+        description: Sender email address
+      - name: name
+        type: string
+        description: Sender display name
+      - name: replyTo
+        type: string
+        description: Reply-to email address
+  - name: sequences
+    type: array
+    description: Email sequences in the campaign
+    items:
+      type: object
+      properties:
+        - name: id
+          type: string
+          description: Sequence identifier
+        - name: name
+          type: string
+          description: Sequence name
+        - name: emails
+          type: array
+          description: Emails in the sequence
+          items:
+            type: object
+            properties:
+              - name: step
+                type: number
+                description: Step number in sequence
+              - name: delayDays
+                type: number
+                description: Days to wait after previous email
+              - name: subject
+                type: string
+                description: Email subject line
+              - name: body
+                type: string
+                description: Email body (supports templates)
+              - name: abVariants
+                type: array
+                description: A/B test variants
+  - name: targeting
+    type: object
+    description: Campaign targeting criteria
+    properties:
+      - name: filters
+        type: object
+        description: Contact filters (industry, title, company size, etc.)
+      - name: excludeLists
+        type: array
+        description: Contact list IDs to exclude
+      - name: maxContacts
+        type: number
+        description: Maximum contacts to target
+  - name: abTests
+    type: array
+    description: A/B test configurations
+    items:
+      type: object
+      properties:
+        - name: name
+          type: string
+          description: Test name
+        - name: variants
+          type: array
+          description: Test variants
+        - name: metric
+          type: string
+          description: Success metric (open_rate, click_rate, reply_rate)
+        - name: allocation
+          type: array
+          description: Traffic allocation percentages
+  - name: schedule
+    type: object
+    description: Campaign scheduling configuration
+    properties:
+      - name: startDate
+        type: string
+        format: date-time
+        description: Campaign start date/time
+      - name: endDate
+        type: string
+        format: date-time
+        description: Campaign end date/time
+      - name: timezone
+        type: string
+        description: Campaign timezone
+      - name: sendingWindow
+        type: object
+        description: Allowed sending hours
+        properties:
+          - name: days
+            type: array
+            description: Days of week (0-6, 0=Sunday)
+          - name: startHour
+            type: number
+            description: Start hour (0-23)
+          - name: endHour
+            type: number
+            description: End hour (0-23)
+      - name: throttle
+        type: object
+        description: Send rate throttling
+        properties:
+          - name: perHour
+            type: number
+            description: Max emails per hour
+          - name: perDay
+            type: number
+            description: Max emails per day
+  - name: analytics
+    type: object
+    description: Campaign performance analytics
+    properties:
+      - name: sent
+        type: number
+        description: Total emails sent
+      - name: delivered
+        type: number
+        description: Successfully delivered
+      - name: bounced
+        type: number
+        description: Bounced emails
+      - name: opened
+        type: number
+        description: Emails opened
+      - name: clicked
+        type: number
+        description: Links clicked
+      - name: replied
+        type: number
+        description: Replies received
+      - name: unsubscribed
+        type: number
+        description: Unsubscribe requests
+      - name: conversions
+        type: number
+        description: Campaign conversions
+  - name: createdAt
+    type: string
+    format: date-time
+    description: Campaign creation timestamp
+  - name: updatedAt
+    type: string
+    format: date-time
+    description: Last update timestamp
+  - name: createdBy
+    type: string
+    description: User ID who created campaign
+  - name: teamId
+    type: string
+    description: Team/organization ID
+required:
+  - id
+  - name
+  - from
+  - sequences
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - cold-email
+  - campaign
+  - outreach
+  - marketing
+---
+
+# Cold Email Campaign Schema
+
+Comprehensive schema for defining cold email outreach campaigns with multi-step sequences, advanced targeting, A/B testing, and performance analytics.
+
+## Overview
+
+This schema supports:
+- **Multi-step sequences**: Define follow-up emails with delays
+- **A/B testing**: Test subject lines, body content, sender names
+- **Smart scheduling**: Respect timezones, sending windows, throttling
+- **Advanced targeting**: Filter by industry, title, company size
+- **Real-time analytics**: Track opens, clicks, replies, conversions
+
+## Campaign Lifecycle
+
+```
+draft → active → (paused) → completed → archived
+```
+
+## Sequence Design
+
+Each campaign contains one or more sequences. Each sequence contains one or more emails with delays between steps.
+
+**Example:**
+```
+Step 1: Initial outreach (Day 0)
+Step 2: Follow-up #1 (Day 3)
+Step 3: Follow-up #2 (Day 7)
+Step 4: Breakup email (Day 14)
+```
+
+## A/B Testing
+
+Test different variants of:
+- Subject lines
+- Email body content
+- Sender names
+- CTA buttons
+
+Traffic is automatically split based on allocation percentages.
+
+## Analytics & Optimization
+
+Track campaign performance in real-time:
+- **Delivery rate**: delivered / sent
+- **Open rate**: opened / delivered
+- **Click rate**: clicked / opened
+- **Reply rate**: replied / delivered
+- **Conversion rate**: conversions / sent
+
+## Best Practices
+
+1. **Personalization**: Use template variables for dynamic content
+2. **Timing**: Respect recipient timezone and business hours
+3. **Throttling**: Gradually ramp up sending volume
+4. **Testing**: Always A/B test subject lines
+5. **Follow-ups**: Include 2-3 follow-ups for higher response rates
+6. **Unsubscribes**: Honor opt-out requests immediately
+
+## Related Schemas
+
+- **email-contact.mdx**: Contact records targeted by campaigns
+- **email-domain.mdx**: Sending domains used in campaigns
+- **email-sequence.mdx**: Reusable email sequence templates

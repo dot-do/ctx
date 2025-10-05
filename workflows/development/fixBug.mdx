@@ -1,0 +1,700 @@
+---
+$type: Workflow
+$id: workflow/fixbug
+title: Fix Bug
+name: Fix Bug
+description: Bug fix workflow - reproduce bug, write test, fix, verify, deploy
+category: Bug Resolution
+occupation: [[Software Developer]]
+agents:
+  - [[agents/BugTriager]]
+  - [[agents/TestGenerator]]
+  - [[agents/CodeReviewer]]
+functions:
+  - [[functions/parseCode]]
+sources:
+  - [[sources/JiraTickets]]
+  - [[sources/GitHubActivity]]
+triggers:
+  - type: issue-created
+    labels: [bug]
+  - type: jira-ticket
+    issueType: Bug
+steps:
+  - id: triage
+    name: Triage Bug
+    type: agent
+    agent: [[agents/BugTriager]]
+  - id: assign
+    name: Assign to Developer
+    type: action
+    dependsOn: [triage]
+  - id: reproduce
+    name: Reproduce Bug
+    type: action
+    dependsOn: [assign]
+  - id: write-test
+    name: Write Regression Test
+    type: agent
+    agent: [[agents/TestGenerator]]
+    dependsOn: [reproduce]
+  - id: implement-fix
+    name: Implement Fix
+    type: manual
+    dependsOn: [write-test]
+  - id: verify-fix
+    name: Verify Fix
+    type: action
+    dependsOn: [implement-fix]
+  - id: code-review
+    name: Code Review
+    type: workflow
+    workflow: [[workflows/reviewPullRequest]]
+    dependsOn: [verify-fix]
+  - id: deploy
+    name: Deploy Fix
+    type: workflow
+    workflow: [[workflows/deployApplication]]
+    dependsOn: [code-review]
+  - id: close-bug
+    name: Close Bug Report
+    type: action
+    dependsOn: [deploy]
+duration: (number) 2-8 hours
+sla: (number) 99.0
+---
+
+# Fix Bug Workflow
+
+Structured bug resolution workflow that guides developers through reproducing, fixing, testing, and deploying bug fixes.
+
+## Overview
+
+This workflow ensures bugs are properly resolved:
+
+1. **Triage** - [[agents/BugTriager]] classifies and prioritizes
+2. **Assign** - Route to appropriate developer
+3. **Reproduce** - Confirm bug and understand root cause
+4. **Write Test** - Create regression test with [[agents/TestGenerator]]
+5. **Fix** - Implement solution
+6. **Verify** - Confirm fix works and test passes
+7. **Review** - Code review via [[workflows/reviewPullRequest]]
+8. **Deploy** - Deploy via [[workflows/deployApplication]]
+9. **Close** - Update bug tracker
+
+## Trigger Conditions
+
+### Automatic Triggers
+
+**GitHub Issue with Bug Label:**
+```yaml
+trigger:
+  type: issue-created
+  labels:
+    - bug
+  repository: any
+```
+
+**Jira Bug Ticket:**
+```yaml
+trigger:
+  type: jira-ticket
+  project: any
+  issueType: Bug
+  status: Open
+```
+
+**Production Error Alert:**
+```yaml
+trigger:
+  type: error-alert
+  source: sentry
+  severity: [error, critical]
+  frequency: ">= 10 per hour"
+```
+
+## Workflow Steps
+
+### Step 1: Triage Bug
+
+Uses [[agents/BugTriager]] to classify the bug:
+
+```typescript
+async function triageBug(context: WorkflowContext) {
+  const { issue } = context.trigger
+
+  const triager = new BugTriager()
+  const triage = await triager.analyze({
+    title: issue.title,
+    description: issue.body,
+    reporter: issue.reporter,
+    metadata: {
+      affectedUsers: issue.affectedUsers,
+      environment: issue.environment,
+      stackTrace: issue.stackTrace
+    }
+  })
+
+  // Update issue with triage results
+  await updateIssue(issue, {
+    labels: [
+      `severity:${triage.severity}`,
+      `priority:${triage.priority}`,
+      `team:${triage.team}`
+    ],
+    assignee: triage.suggestedAssignee,
+    estimate: triage.estimate
+  })
+
+  // Create Slack alert for critical bugs
+  if (triage.severity === 'critical') {
+    await slack.sendMessage({
+      channel: '#critical-bugs',
+      text: `🚨 Critical bug reported: ${issue.title}`,
+      mentions: ['@devops-team', '@tech-lead']
+    })
+  }
+
+  return triage
+}
+```
+
+**Triage Output:**
+- Severity: Critical, High, Medium, Low
+- Priority: P0, P1, P2, P3
+- Team: Frontend, Backend, Mobile, DevOps
+- Estimate: Time or story points
+- Suggested assignee
+
+### Step 2: Assign to Developer
+
+```typescript
+async function assignToDeveloper(context: WorkflowContext) {
+  const { issue } = context.trigger
+  const { triage } = context.steps
+
+  // Find available developer from team
+  const developer = await findAvailableDeveloper({
+    team: triage.team,
+    expertise: triage.requiredExpertise,
+    availability: 'within-4-hours'
+  })
+
+  if (!developer) {
+    // Escalate if no one available
+    await escalate({
+      issue,
+      reason: 'No available developer',
+      severity: triage.severity
+    })
+    throw new Error('No available developer for assignment')
+  }
+
+  // Assign issue
+  await assignIssue(issue, {
+    assignee: developer.id,
+    dueDate: calculateDueDate(triage.priority)
+  })
+
+  // Notify developer
+  await notify(developer, {
+    type: 'bug-assigned',
+    issue,
+    triage
+  })
+
+  return { assignee: developer.id, dueDate: issue.dueDate }
+}
+
+function calculateDueDate(priority: string): Date {
+  const now = new Date()
+
+  switch (priority) {
+    case 'P0': // Critical - 4 hours
+      return new Date(now.getTime() + 4 * 60 * 60 * 1000)
+    case 'P1': // High - 1 day
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    case 'P2': // Medium - 1 week
+      return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    case 'P3': // Low - 1 month
+      return new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    default:
+      return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+  }
+}
+```
+
+### Step 3: Reproduce Bug
+
+```typescript
+async function reproduceBug(context: WorkflowContext) {
+  const { issue } = context.trigger
+
+  // Extract reproduction steps from issue
+  const steps = extractReproductionSteps(issue.body)
+
+  // Set up test environment
+  const environment = await setupTestEnvironment({
+    version: issue.affectedVersion,
+    data: issue.testData
+  })
+
+  // Attempt to reproduce
+  const reproduction = {
+    steps: [],
+    reproduced: false,
+    error: null,
+    stackTrace: null
+  }
+
+  for (const step of steps) {
+    try {
+      await executeStep(environment, step)
+      reproduction.steps.push({ step, result: 'success' })
+    } catch (error) {
+      reproduction.reproduced = true
+      reproduction.error = error.message
+      reproduction.stackTrace = error.stack
+      reproduction.steps.push({ step, result: 'error', error })
+      break
+    }
+  }
+
+  if (!reproduction.reproduced) {
+    // Could not reproduce - request more info
+    await commentOnIssue(issue, {
+      text: `Unable to reproduce bug. Please provide:
+        - Exact steps to reproduce
+        - Expected vs actual behavior
+        - Browser/OS/version
+        - Screenshots or video
+        - Console errors or logs`
+    })
+    throw new Error('Could not reproduce bug')
+  }
+
+  // Add reproduction details to issue
+  await commentOnIssue(issue, {
+    text: `✅ Bug reproduced successfully
+
+**Error:** ${reproduction.error}
+
+**Stack Trace:**
+\`\`\`
+${reproduction.stackTrace}
+\`\`\`
+
+**Reproduction Steps:**
+${reproduction.steps.map((s, i) => `${i + 1}. ${s.step} - ${s.result}`).join('\n')}
+
+Now writing regression test...`
+  })
+
+  return reproduction
+}
+```
+
+### Step 4: Write Regression Test
+
+Uses [[agents/TestGenerator]] to create a test:
+
+```typescript
+async function writeRegressionTest(context: WorkflowContext) {
+  const { issue } = context.trigger
+  const { reproduce } = context.steps
+
+  // Parse code to find function with bug
+  const affectedCode = await findAffectedCode({
+    error: reproduce.error,
+    stackTrace: reproduce.stackTrace
+  })
+
+  // Generate regression test
+  const generator = new TestGenerator()
+  const test = await generator.generateTest({
+    code: affectedCode,
+    bug: {
+      description: issue.title,
+      error: reproduce.error,
+      reproductionSteps: reproduce.steps
+    },
+    testType: 'regression'
+  })
+
+  // Create test file
+  const testFile = `${affectedCode.file.replace(/\.ts$/, '')}.test.ts`
+  await writeFile(testFile, test.code)
+
+  // Run test to confirm it fails
+  const testResult = await runTest(testFile)
+
+  if (testResult.passed) {
+    throw new Error('Regression test passed before fix - test is invalid')
+  }
+
+  await commentOnIssue(issue, {
+    text: `✅ Regression test created: \`${testFile}\`
+
+The test currently fails (as expected). After implementing the fix, the test should pass.
+
+**Test Code:**
+\`\`\`typescript
+${test.code}
+\`\`\``
+  })
+
+  return { testFile, test }
+}
+```
+
+### Step 5: Implement Fix
+
+Manual implementation by developer:
+
+```typescript
+async function implementFix(context: WorkflowContext) {
+  const { issue } = context.trigger
+  const { writeTest } = context.steps
+
+  // Wait for developer to implement fix
+  await waitForCommit({
+    issue,
+    branch: `fix/${issue.number}`,
+    timeout: 86400000 // 24 hours
+  })
+
+  // Get fix implementation
+  const commits = await getCommitsForIssue(issue)
+
+  return {
+    commits,
+    branch: `fix/${issue.number}`,
+    implementedBy: context.steps.assign.assignee
+  }
+}
+```
+
+**Developer Actions:**
+1. Create branch: `fix/BUG-123`
+2. Implement fix
+3. Ensure regression test passes
+4. Commit changes
+5. Push branch
+
+### Step 6: Verify Fix
+
+```typescript
+async function verifyFix(context: WorkflowContext) {
+  const { issue } = context.trigger
+  const { writeTest, implementFix } = context.steps
+
+  // Checkout fix branch
+  await git.checkout(implementFix.branch)
+
+  // Run regression test
+  const regressionResult = await runTest(writeTest.testFile)
+
+  if (!regressionResult.passed) {
+    await commentOnIssue(issue, {
+      text: `❌ Regression test still failing after fix
+
+**Error:**
+\`\`\`
+${regressionResult.error}
+\`\`\`
+
+Please review and update the fix.`
+    })
+    throw new Error('Regression test failed after fix')
+  }
+
+  // Run full test suite
+  const fullTestResult = await runTests({ coverage: true })
+
+  if (fullTestResult.failed > 0) {
+    await commentOnIssue(issue, {
+      text: `❌ Some tests failing after fix: ${fullTestResult.failed} failures
+
+Please ensure all tests pass before proceeding.`
+    })
+    throw new Error('Full test suite has failures')
+  }
+
+  // Manual verification
+  const manualVerification = await requestManualVerification({
+    issue,
+    assignee: implementFix.implementedBy,
+    instructions: `
+      1. Test the fix manually
+      2. Verify all reproduction steps now work correctly
+      3. Check for any side effects
+      4. Confirm fix is complete
+    `
+  })
+
+  if (!manualVerification.confirmed) {
+    throw new Error('Manual verification failed')
+  }
+
+  await commentOnIssue(issue, {
+    text: `✅ Fix verified!
+
+- Regression test: ✅ Passing
+- Full test suite: ✅ ${fullTestResult.passed}/${fullTestResult.total} passing
+- Manual verification: ✅ Confirmed
+
+Creating pull request...`
+  })
+
+  // Create pull request
+  const pr = await createPullRequest({
+    title: `Fix: ${issue.title}`,
+    body: `Fixes #${issue.number}
+
+## Changes
+
+${implementFix.commits.map(c => `- ${c.message}`).join('\n')}
+
+## Testing
+
+- [x] Regression test added
+- [x] All tests passing
+- [x] Manual verification completed
+
+## Verification Steps
+
+${context.steps.reproduce.steps.map((s, i) => `${i + 1}. ${s.step}`).join('\n')}`,
+    head: implementFix.branch,
+    base: 'main'
+  })
+
+  return { verified: true, pr }
+}
+```
+
+### Step 7: Code Review
+
+Executes [[workflows/reviewPullRequest]]:
+
+```typescript
+async function codeReview(context: WorkflowContext) {
+  const { verifyFix } = context.steps
+
+  const review = await runWorkflow('reviewPullRequest', {
+    pullRequest: verifyFix.pr
+  })
+
+  return review
+}
+```
+
+### Step 8: Deploy Fix
+
+Executes [[workflows/deployApplication]]:
+
+```typescript
+async function deployFix(context: WorkflowContext) {
+  const { verifyFix } = context.steps
+
+  // Deploy to production
+  const deployment = await runWorkflow('deployApplication', {
+    commit: verifyFix.pr.mergeCommit,
+    environment: 'production'
+  })
+
+  return deployment
+}
+```
+
+### Step 9: Close Bug Report
+
+```typescript
+async function closeBugReport(context: WorkflowContext) {
+  const { issue } = context.trigger
+  const { triage, verifyFix, deployFix } = context.steps
+
+  // Close issue
+  await closeIssue(issue, {
+    resolution: 'fixed',
+    comment: `✅ Bug fixed and deployed to production!
+
+**Resolution Time:** ${calculateDuration(issue.createdAt, new Date())}
+**Severity:** ${triage.severity}
+**Fixed By:** ${verifyFix.implementedBy}
+**PR:** ${verifyFix.pr.url}
+**Deployment:** ${deployFix.url}
+
+Thank you for reporting this issue!`
+  })
+
+  // Update metrics
+  await trackMetrics({
+    bugId: issue.id,
+    severity: triage.severity,
+    resolutionTime: Date.now() - issue.createdAt,
+    deploymentTime: Date.now() - verifyFix.pr.mergedAt
+  })
+
+  // Notify reporter
+  await notifyReporter(issue.reporter, {
+    title: 'Bug Fixed',
+    message: `The bug you reported has been fixed and deployed: ${issue.title}`
+  })
+
+  return { closed: true, resolution: 'fixed' }
+}
+```
+
+## Error Handling
+
+### Cannot Reproduce
+
+```typescript
+async function handleCannotReproduce(issue: Issue) {
+  await commentOnIssue(issue, {
+    text: `Unable to reproduce this bug. Please provide:
+
+**Required Information:**
+- [ ] Exact steps to reproduce (numbered list)
+- [ ] Expected behavior
+- [ ] Actual behavior
+- [ ] Browser/OS/version
+- [ ] Screenshots or screen recording
+- [ ] Console errors or logs
+
+**Optional but Helpful:**
+- [ ] Link to affected page/feature
+- [ ] User account or test data
+- [ ] Time of occurrence
+- [ ] Frequency (always, sometimes, rarely)`
+  })
+
+  await updateIssue(issue, {
+    labels: ['needs-reproduction'],
+    status: 'waiting-for-info'
+  })
+}
+```
+
+### Test Still Failing
+
+```typescript
+async function handleTestFailure(issue: Issue, error: string) {
+  await commentOnIssue(issue, {
+    text: `❌ Tests still failing after fix attempt
+
+**Error:**
+\`\`\`
+${error}
+\`\`\`
+
+**Next Steps:**
+1. Review the test implementation
+2. Verify the fix addresses the root cause
+3. Check for edge cases or side effects
+4. Consider pairing with another developer
+
+Requesting additional review...`
+  })
+
+  await requestHelp(issue, {
+    reason: 'test-failure',
+    urgency: 'high'
+  })
+}
+```
+
+## Configuration
+
+```yaml
+bug-fix-workflow:
+  triage:
+    autoAssign: true
+    notifyOnCritical: true
+
+  reproduction:
+    timeout: 3600000 # 1 hour
+    requireEvidence: true
+
+  testing:
+    requireRegressionTest: true
+    requireAllTestsPass: true
+
+  review:
+    requireCodeReview: true
+    autoMerge: false
+
+  deployment:
+    autoDeployOnMerge: true
+    environments: [staging, production]
+
+  notifications:
+    slack:
+      channel: '#bugs'
+      mentions: ['@dev-team']
+    email:
+      reporter: true
+      assignee: true
+```
+
+## Metrics
+
+Tracks bug resolution metrics:
+
+- **Time to Reproduce**: Time from report to reproduction
+- **Time to Fix**: Time from reproduction to fix
+- **Time to Deploy**: Time from fix to production
+- **Resolution Time**: Total time from report to deployed
+- **Regression Rate**: % of bugs that reappear
+
+## Related Examples
+
+- [[agents/BugTriager]] - Bug classification
+- [[agents/TestGenerator]] - Regression test creation
+- [[workflows/reviewPullRequest]] - Code review process
+- [[workflows/deployApplication]] - Deployment process
+- [[sources/JiraTickets]] - Bug tracking data
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Bug {
+  id: string
+  title: string
+  description: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  status: 'reported' | 'investigating' | 'fixed' | 'verified'
+  assignee?: string
+}
+
+export const fixBug: BusinessModule = $ => {
+  const { db, ai, api, send, on, decide } = $
+
+  on.bug.reported(async (bug: Bug) => {
+    // AI-powered bug analysis
+    const analysis = await ai.generate({
+      prompt: `Bug: ${bug.title}\nDescription: ${bug.description}\n\nProvide:\n1. Likely root cause\n2. Affected files\n3. Fix strategy`,
+      maxTokens: 500,
+    })
+
+    decide.switch(bug.severity)
+      .case('critical', async () => {
+        await send.slack('#engineering', `🚨 CRITICAL BUG: ${bug.title}`)
+        const oncallEngineer = await db.users.findOne({ role: 'engineer', oncall: true })
+        await db.bugs.update(bug.id, { assignee: oncallEngineer.id })
+      })
+      .case('high', async () => {
+        await send.slack('#engineering', `⚠️ High severity bug: ${bug.title}\n${analysis}`)
+      })
+  })
+
+  on.bug.fixed(async (bug: Bug) => {
+    await send.email(bug.assignee, 'Bug Fix Deployed', {
+      bugId: bug.id,
+      title: bug.title,
+    })
+  })
+}
+```

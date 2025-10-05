@@ -1,0 +1,580 @@
+---
+$type: Workflow
+$id: workflow/processorder
+title: process-order
+name: process-order
+description: Complete e-commerce order processing from receipt to fulfillment
+
+trigger:
+  type: webhook
+  source: shopify
+  event: order.created
+
+input:
+  orderId: Order unique identifier
+  customerId: Customer ID
+  items: Array of items with SKU and quantity
+  shippingAddress: Destination address object
+  billingAddress: Billing address object
+  paymentMethod: Payment method ID
+  total: Order total amount (number)
+  currency: Currency code (USD, EUR, etc)
+
+steps:
+  - name: validate-order
+    description: Validate order data and check inventory
+    function: validate-order
+    input:
+      orderId: ${input.orderId}
+      items: ${input.items}
+      shippingAddress: ${input.shippingAddress}
+      billingAddress: ${input.billingAddress}
+    onError:
+      action: return
+      status: 400
+      message: Order validation failed - ${error.message}
+
+  - name: check-inventory
+    description: Verify all items in stock
+    function: check-inventory
+    input:
+      items: ${input.items}
+    onError:
+      action: backorder
+      notifyCustomer: true
+
+  - name: calculate-totals
+    description: Calculate final totals with tax and shipping
+    function: calculate-totals
+    input:
+      items: ${input.items}
+      shippingAddress: ${input.shippingAddress}
+      subtotal: ${input.total}
+    output:
+      tax: Tax amount
+      shipping: Shipping cost
+      total: Final total
+
+  - name: process-payment
+    description: Charge payment method
+    function: process-payment
+    input:
+      paymentMethod: ${input.paymentMethod}
+      amount: ${steps.calculate-totals.output.total}
+      currency: ${input.currency}
+      orderId: ${input.orderId}
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+    onError:
+      action: notify
+      channel: customer-email
+      message: Payment declined
+
+  - name: reserve-inventory
+    description: Reserve items from warehouse inventory
+    function: reserve-inventory
+    input:
+      orderId: ${input.orderId}
+      items: ${input.items}
+      warehouseId: ${steps.check-inventory.output.warehouseId}
+
+  - name: create-shipment
+    description: Generate shipping label and tracking
+    function: create-shipment
+    input:
+      orderId: ${input.orderId}
+      items: ${input.items}
+      destination: ${input.shippingAddress}
+      carrier: ${steps.check-inventory.output.preferredCarrier}
+
+  - name: notify-warehouse
+    description: Send fulfillment request to warehouse
+    function: notify-warehouse
+    input:
+      orderId: ${input.orderId}
+      warehouseId: ${steps.check-inventory.output.warehouseId}
+      items: ${input.items}
+      trackingNumber: ${steps.create-shipment.output.trackingNumber}
+      priority: ${input.priority}
+
+  - name: send-confirmation
+    description: Email order confirmation to customer
+    function: send-email
+    input:
+      to: ${input.customerEmail}
+      template: order-confirmation
+      data:
+        orderId: ${input.orderId}
+        items: ${input.items}
+        total: ${steps.calculate-totals.output.total}
+        trackingNumber: ${steps.create-shipment.output.trackingNumber}
+        estimatedDelivery: ${steps.create-shipment.output.estimatedDelivery}
+    retry:
+      maxAttempts: 3
+
+  - name: track-analytics
+    description: Log order event to analytics
+    function: track-event
+    input:
+      event: order_completed
+      userId: ${input.customerId}
+      properties:
+        orderId: ${input.orderId}
+        total: ${steps.calculate-totals.output.total}
+        items: ${input.items.length}
+
+output:
+  orderId: ${input.orderId}
+  status: completed
+  trackingNumber: ${steps.create-shipment.output.trackingNumber}
+  estimatedDelivery: ${steps.create-shipment.output.estimatedDelivery}
+  total: ${steps.calculate-totals.output.total}
+
+timeout: 120000
+
+notifications:
+  onSuccess:
+    - channel: slack
+      webhook: ${env.SLACK_WEBHOOK_URL}
+      message: 🎉 Order ${input.orderId} processed ($${steps.calculate-totals.output.total})
+  onError:
+    - channel: email
+      to: operations@company.com
+      subject: Order processing failed - ${input.orderId}
+    - channel: slack
+      webhook: ${env.SLACK_ALERTS_URL}
+      message: 🚨 Order ${input.orderId} failed at step ${error.step}
+---
+
+# Process Order Workflow
+
+Complete e-commerce order processing from receipt through fulfillment and confirmation.
+
+## Flow Overview
+
+```
+Shopify Order Created
+  ↓
+Validate Order → If invalid → Return error
+  ↓
+Check Inventory → If out of stock → Backorder
+  ↓
+Calculate Totals (items + tax + shipping)
+  ↓
+Process Payment → If declined → Retry 3x → Notify customer
+  ↓
+Reserve Inventory
+  ↓
+Create Shipment → Generate label + tracking
+  ↓
+Notify Warehouse → Send pick/pack request
+  ↓
+Send Confirmation → Email customer
+  ↓
+Track Analytics
+  ↓
+Complete! 🎉
+```
+
+## Steps Detail
+
+### 1. Validate Order
+
+**Checks:**
+- All required fields present
+- Valid email and phone formats
+- Address completeness
+- SKUs exist in catalog
+- Payment method valid
+
+**Output:**
+- Validation result
+- Error details if failed
+
+### 2. Check Inventory
+
+**Process:**
+- Query all items across warehouses
+- Find warehouse with all items in stock
+- If split shipment needed, optimize
+- Select preferred carrier
+
+**Output:**
+- Warehouse ID
+- Stock availability status
+- Preferred carrier
+
+### 3. Calculate Totals
+
+**Calculation:**
+```yaml
+subtotal: Sum of item prices × quantities
+tax: Calculate by destination ZIP
+shipping: Weight-based carrier rates
+total: subtotal + tax + shipping
+```
+
+**Tax Logic:**
+- Query tax rate database
+- Apply state/county/city rates
+- Handle tax-exempt customers
+
+### 4. Process Payment
+
+**Payment Flow:**
+- Authorize payment method
+- Charge total amount
+- Store transaction ID
+- Handle 3D Secure if required
+
+**Retry Logic:**
+- Attempt 1: Immediate
+- Attempt 2: After 5 seconds
+- Attempt 3: After 15 seconds
+- Fail: Notify customer, hold order 24h
+
+### 5. Reserve Inventory
+
+**Reservation:**
+- Lock items in warehouse system
+- Prevent overselling
+- Set expiration (24 hours)
+- Update available quantity
+
+### 6. Create Shipment
+
+**Label Generation:**
+- Select carrier from step 2
+- Calculate package dimensions
+- Generate shipping label
+- Assign tracking number
+- Estimate delivery date
+
+### 7. Notify Warehouse
+
+**Fulfillment Request:**
+- Send pick list to warehouse
+- Include packing instructions
+- Attach shipping label
+- Set priority flag
+
+### 8. Send Confirmation
+
+**Customer Email:**
+```yaml
+subject: Order Confirmed - #{{orderId}}
+body: |
+  Thank you for your order!
+
+  Order Number: {{orderId}}
+  Items: {{itemsList}}
+  Total: ${{total}}
+
+  Tracking: {{trackingNumber}}
+  Estimated Delivery: {{estimatedDelivery}}
+
+  Track your shipment: {{trackingUrl}}
+```
+
+### 9. Track Analytics
+
+**Event Logged:**
+- Order ID and timestamp
+- Customer ID
+- Total amount
+- Item count
+- Conversion source
+
+## Error Handling
+
+### Validation Fails
+- Return 400 error immediately
+- Include specific validation errors
+- Don't proceed to payment
+
+### Out of Stock
+- Offer backorder option
+- Notify customer of delay
+- Suggest alternatives
+- Continue with available items
+
+### Payment Declined
+- Retry automatically (3 attempts)
+- Email customer with details
+- Hold order for 24 hours
+- Provide alternate payment link
+
+### Shipment Creation Fails
+- Alert operations team
+- Manual label generation
+- Continue workflow
+- Track for follow-up
+
+## Backorder Handling
+
+When inventory insufficient:
+
+```yaml
+backorderFlow:
+  - split: available_items vs backordered_items
+  - processImmediately: available_items
+  - createBackorder:
+      items: backordered_items
+      estimatedDate: supplier_lead_time + 3 days
+  - notifyCustomer:
+      template: partial-shipment
+      data:
+        shippingNow: available_items
+        backorderedUntil: estimated_date
+```
+
+## Notifications
+
+**Success (Slack):**
+```
+🎉 Order #12345 processed
+   Customer: John Doe
+   Total: $149.99
+   Items: 3
+   Warehouse: LAX-01
+   Tracking: 1Z999AA10123456784
+```
+
+**Error (Email + Slack):**
+```
+🚨 Order Processing Failed
+   Order ID: #12345
+   Failed Step: process-payment
+   Error: Card declined
+   Customer: john@example.com
+   Retry: Attempt 3 of 3
+   Action: Manual review required
+```
+
+## Performance Metrics
+
+**Workflow KPIs:**
+- **Processing Time** - Average duration
+- **Success Rate** - % completed without errors
+- **Payment Success** - % approved first attempt
+- **Error Rate** - % requiring intervention
+
+**Targets:**
+- <3 minutes processing time
+- 95%+ success rate
+- 85%+ payment approval
+- <2% error rate
+
+## Related
+
+- [[order-processor-agent.mdx|Order Processor Agent]]
+- [[inventory-clerk-agent.mdx|Inventory Clerk Agent]]
+- [[shipping-coordinator-agent.mdx|Shipping Coordinator Agent]]
+- [[validateOrder.mdx|Validate Order Function]]
+- [[calculateShipping.mdx|Calculate Shipping Function]]
+- [[ShopifyOrders.mdx|Shopify Integration]]
+- [[stripe-webhooks-integration.mdx|Payment Processing]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Order {
+  id: string
+  customerId: string
+  items: OrderItem[]
+  shippingAddress: Address
+  billingAddress: Address
+  paymentMethodId: string
+  subtotal: number
+  tax: number
+  shipping: number
+  total: number
+  currency: string
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+  trackingNumber?: string
+  warehouseId?: string
+  createdAt: Date
+}
+
+interface OrderItem {
+  sku: string
+  name: string
+  quantity: number
+  price: number
+}
+
+interface Address {
+  line1: string
+  line2?: string
+  city: string
+  state: string
+  zip: string
+  country: string
+}
+
+/**
+ * Process Order Workflow - Complete e-commerce fulfillment
+ *
+ * Relationships:
+ * - Order belongs to Customer
+ * - Order contains many OrderItems
+ * - Order has ShippingAddress and BillingAddress
+ * - Order creates Payment
+ * - Order reserves InventoryItems
+ * - Order creates Shipment with tracking
+ */
+export const processOrder: BusinessModule = $ => {
+  const { db, ai, api, send, on, decide } = $
+
+  on.order.created(async (order: Order) => {
+    // Validate order data
+    const validation = await ai.classify(
+      `Validate order: ${order.items.length} items, ${order.shippingAddress.city}, ${order.shippingAddress.state}`,
+      ['valid', 'missing_fields', 'suspicious']
+    )
+
+    if (validation !== 'valid') {
+      await db.orders.update(order.id, { status: 'cancelled' })
+      throw new Error(`Order validation failed: ${validation}`)
+    }
+
+    // Check inventory across warehouses
+    const inventory = await db.inventory.findMany({
+      sku: { in: order.items.map(i => i.sku) },
+    })
+
+    const warehouse = inventory[0]?.warehouseId
+    const allInStock = order.items.every(item => {
+      const stock = inventory.find(i => i.sku === item.sku)
+      return stock && stock.quantity >= item.quantity
+    })
+
+    if (!allInStock) {
+      // Handle backorder
+      await send.email(order.customerId, 'Items Backordered', {
+        orderId: order.id,
+        backorderedItems: order.items.filter(item => {
+          const stock = inventory.find(i => i.sku === item.sku)
+          return !stock || stock.quantity < item.quantity
+        }),
+      })
+    }
+
+    // Calculate totals with tax and shipping
+    const taxRate = await api.get(`https://api.taxjar.com/v2/rates/${order.shippingAddress.zip}`)
+    const tax = order.subtotal * taxRate.rate
+
+    const shippingCost = await ai.generate({
+      prompt: `Calculate shipping cost for ${order.items.length} items to ${order.shippingAddress.state}.
+        Total weight: ${order.items.reduce((sum, item) => sum + item.quantity, 0)} lbs.`,
+      format: 'number',
+    })
+
+    const total = order.subtotal + tax + shippingCost
+
+    await db.orders.update(order.id, {
+      tax,
+      shipping: shippingCost,
+      total,
+      status: 'processing',
+    })
+
+    // Process payment
+    try {
+      const payment = await api.post('https://api.stripe.com/v1/charges', {
+        amount: Math.round(total * 100),
+        currency: order.currency,
+        payment_method: order.paymentMethodId,
+        metadata: { orderId: order.id },
+      })
+
+      await db.payments.create({
+        orderId: order.id,
+        amount: total,
+        stripeChargeId: payment.id,
+        status: 'succeeded',
+        createdAt: new Date(),
+      })
+    } catch (error: any) {
+      await send.email(order.customerId, 'Payment Declined', {
+        orderId: order.id,
+        reason: error.message,
+      })
+      throw error
+    }
+
+    // Reserve inventory
+    for (const item of order.items) {
+      await db.inventory.update(
+        { sku: item.sku, warehouseId: warehouse },
+        {
+          reserved: { increment: item.quantity },
+          available: { decrement: item.quantity },
+        }
+      )
+    }
+
+    // Create shipment
+    const shipment = await api.post('https://api.shippo.com/shipments', {
+      address_to: order.shippingAddress,
+      parcels: order.items.map(item => ({
+        length: 10,
+        width: 8,
+        height: 4,
+        weight: item.quantity,
+      })),
+    })
+
+    const trackingNumber = shipment.tracking_number
+
+    await db.orders.update(order.id, {
+      trackingNumber,
+      warehouseId: warehouse,
+    })
+
+    // Notify warehouse for fulfillment
+    await send.slack(`#warehouse-${warehouse}`, {
+      text: `🎯 New order ${order.id} ready for pick/pack`,
+      attachments: [
+        {
+          fields: [
+            { title: 'Items', value: order.items.length },
+            { title: 'Tracking', value: trackingNumber },
+            { title: 'Priority', value: 'Standard' },
+          ],
+        },
+      ],
+    })
+
+    // Send confirmation email
+    await send.email(order.customerId, 'Order Confirmed', {
+      orderId: order.id,
+      items: order.items,
+      total,
+      trackingNumber,
+      trackingUrl: `https://track.shippo.com/${trackingNumber}`,
+    })
+
+    // Track analytics
+    await db.analytics.track({
+      event: 'order_completed',
+      userId: order.customerId,
+      properties: {
+        orderId: order.id,
+        total,
+        items: order.items.length,
+      },
+    })
+  })
+
+  on.order.shipped(async (order: Order) => {
+    await send.email(order.customerId, 'Your Order Has Shipped!', {
+      trackingNumber: order.trackingNumber,
+      estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+    })
+  })
+}
+```

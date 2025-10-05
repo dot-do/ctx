@@ -16,7 +16,8 @@
     "schema-validation"
   ],
   "dependencies": {
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "mdxe": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

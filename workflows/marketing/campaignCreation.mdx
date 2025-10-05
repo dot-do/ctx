@@ -1,0 +1,656 @@
+---
+$type: Workflow
+$id: workflow/campaigncreation
+id: campaign-creation
+name: Cold Email Campaign Creation
+description: End-to-end workflow for creating and launching a cold email campaign
+category: email
+status: active
+trigger: manual
+inputs:
+  - name: name
+    type: string
+    required: true
+    description: Campaign name
+  - name: domainId
+    type: string
+    required: true
+    description: Verified sending domain ID
+  - name: contactListId
+    type: string
+    required: false
+    description: Pre-existing contact list ID
+  - name: contactFilters
+    type: object
+    required: false
+    description: Dynamic contact filtering criteria
+  - name: sequences
+    type: array
+    required: true
+    description: Array of email sequence steps
+  - name: schedule
+    type: object
+    required: false
+    description: Sending schedule configuration
+  - name: abTests
+    type: array
+    required: false
+    description: A/B test configurations
+outputs:
+  - name: campaignId
+    type: string
+    description: Created campaign ID
+  - name: estimatedContacts
+    type: number
+    description: Number of contacts in campaign
+  - name: estimatedDuration
+    type: string
+    description: Estimated campaign completion time
+  - name: status
+    type: string
+    description: Campaign status
+estimatedDuration: 5-10 minutes
+---
+
+# Cold Email Campaign Creation Workflow
+
+This workflow guides you through creating a complete cold email campaign, from contact selection through sequence setup to campaign launch.
+
+## Overview
+
+**Purpose:** Create and launch a multi-step cold email campaign with personalization, tracking, and automated follow-ups.
+
+**When to use:**
+- Launching new outbound campaign
+- Running A/B tests on messaging
+- Following up with prospects
+- Re-engaging cold leads
+- Testing new value propositions
+
+**Prerequisites:**
+- Verified email domain (see [Domain Onboarding](domain-onboarding.mdx))
+- Domain warmup in progress or completed
+- Contact list or filtering criteria
+- Email templates prepared
+- Unsubscribe page live
+
+## Workflow Steps
+
+### Step 1: Validate Domain
+
+**Service:** `db`
+**Action:** Verify domain is ready for sending
+
+```typescript
+const domain = await env.DB.execute(
+  `SELECT * FROM email_domains WHERE id = ?`,
+  [input.domainId]
+)
+
+if (!domain.rows.length) {
+  throw new Error('Domain not found')
+}
+
+const domainData = domain.rows[0]
+
+// Check domain status
+if (domainData.status !== 'verified') {
+  throw new Error(`Domain status is ${domainData.status}, must be 'verified'`)
+}
+
+// Check warmup status
+if (domainData.warmup_status === 'not_started') {
+  throw new Error('Domain warmup not started. Start warmup first.')
+}
+
+// Get current warmup limits
+const warmup = await env.DB.execute(
+  `SELECT daily_limit FROM warmup_schedule
+   WHERE domain_id = ? AND day = ?`,
+  [input.domainId, domainData.warmup_current_day]
+)
+
+const dailyLimit = warmup.rows[0]?.daily_limit || domainData.daily_limit
+```
+
+**Validation Checks:**
+- ✅ Domain exists
+- ✅ Domain is verified
+- ✅ DNS records configured
+- ✅ Warmup started or completed
+- ✅ Daily sending limit available
+
+### Step 2: Select or Filter Contacts
+
+**Service:** `db`
+**Action:** Build contact list based on criteria
+
+```typescript
+let contactIds: string[] = []
+
+if (input.contactListId) {
+  // Use pre-existing contact list
+  const listContacts = await env.DB.execute(
+    `SELECT contact_id FROM contact_list_members
+     WHERE list_id = ? AND status = 'active'`,
+    [input.contactListId]
+  )
+  contactIds = listContacts.rows.map((row: any) => row.contact_id)
+} else if (input.contactFilters) {
+  // Build dynamic query from filters
+  let query = 'SELECT id FROM email_contacts WHERE 1=1'
+  const params: any[] = []
+
+  if (input.contactFilters.tags) {
+    query += ' AND tags && ?'
+    params.push(JSON.stringify(input.contactFilters.tags))
+  }
+
+  if (input.contactFilters.validationScore) {
+    query += ' AND validation_score BETWEEN ? AND ?'
+    params.push(
+      input.contactFilters.validationScore.min || 0,
+      input.contactFilters.validationScore.max || 100
+    )
+  }
+
+  if (input.contactFilters.engagementScore) {
+    query += ' AND engagement_score BETWEEN ? AND ?'
+    params.push(
+      input.contactFilters.engagementScore.min || 0,
+      input.contactFilters.engagementScore.max || 100
+    )
+  }
+
+  if (input.contactFilters.company?.industry) {
+    query += ' AND company_industry = ?'
+    params.push(input.contactFilters.company.industry)
+  }
+
+  // Exclude unsubscribed and bounced
+  query += ' AND status NOT IN (\'unsubscribed\', \'bounced\')'
+
+  const result = await env.DB.execute(query, params)
+  contactIds = result.rows.map((row: any) => row.id)
+}
+
+// Remove contacts already in active campaigns
+const activeContacts = await env.DB.execute(
+  `SELECT DISTINCT contact_id FROM campaign_contact_progress
+   WHERE status IN ('pending', 'sent', 'opened', 'clicked')`
+)
+
+const activeContactIds = new Set(activeContacts.rows.map((row: any) => row.contact_id))
+contactIds = contactIds.filter(id => !activeContactIds.has(id))
+```
+
+**Contact Selection Criteria:**
+- ✅ Valid email address
+- ✅ Validation score > 70
+- ✅ Not unsubscribed
+- ✅ Not bounced
+- ✅ Not in active campaign
+- ✅ Matches filter criteria
+
+**Output:** `contactIds` array
+
+### Step 3: Validate and Enrich Sequences
+
+**Service:** `email`
+**Action:** Validate templates and extract variables
+
+```typescript
+const validatedSequences = []
+
+for (const sequence of input.sequences) {
+  // Extract variables from templates
+  const variables = await env.EMAIL.extractTemplateVariables(
+    sequence.subject + ' ' + sequence.html
+  )
+
+  // Ensure all required variables can be populated
+  const sampleContact = await env.DB.execute(
+    `SELECT * FROM email_contacts WHERE id = ? LIMIT 1`,
+    [contactIds[0]]
+  )
+
+  const validation = await env.EMAIL.validateTemplateVariables(
+    sequence.subject + ' ' + sequence.html,
+    {
+      firstName: sampleContact.rows[0].first_name,
+      lastName: sampleContact.rows[0].last_name,
+      email: sampleContact.rows[0].email,
+      company: sampleContact.rows[0].company_name
+    }
+  )
+
+  if (!validation.valid) {
+    throw new Error(
+      `Sequence ${sequence.order + 1} has missing variables: ${validation.missing.join(', ')}`
+    )
+  }
+
+  validatedSequences.push({
+    id: ulid(),
+    ...sequence,
+    variables: variables
+  })
+}
+```
+
+**Validation Checks:**
+- ✅ Subject line not empty
+- ✅ HTML content not empty
+- ✅ All template variables can be populated
+- ✅ No broken HTML tags
+- ✅ Links are valid URLs
+- ✅ Delay times are reasonable (0-168 hours)
+
+### Step 4: Calculate Campaign Metrics
+
+**Action:** Estimate campaign reach and duration
+
+```typescript
+const estimatedContacts = contactIds.length
+const sequenceCount = validatedSequences.length
+
+// Calculate estimated duration based on:
+// - Number of contacts
+// - Number of sequences
+// - Daily sending limits
+// - Sequence delays
+
+const totalEmails = estimatedContacts * sequenceCount
+const averageDelayHours = validatedSequences.reduce((sum, s) => sum + s.delay, 0) / sequenceCount
+const totalDaysNeeded = Math.ceil(totalEmails / dailyLimit)
+const sequenceDurationDays = Math.ceil(averageDelayHours / 24)
+
+const estimatedDuration = {
+  totalEmails: totalEmails,
+  contactCount: estimatedContacts,
+  sequenceSteps: sequenceCount,
+  dailyLimit: dailyLimit,
+  estimatedDays: Math.max(totalDaysNeeded, sequenceDurationDays),
+  completionDate: new Date(Date.now() + Math.max(totalDaysNeeded, sequenceDurationDays) * 24 * 60 * 60 * 1000).toISOString()
+}
+```
+
+**Metrics Calculated:**
+- Total emails to send
+- Average emails per day
+- Estimated completion date
+- Expected response rate (based on historical)
+- Cost estimate (if using paid ESP)
+
+### Step 5: Create Campaign
+
+**Service:** `email-campaigns`
+**Action:** Create campaign record
+
+```typescript
+const campaign = await env.EMAIL_CAMPAIGNS.createCampaign({
+  config: {
+    name: input.name,
+    domainId: input.domainId,
+    sequences: validatedSequences,
+    targeting: {
+      contactIds: contactIds,
+      maxContacts: contactIds.length
+    },
+    schedule: input.schedule || {
+      sendingWindow: {
+        days: [1, 2, 3, 4, 5], // Monday-Friday
+        startHour: 9,
+        endHour: 17
+      },
+      throttle: {
+        perHour: Math.ceil(dailyLimit / 8),
+        perDay: dailyLimit
+      },
+      timezone: 'America/New_York'
+    },
+    unsubscribeUrl: `https://coldoutreach.do/unsubscribe`,
+    metadata: {
+      estimatedDuration: estimatedDuration,
+      createdBy: 'workflow:campaign-creation'
+    }
+  }
+})
+```
+
+**Campaign Configuration:**
+- Multi-step sequence
+- Sending window (business hours)
+- Rate limiting (respect warmup)
+- Tracking enabled
+- Unsubscribe link included
+
+**Output:** `campaignId`
+
+### Step 6: Initialize Contact Progress
+
+**Service:** `db`
+**Action:** Create progress records for all contacts
+
+```typescript
+// Batch insert for performance
+const batchSize = 1000
+for (let i = 0; i < contactIds.length; i += batchSize) {
+  const batch = contactIds.slice(i, i + batchSize)
+
+  const values = batch.map(contactId =>
+    `('${ulid()}', '${campaign.id}', '${contactId}', 0, 'pending', 0, 0, 0, 0, '${new Date().toISOString()}')`
+  ).join(',')
+
+  await env.DB.execute(
+    `INSERT INTO campaign_contact_progress (
+      id, campaign_id, contact_id, current_step, status,
+      sent_count, opened_count, clicked_count, replied_count, created_at
+    ) VALUES ${values}`
+  )
+}
+```
+
+**Progress Tracking:**
+- One record per contact
+- Tracks current sequence step
+- Counts sends, opens, clicks, replies
+- Timestamps for each event
+
+### Step 7: Set Up A/B Tests (Optional)
+
+**Service:** `email-campaigns`
+**Action:** Configure A/B test variants
+
+```typescript
+if (input.abTests && input.abTests.length > 0) {
+  for (const test of input.abTests) {
+    // Validate test configuration
+    if (test.variants.length < 2) {
+      throw new Error('A/B test must have at least 2 variants')
+    }
+
+    const totalWeight = test.variants.reduce((sum, v) => sum + v.weight, 0)
+    if (totalWeight !== 100) {
+      throw new Error('A/B test variant weights must sum to 100')
+    }
+
+    // Split contacts into test groups
+    const sampleSize = Math.min(test.sampleSize, Math.floor(contactIds.length / test.variants.length))
+
+    for (let i = 0; i < test.variants.length; i++) {
+      const variantContacts = contactIds.slice(
+        i * sampleSize,
+        (i + 1) * sampleSize
+      )
+
+      await env.DB.execute(
+        `INSERT INTO ab_test_assignments (
+          id, campaign_id, test_id, variant_id, contact_ids, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          ulid(),
+          campaign.id,
+          test.id,
+          test.variants[i].id,
+          JSON.stringify(variantContacts),
+          new Date().toISOString()
+        ]
+      )
+    }
+  }
+}
+```
+
+**A/B Test Setup:**
+- Split contacts evenly across variants
+- Track performance separately
+- Automatic winner selection after sample size reached
+- Apply winner to remaining contacts
+
+### Step 8: Schedule Campaign Start
+
+**Service:** `email-campaigns`
+**Action:** Start campaign or schedule for later
+
+```typescript
+const startTime = input.schedule?.startAt || new Date().toISOString()
+
+if (new Date(startTime) > new Date()) {
+  // Schedule for future
+  await env.EMAIL_CAMPAIGNS.startCampaign({
+    id: campaign.id,
+    startAt: startTime
+  })
+} else {
+  // Start immediately
+  await env.EMAIL_CAMPAIGNS.startCampaign({
+    id: campaign.id
+  })
+
+  // Queue first batch for processing
+  await env.CAMPAIGN_QUEUE.send({
+    type: 'process_campaign',
+    campaignId: campaign.id
+  })
+}
+```
+
+**Start Options:**
+- Immediate start
+- Scheduled start (future date/time)
+- Manual start (requires approval)
+
+### Step 9: Enable Monitoring & Alerts
+
+**Service:** `db`
+**Action:** Configure campaign monitoring
+
+```typescript
+await env.DB.execute(
+  `INSERT INTO campaign_monitoring (
+    id, campaign_id, enabled, alert_rules, created_at
+  ) VALUES (?, ?, ?, ?, ?)`,
+  [
+    ulid(),
+    campaign.id,
+    true,
+    JSON.stringify({
+      highBounceRate: { threshold: 0.05, action: 'pause_campaign' },
+      highComplaintRate: { threshold: 0.001, action: 'pause_campaign' },
+      lowOpenRate: { threshold: 0.10, action: 'notify' },
+      highUnsubscribeRate: { threshold: 0.02, action: 'notify' }
+    }),
+    new Date().toISOString()
+  ]
+)
+```
+
+**Automated Alerts:**
+- 🚨 Bounce rate > 5% → Pause campaign
+- 🚨 Complaint rate > 0.1% → Pause campaign
+- ⚠️ Open rate < 10% → Notify
+- ⚠️ Unsubscribe rate > 2% → Notify
+- 📊 Daily stats summary → Email
+- ✅ Campaign completed → Email
+
+## Success Criteria
+
+**Campaign is ready when:**
+- ✅ Domain validated and active
+- ✅ Contacts selected and validated
+- ✅ Sequences validated
+- ✅ Campaign created successfully
+- ✅ Progress tracking initialized
+- ✅ Monitoring configured
+- ✅ Campaign status = 'scheduled' or 'active'
+
+## Error Handling
+
+### Domain Not Ready
+**Cause:** Domain not verified or warmup not started
+**Resolution:**
+- Complete [Domain Onboarding](domain-onboarding.mdx)
+- Start domain warmup
+- Wait until warmup reaches day 7+ before high volume
+
+### Insufficient Contacts
+**Cause:** Contact filters return < 10 contacts
+**Resolution:**
+- Broaden filter criteria
+- Import more contacts
+- Verify contact list is correct
+
+### Template Variable Missing
+**Cause:** Template uses {{variable}} but contact data doesn't have it
+**Resolution:**
+- Update template to use available variables
+- Enrich contact data
+- Use fallback values
+
+### Daily Limit Exceeded
+**Cause:** Campaign would exceed daily sending limit
+**Resolution:**
+- Reduce contact list size
+- Extend campaign duration
+- Upgrade ESP plan for higher limits
+
+## Manual Intervention Points
+
+**User must:**
+1. Review and approve campaign configuration
+2. Confirm contact list is correct
+3. Approve sending schedule
+4. Verify unsubscribe link works
+5. Start campaign (if manual start)
+
+**Workflow will pause at:**
+- Campaign approval (if required)
+- A/B test review (if configured)
+- Scheduled start time (if future)
+
+## Best Practices
+
+### Sequence Design
+- **Step 1:** Value proposition (no ask)
+- **Step 2:** Follow-up (3 days later)
+- **Step 3:** Social proof (3 days later)
+- **Step 4:** Breakup (7 days later)
+
+### Personalization
+- Use {{firstName}} in opening
+- Reference {{company.name}} or {{company.industry}}
+- Mention specific {{company.recentNews}} if available
+- Keep fallback values natural ("Hi there")
+
+### Timing
+- Send Monday-Friday only
+- 9 AM - 5 PM recipient timezone
+- Avoid Monday early AM and Friday late PM
+- Test different send times with A/B tests
+
+### Testing
+- Start with small test batch (50-100 contacts)
+- Monitor metrics for first 24 hours
+- Adjust messaging based on results
+- Scale up gradually
+
+## Related Workflows
+
+- [Domain Onboarding](domain-onboarding.mdx) - Set up sending domain
+- [Email Warming](email-warming.mdx) - Manage warmup process
+- [Lead Enrichment](lead-enrichment.mdx) - Enrich contact data
+
+## Related Services
+
+- [email-campaigns](../workers/email-campaigns) - Campaign management
+- [email-sender](../workers/email-sender) - Email sending with warmup
+- [email](../workers/email) - Cold email processing
+- [email-validation](../workers/email-validation) - Email validation
+
+## Related Schemas
+
+- [cold-email-campaign](../schemas/cold-email-campaign.mdx) - Campaign data model
+- [email-contact](../schemas/email-contact.mdx) - Contact data model
+- [email-domain](../schemas/email-domain.mdx) - Domain data model
+
+## Example Usage
+
+### Via HTTP API
+
+```bash
+POST https://api.services.do/workflows/campaign-creation
+Content-Type: application/json
+
+{
+  "name": "Q1 2025 Outbound - Tech Startups",
+  "domainId": "domain-abc123",
+  "contactFilters": {
+    "tags": ["tech-startup", "series-a"],
+    "validationScore": { "min": 80 },
+    "company": { "industry": "SaaS" }
+  },
+  "sequences": [
+    {
+      "order": 0,
+      "delay": 0,
+      "subject": "Quick question about {{company.name}}",
+      "html": "<p>Hi {{firstName}},</p><p>...</p>",
+      "trackOpens": true,
+      "trackClicks": true
+    },
+    {
+      "order": 1,
+      "delay": 72,
+      "subject": "Re: Quick question about {{company.name}}",
+      "html": "<p>Hi {{firstName}},</p><p>Following up...</p>",
+      "trackOpens": true,
+      "trackClicks": true
+    }
+  ],
+  "schedule": {
+    "sendingWindow": {
+      "days": [1, 2, 3, 4, 5],
+      "startHour": 9,
+      "endHour": 17
+    },
+    "timezone": "America/New_York"
+  }
+}
+```
+
+### Via UI (coldoutreach.do)
+
+1. Navigate to Campaigns → New Campaign
+2. Enter campaign name and select domain
+3. Choose contacts (list or filters)
+4. Design email sequences
+5. Configure schedule
+6. Review and approve
+7. Start campaign
+
+## Monitoring & Analytics
+
+**Real-Time Metrics:**
+- Emails sent today
+- Current send rate
+- Bounce rate
+- Complaint rate
+- Open rate
+- Click rate
+- Reply rate
+- Unsubscribe rate
+
+**Dashboard Views:**
+- Campaign overview
+- Sequence performance
+- Contact progress
+- A/B test results
+- Domain health
+- ESP quota usage
+
+**Automated Reports:**
+- Daily summary email
+- Weekly performance review
+- Campaign completion report
+- A/B test winner announcement

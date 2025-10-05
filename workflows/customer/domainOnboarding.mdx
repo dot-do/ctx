@@ -1,0 +1,488 @@
+---
+$type: Workflow
+$id: workflow/domainonboarding
+id: domain-onboarding
+name: Email Domain Onboarding
+description: Complete workflow for onboarding a new email sending domain
+category: email
+status: active
+trigger: manual
+inputs:
+  - name: domain
+    type: string
+    required: true
+    description: Domain name to onboard (e.g., mg.yourdomain.com)
+  - name: espProvider
+    type: string
+    required: true
+    enum: [mailgun, sendgrid, amazon-ses, resend]
+    description: Email service provider
+  - name: espCredentials
+    type: object
+    required: true
+    description: ESP API credentials
+  - name: warmupSchedule
+    type: string
+    required: false
+    default: standard
+    enum: [standard, aggressive, conservative]
+    description: IP warmup schedule type
+  - name: dailyLimit
+    type: number
+    required: false
+    default: 100
+    description: Initial daily sending limit
+outputs:
+  - name: domainId
+    type: string
+    description: Created domain ID
+  - name: verificationStatus
+    type: string
+    description: Domain verification status
+  - name: dnsRecords
+    type: array
+    description: DNS records to add
+  - name: warmupStatus
+    type: object
+    description: Warmup schedule status
+estimatedDuration: 15 minutes (excluding DNS propagation)
+---
+
+# Email Domain Onboarding Workflow
+
+This workflow automates the complete process of onboarding a new email sending domain, from initial setup through DNS verification to warmup activation.
+
+## Overview
+
+**Purpose:** Set up a new domain for cold email sending with proper authentication, warmup schedule, and monitoring.
+
+**When to use:**
+- Adding a new sending domain to coldoutreach.do
+- Migrating from another ESP
+- Setting up domain after DNS purchase
+- Creating isolated domain for specific campaigns
+
+**Prerequisites:**
+- Domain registered and accessible
+- DNS management access
+- ESP account credentials
+- Access to coldoutreach.do
+
+## Workflow Steps
+
+### Step 1: Create Domain Record
+
+**Service:** `db`
+**Action:** Insert email domain record
+
+```typescript
+const domainId = ulid()
+
+await env.DB.execute(
+  `INSERT INTO email_domains (
+    id, domain, esp_provider, status,
+    warmup_status, daily_limit, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  [
+    domainId,
+    input.domain,
+    input.espProvider,
+    'pending_verification',
+    'not_started',
+    input.dailyLimit,
+    new Date().toISOString()
+  ]
+)
+```
+
+**Output:** `domainId`
+
+### Step 2: Generate DNS Records
+
+**Service:** `dns-tools`
+**Action:** Generate SPF, DKIM, and DMARC records
+
+```typescript
+const dnsRecords = await env.DNS_TOOLS.generateEmailDNS({
+  domain: input.domain,
+  espProvider: input.espProvider,
+  enableDMARC: true,
+  dmarcPolicy: 'quarantine',
+  reportingEmail: `dmarc@${input.domain}`
+})
+```
+
+**Generated Records:**
+- SPF TXT record
+- DKIM TXT record(s)
+- DMARC TXT record
+- ESP-specific CNAME records
+
+**Output:** `dnsRecords` array
+
+### Step 3: Store ESP Credentials
+
+**Service:** `db`
+**Action:** Securely store ESP API credentials
+
+```typescript
+await env.DB.execute(
+  `INSERT INTO esp_credentials (
+    id, domain_id, provider, credentials, created_at
+  ) VALUES (?, ?, ?, ?, ?)`,
+  [
+    ulid(),
+    domainId,
+    input.espProvider,
+    JSON.stringify(input.espCredentials),
+    new Date().toISOString()
+  ]
+)
+```
+
+**Security:** Credentials are encrypted at rest in database
+
+### Step 4: Wait for DNS Verification
+
+**Service:** `dns-tools`
+**Action:** Poll DNS records until verified
+
+```typescript
+const maxAttempts = 30 // 30 attempts over ~15 minutes
+const delayMs = 30000 // 30 seconds between attempts
+
+for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  const verification = await env.DNS_TOOLS.verifyEmailDNS({
+    domain: input.domain,
+    expectedRecords: dnsRecords
+  })
+
+  if (verification.verified) {
+    await env.DB.execute(
+      `UPDATE email_domains SET
+        status = ?,
+        verified_at = ?,
+        spf_verified = ?,
+        dkim_verified = ?,
+        dmarc_verified = ?
+      WHERE id = ?`,
+      [
+        'verified',
+        new Date().toISOString(),
+        verification.spf,
+        verification.dkim,
+        verification.dmarc,
+        domainId
+      ]
+    )
+    break
+  }
+
+  if (attempt < maxAttempts) {
+    await sleep(delayMs)
+  }
+}
+```
+
+**Verification Checks:**
+- ✅ SPF record present and valid
+- ✅ DKIM record(s) present and valid
+- ✅ DMARC record present and policy set
+- ✅ ESP-specific records configured
+
+**Timeout:** 15 minutes (DNS propagation can take up to 48 hours, but typically < 15 min)
+
+### Step 5: Initialize ESP Configuration
+
+**Service:** `esp-gateway`
+**Action:** Configure domain in ESP
+
+```typescript
+await env.ESP_GATEWAY.configureDomain({
+  provider: input.espProvider,
+  domain: input.domain,
+  credentials: input.espCredentials,
+  options: {
+    trackingDomain: `track.${input.domain}`,
+    enableTracking: true,
+    enableWebhooks: true,
+    webhookUrl: 'https://api.services.do/webhooks/' + input.espProvider
+  }
+})
+```
+
+**ESP-Specific Configuration:**
+- **Mailgun:** Create routes, webhooks, tracking domain
+- **SendGrid:** Set up domain authentication, link branding, event webhook
+- **Amazon SES:** Verify domain identity, create configuration set, enable notifications
+- **Resend:** Verify domain, configure webhook endpoint
+
+### Step 6: Create Warmup Schedule
+
+**Service:** `db`
+**Action:** Generate 30-day warmup schedule
+
+```typescript
+const warmupSchedules = {
+  conservative: [50, 100, 150, 200, 300, ...], // 6-8 weeks
+  standard: [50, 100, 200, 500, 1000, ...],     // 4 weeks
+  aggressive: [100, 500, 1000, 2000, 5000, ...] // 2 weeks
+}
+
+const schedule = warmupSchedules[input.warmupSchedule || 'standard']
+
+for (let day = 0; day < schedule.length; day++) {
+  await env.DB.execute(
+    `INSERT INTO warmup_schedule (
+      id, domain_id, day, daily_limit, created_at
+    ) VALUES (?, ?, ?, ?, ?)`,
+    [ulid(), domainId, day + 1, schedule[day], new Date().toISOString()]
+  )
+}
+
+await env.DB.execute(
+  `UPDATE email_domains SET
+    warmup_status = ?,
+    warmup_started_at = ?
+  WHERE id = ?`,
+  ['in_progress', new Date().toISOString(), domainId]
+)
+```
+
+**Warmup Schedules:**
+
+| Schedule | Duration | Starting Volume | Peak Volume |
+|----------|----------|-----------------|-------------|
+| Conservative | 6-8 weeks | 50/day | 10,000/day |
+| Standard | 4 weeks | 50/day | 50,000/day |
+| Aggressive | 2 weeks | 100/day | 100,000/day |
+
+### Step 7: Configure Monitoring
+
+**Service:** `domain-monitor`
+**Action:** Enable reputation and blacklist monitoring
+
+```typescript
+await env.DOMAIN_MONITOR.addDomain({
+  domainId: domainId,
+  domain: input.domain,
+  monitoring: {
+    blacklists: true, // Check 50+ blacklists daily
+    reputation: true, // Track sender score
+    deliverability: true, // Monitor bounce/complaint rates
+    alerts: {
+      email: `alerts@${input.domain}`,
+      blacklistDetection: true,
+      reputationDrop: true,
+      highBounceRate: true,
+      highComplaintRate: true
+    }
+  }
+})
+```
+
+**Monitoring Includes:**
+- 50+ blacklist checks daily
+- Sender reputation score tracking
+- Bounce rate monitoring (alert if > 5%)
+- Complaint rate monitoring (alert if > 0.1%)
+- DNS record health checks
+- ESP quota monitoring
+
+### Step 8: Create Test Campaign (Optional)
+
+**Service:** `email-campaigns`
+**Action:** Send test emails to verify setup
+
+```typescript
+const testCampaign = await env.EMAIL_CAMPAIGNS.createCampaign({
+  config: {
+    name: `${input.domain} - Setup Test`,
+    domainId: domainId,
+    sequences: [{
+      id: ulid(),
+      order: 0,
+      delay: 0,
+      subject: 'Test Email from ' + input.domain,
+      html: '<p>This is a test email to verify domain setup.</p>',
+      trackOpens: true,
+      trackClicks: false
+    }],
+    targeting: {
+      contactIds: ['test-contact-id'] // Internal test contact
+    }
+  }
+})
+
+await env.EMAIL_CAMPAIGNS.startCampaign({ id: testCampaign.id })
+```
+
+**Test Checklist:**
+- ✅ Email delivers successfully
+- ✅ SPF passes (check headers)
+- ✅ DKIM passes (check headers)
+- ✅ DMARC alignment passes
+- ✅ No spam folder delivery
+- ✅ Links track correctly
+- ✅ Unsubscribe link works
+
+## Success Criteria
+
+**Domain is ready when:**
+- ✅ All DNS records verified
+- ✅ ESP configuration complete
+- ✅ Warmup schedule active
+- ✅ Monitoring enabled
+- ✅ Test email delivered successfully
+- ✅ No blacklist flags
+- ✅ Domain status = 'verified'
+- ✅ Warmup status = 'in_progress'
+
+## Error Handling
+
+### DNS Verification Timeout
+**Cause:** DNS records not propagated after 15 minutes
+**Resolution:**
+- Check nameserver configuration
+- Verify DNS records added correctly
+- Wait up to 48 hours for full propagation
+- Manually trigger verification: `/domain/{domainId}/verify`
+
+### ESP Configuration Failure
+**Cause:** Invalid credentials or ESP API error
+**Resolution:**
+- Verify API credentials are correct
+- Check ESP account is active
+- Ensure sufficient ESP quota
+- Review ESP-specific requirements
+
+### Warmup Schedule Conflicts
+**Cause:** Domain already has active warmup
+**Resolution:**
+- Pause existing warmup
+- Reset warmup to day 1
+- Or continue from current day
+
+## Manual Intervention Points
+
+**User must:**
+1. Add DNS records to domain registrar/DNS host
+2. Wait for DNS propagation (typically 5-15 minutes)
+3. Confirm test email delivery
+4. Approve warmup schedule start
+
+**Workflow will pause at:**
+- DNS verification (step 4) - waits for propagation
+- Test campaign (step 8) - optional, requires approval
+
+## Related Workflows
+
+- [Campaign Creation](campaign-creation.mdx) - Create cold email campaign
+- [Email Warming](email-warming.mdx) - Manage warmup process
+- [Deliverability Monitoring](deliverability-monitoring.mdx) - Track domain health
+
+## Related Services
+
+- [dns-tools](../workers/dns-tools) - DNS record generation and verification
+- [esp-gateway](../workers/esp-gateway) - ESP abstraction layer
+- [domain-monitor](../workers/domain-monitor) - Reputation and blacklist monitoring
+- [email-campaigns](../workers/email-campaigns) - Campaign management
+
+## Related Schemas
+
+- [email-domain](../schemas/email-domain.mdx) - Domain data model
+- [mailgun](../integrations/mailgun.mdx) - Mailgun integration
+- [sendgrid](../integrations/sendgrid.mdx) - SendGrid integration
+- [amazon-ses](../integrations/amazon-ses.mdx) - Amazon SES integration
+
+## Example Usage
+
+### Via HTTP API
+
+```bash
+POST https://api.services.do/workflows/domain-onboarding
+Content-Type: application/json
+
+{
+  "domain": "mg.mycompany.com",
+  "espProvider": "mailgun",
+  "espCredentials": {
+    "api_key": "key-xxxxx",
+    "domain": "mg.mycompany.com",
+    "region": "us"
+  },
+  "warmupSchedule": "standard",
+  "dailyLimit": 100
+}
+```
+
+### Via RPC (from another service)
+
+```typescript
+const result = await env.WORKFLOWS.execute({
+  workflow: 'domain-onboarding',
+  input: {
+    domain: 'mg.mycompany.com',
+    espProvider: 'mailgun',
+    espCredentials: { ... },
+    warmupSchedule: 'standard',
+    dailyLimit: 100
+  }
+})
+```
+
+### Via UI (coldoutreach.do)
+
+1. Navigate to Settings → Domains
+2. Click "Add Domain"
+3. Enter domain name and select ESP
+4. Add ESP API credentials
+5. Choose warmup schedule
+6. Click "Start Onboarding"
+7. Follow DNS setup instructions
+8. Wait for verification (usually < 15 min)
+9. Approve warmup schedule
+
+## Troubleshooting
+
+### Common Issues
+
+**"DNS records not found"**
+- Verify records added to correct domain
+- Check nameserver configuration
+- Allow 5-15 minutes for propagation
+
+**"ESP authentication failed"**
+- Verify API key is correct
+- Check ESP account is active
+- Ensure domain is verified in ESP dashboard
+
+**"Domain already exists"**
+- Domain was previously added
+- Check existing domain status
+- Delete old domain record if needed
+
+**"Warmup schedule already active"**
+- Domain has existing warmup
+- Pause current warmup to restart
+- Or continue from current day
+
+## Monitoring & Alerts
+
+**Automated Alerts:**
+- 📧 DNS verification complete
+- 📧 Domain onboarding complete
+- 📧 Warmup schedule started
+- ⚠️ DNS verification failed after 15 min
+- ⚠️ ESP configuration error
+- 🚨 Blacklist detection
+- 🚨 High bounce rate during warmup
+
+**Dashboard Metrics:**
+- Domain verification progress
+- DNS record status
+- Warmup day and daily limit
+- Emails sent today
+- Bounce rate
+- Complaint rate
+- Blacklist status

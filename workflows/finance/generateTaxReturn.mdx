@@ -1,0 +1,311 @@
+---
+$type: Workflow
+$id: workflow/generatetaxreturn
+title: generateTaxReturn
+name: generateTaxReturn
+description: Automated tax return preparation and filing
+
+trigger:
+  type: api
+  method: POST
+  path: /tax/generate-return
+
+input:
+  taxpayerId: Taxpayer identifier
+  taxYear: Tax year (YYYY format) (number)
+  filingStatus: Filing status (single, married-joint, married-separate, head-of-household)
+  returnType: Return type (federal, state, both)
+
+steps:
+  - name: gather-documents
+    description: Collect all tax documents
+    function: gather-tax-documents
+    input:
+      taxpayerId: ${input.taxpayerId}
+      taxYear: ${input.taxYear}
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+
+  - name: calculate-income
+    description: Calculate total income
+    agent: TaxAdvisor
+    input:
+      w2Forms: ${steps.gather-documents.output.w2Forms}
+      form1099s: ${steps.gather-documents.output.form1099s}
+      selfEmploymentIncome: ${steps.gather-documents.output.selfEmployment}
+
+  - name: calculate-deductions
+    description: Calculate deductions and credits
+    agent: TaxAdvisor
+    input:
+      standardDeduction: ${steps.calculate-income.output.standardDeduction}
+      itemizedExpenses: ${steps.gather-documents.output.itemizedExpenses}
+      taxCredits: ${steps.gather-documents.output.taxCredits}
+
+  - name: optimize-deductions
+    description: Find additional deduction opportunities
+    agent: TaxAdvisor
+    input:
+      income: ${steps.calculate-income.output.totalIncome}
+      expenses: ${steps.gather-documents.output.allExpenses}
+      situation: ${steps.gather-documents.output.taxpayerSituation}
+
+  - name: calculate-tax
+    description: Calculate tax liability
+    function: calculate-tax-liability
+    input:
+      income: ${steps.calculate-income.output.adjustedGrossIncome}
+      deductions: ${steps.calculate-deductions.output.totalDeductions}
+      credits: ${steps.calculate-deductions.output.totalCredits}
+      filingStatus: ${input.filingStatus}
+
+  - name: check-compliance
+    description: Verify compliance with tax law
+    function: check-tax-compliance
+    input:
+      return: ${steps.calculate-tax.output}
+      documents: ${steps.gather-documents.output}
+
+  - name: generate-forms
+    description: Generate tax forms
+    function: generate-tax-forms
+    input:
+      federalReturn: ${input.returnType !== 'state'}
+      stateReturn: ${input.returnType !== 'federal'}
+      data: ${steps.calculate-tax.output}
+      state: ${steps.gather-documents.output.state}
+
+  - name: e-file
+    description: Electronically file return
+    condition: ${input.efile === true}
+    function: efile-return
+    input:
+      forms: ${steps.generate-forms.output.forms}
+      taxpayerId: ${input.taxpayerId}
+      pin: ${input.efilePin}
+
+  - name: track-refund
+    description: Set up refund tracking
+    condition: ${steps.calculate-tax.output.refundAmount > 0}
+    function: track-tax-refund
+    input:
+      returnId: ${steps.e-file.output.confirmationNumber}
+      taxpayerId: ${input.taxpayerId}
+      expectedRefund: ${steps.calculate-tax.output.refundAmount}
+
+output:
+  returnId: ${steps.e-file.output.confirmationNumber}
+  taxLiability: ${steps.calculate-tax.output.taxOwed}
+  refundAmount: ${steps.calculate-tax.output.refundAmount}
+  effectiveTaxRate: ${steps.calculate-tax.output.effectiveTaxRate}
+  filedAt: ${workflow.timestamp}
+  forms: ${steps.generate-forms.output.formPaths}
+
+timeout: 120000
+---
+
+# Generate Tax Return Workflow
+
+Automated tax return preparation from document gathering through e-filing.
+
+## Flow
+
+```
+Gather Documents (W-2s, 1099s, expenses)
+  ↓
+Calculate Income (wages, self-employment, investment)
+  ↓
+Calculate Deductions (standard vs itemized)
+  ↓
+Optimize Deductions (find additional opportunities)
+  ↓
+Calculate Tax Liability
+  ↓
+Check Compliance
+  ↓
+Generate Forms (1040, schedules, state forms)
+  ↓
+E-File (if opted in)
+  ↓
+Track Refund (if applicable)
+  ↓
+Complete! 💰
+```
+
+## Document Collection
+
+### Required Documents
+
+**Income:**
+- Form W-2 (wages)
+- Form 1099-INT (interest income)
+- Form 1099-DIV (dividends)
+- Form 1099-NEC (self-employment)
+- Form 1099-G (unemployment, state refunds)
+
+**Deductions:**
+- Mortgage interest (Form 1098)
+- Property taxes
+- Charitable contributions
+- Medical expenses
+- Business expenses
+
+**Credits:**
+- Child care expenses
+- Education expenses (Form 1098-T)
+- Energy efficiency improvements
+- Earned Income Credit documentation
+
+### Document Sources
+
+- Employer payroll systems
+- Bank statements
+- Brokerage statements
+- Receipt scanning/OCR
+- Prior year returns
+
+## Deduction Optimization
+
+### Standard vs Itemized
+
+Automatically compares:
+- Standard deduction for filing status
+- Total itemized deductions
+- Recommends higher amount
+
+### Common Deductions
+
+- **Home Office:** Square footage × $5/sq ft (up to 300 sq ft)
+- **Mileage:** Business miles × $0.655/mile (2023 rate)
+- **Charitable:** Cash + fair market value of donations
+- **State/Local Taxes:** Up to $10,000 cap
+- **Medical:** Expenses exceeding 7.5% of AGI
+
+### Tax Credits
+
+- Child Tax Credit: $2,000 per child under 17
+- Earned Income Credit: Based on income and family size
+- Education Credits: American Opportunity ($2,500) or Lifetime Learning ($2,000)
+- Energy Credits: Solar, EV, home efficiency
+
+## Tax Calculation
+
+### Income Types
+
+- **Ordinary Income:** Wages, interest, short-term gains (marginal rates)
+- **Qualified Dividends:** Long-term capital gains rates (0%, 15%, 20%)
+- **Self-Employment:** Additional 15.3% self-employment tax
+
+### Tax Brackets (2023)
+
+**Single:**
+- 10%: $0 - $11,000
+- 12%: $11,001 - $44,725
+- 22%: $44,726 - $95,375
+- 24%: $95,376 - $182,100
+
+**Married Filing Jointly:**
+- 10%: $0 - $22,000
+- 12%: $22,001 - $89,075
+- 22%: $89,076 - $190,750
+- 24%: $190,751 - $364,200
+
+## Compliance Checking
+
+### Red Flags
+
+- Unusually high deductions for income level
+- Suspicious charitable contributions
+- Missing required schedules
+- Math errors
+- Incomplete forms
+
+### Verification
+
+- Cross-reference all forms
+- Validate Social Security numbers
+- Check dependent eligibility
+- Verify withholding calculations
+
+## E-Filing
+
+### Benefits
+
+- Faster refunds (21 days vs 6-8 weeks)
+- Immediate confirmation
+- Error checking
+- Direct deposit
+- IRS acknowledgement
+
+### Requirements
+
+- Valid email address
+- Prior year AGI (identity verification)
+- E-file PIN or signature
+- Bank account for direct deposit
+
+## Refund Tracking
+
+### Timeline
+
+- **Accepted:** Within 24 hours
+- **Processing:** 1-3 weeks
+- **Refund Issued:** 21 days average
+- **Deposit:** 3-5 business days
+
+### Status Checks
+
+- IRS "Where's My Refund" tool
+- Email notifications
+- SMS updates
+
+## Example Request
+
+```yaml
+POST /tax/generate-return
+taxpayerId: TP-12345
+taxYear: 2023
+filingStatus: married-joint
+returnType: both
+efile: true
+```
+
+## Example Response
+
+```yaml
+returnId: ER-2023-98765
+taxLiability: 18500  # $185.00
+refundAmount: 2500   # $25.00
+effectiveTaxRate: 12.5  # 12.5%
+filedAt: 2024-04-10T14:30:00Z
+forms:
+  - /forms/2023/1040.pdf
+  - /forms/2023/Schedule-A.pdf
+  - /forms/2023/State-540.pdf
+```
+
+## Related
+
+- [[../agents/TaxAdvisor|Tax Advisor Agent]]
+- [[prepareAudit|Prepare Audit Workflow]]
+- [[../functions/calculateROI|Calculate ROI Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface TaxReturn { id: string; clientId: string; year: number; income: number; deductions: number[]; status: 'draft' | 'filed' }
+
+export const generateTaxReturn: BusinessModule = $ => {
+  const { db, ai, send, on } = $
+
+  on.taxReturn.requested(async (taxReturn: TaxReturn) => {
+    const calculations = await ai.generate({ prompt: `Calculate tax for: Income $${taxReturn.income}, Deductions: ${taxReturn.deductions.join(', ')}. Year: ${taxReturn.year}`, format: 'json' })
+
+    await db.taxReturns.update(taxReturn.id, { calculations, status: 'draft' })
+    await send.email(taxReturn.clientId, 'Tax Return Ready for Review', { calculations })
+  })
+}
+```

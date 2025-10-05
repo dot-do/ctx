@@ -1,0 +1,520 @@
+---
+$type: Workflow
+$id: workflow/deliverabilitymonitoring
+id: deliverability-monitoring
+name: Deliverability Monitoring
+description: Continuous monitoring of email deliverability, reputation, and blacklist status with automated alerts
+category: email
+status: active
+trigger: scheduled
+schedule: "0 * * * *" # Every hour
+inputs:
+  - name: domains
+    type: array
+    required: false
+    description: Specific domain IDs to monitor (empty = all active domains)
+  - name: alertOnWarning
+    type: boolean
+    required: false
+    default: false
+    description: Send alerts for warning-level issues (not just critical)
+  - name: alertChannels
+    type: array
+    required: false
+    default: [slack]
+    enum: [slack, email, webhook]
+    description: Alert delivery channels
+outputs:
+  - name: domainsChecked
+    type: number
+    description: Number of domains checked
+  - name: criticalIssues
+    type: number
+    description: Number of critical issues found
+  - name: warningIssues
+    type: number
+    description: Number of warning issues found
+  - name: alertsSent
+    type: number
+    description: Number of alerts sent
+estimatedDuration: 2-5 minutes per hour
+---
+
+# Deliverability Monitoring Workflow
+
+Automated hourly workflow that monitors email deliverability metrics, sender reputation, and blacklist status across all active sending domains.
+
+## Overview
+
+**Purpose:** Proactively detect and alert on deliverability issues before they impact campaign performance.
+
+**What gets monitored:**
+- Delivery, bounce, and complaint rates
+- Sender reputation scores
+- DNS authentication status (SPF/DKIM/DMARC)
+- Blacklist listings (15+ major DNSBLs)
+- Warmup progress and adherence
+- ISP-specific metrics
+- Engagement trends
+
+**Alert triggers:**
+- Critical: Immediate action required
+- Warning: Should be addressed soon
+- Info: FYI, no action needed
+
+## Workflow Steps
+
+### Step 1: Get Active Domains
+
+**Service:** `db`
+**Action:** Query active email domains
+
+```typescript
+const domains = input.domains?.length
+  ? await env.DB.execute(
+      `SELECT * FROM email_domains WHERE id IN (?)`,
+      [input.domains]
+    )
+  : await env.DB.execute(
+      `SELECT * FROM email_domains
+       WHERE status = 'active'
+       AND monitoring_enabled = 1`
+    )
+
+console.log(`Found ${domains.rows.length} domains to monitor`)
+```
+
+**Criteria for monitoring:**
+- Domain status = 'active'
+- Monitoring enabled
+- Has sent emails in last 7 days (or in warmup)
+
+### Step 2: Check Deliverability Metrics
+
+**Service:** `deliverability`
+**Action:** Get hourly metrics
+
+```typescript
+for (const domain of domains.rows) {
+  const metrics = await env.DELIVERABILITY.getMetrics({
+    domainId: domain.id,
+    period: 'hour' // Last hour
+  })
+
+  // Store metrics
+  await env.DB.execute(
+    `INSERT INTO deliverability_metrics
+     (domain_id, timestamp, sent, delivered, bounced, complained,
+      delivery_rate, bounce_rate, complaint_rate, open_rate, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      domain.id,
+      new Date().toISOString(),
+      metrics.sent,
+      metrics.delivered,
+      metrics.bounced,
+      metrics.complained,
+      metrics.deliveryRate,
+      metrics.bounceRate,
+      metrics.complaintRate,
+      metrics.openRate,
+      metrics.status
+    ]
+  )
+
+  // Check for critical issues
+  if (metrics.status === 'critical') {
+    await createAlert({
+      severity: 'critical',
+      domainId: domain.id,
+      category: 'deliverability_metrics',
+      message: `Critical deliverability issues detected`,
+      issues: metrics.issues
+    })
+  }
+}
+```
+
+**Thresholds:**
+- **Critical**: bounce >10%, complaint >0.5%, delivery <85%
+- **Warning**: bounce >5%, complaint >0.1%, delivery <95%
+- **Good**: bounce <2%, complaint <0.05%, delivery >98%
+
+### Step 3: Check Sender Reputation
+
+**Service:** `deliverability`
+**Action:** Get reputation status
+
+```typescript
+for (const domain of domains.rows) {
+  const reputation = await env.DELIVERABILITY.getReputation({
+    domainId: domain.id,
+    refresh: false // Use cache if recent
+  })
+
+  // Check sender score
+  if (reputation.senderScore < 70) {
+    await createAlert({
+      severity: reputation.senderScore < 50 ? 'critical' : 'warning',
+      domainId: domain.id,
+      category: 'sender_score',
+      message: `Sender score low: ${reputation.senderScore}/100`,
+      recommendation: 'Review DNS auth, warmup status, and sending practices'
+    })
+  }
+
+  // Check DNS authentication
+  if (reputation.spfStatus !== 'pass') {
+    await createAlert({
+      severity: 'warning',
+      domainId: domain.id,
+      category: 'dns_auth',
+      message: `SPF not passing: ${reputation.spfStatus}`,
+      recommendation: 'Verify SPF record in DNS'
+    })
+  }
+
+  if (reputation.dkimStatus !== 'pass') {
+    await createAlert({
+      severity: 'warning',
+      domainId: domain.id,
+      category: 'dns_auth',
+      message: `DKIM not passing: ${reputation.dkimStatus}`,
+      recommendation: 'Verify DKIM keys in DNS'
+    })
+  }
+
+  if (reputation.dmarcStatus !== 'pass') {
+    await createAlert({
+      severity: 'warning',
+      domainId: domain.id,
+      category: 'dns_auth',
+      message: `DMARC not passing: ${reputation.dmarcStatus}`,
+      recommendation: 'Add DMARC policy record'
+    })
+  }
+}
+```
+
+**Reputation factors:**
+- Sender score (0-100)
+- IP reputation
+- Domain age and history
+- DNS authentication
+- Engagement rates
+
+### Step 4: Check Blacklists
+
+**Service:** `blacklist-monitor`
+**Action:** Check major DNSBLs
+
+```typescript
+for (const domain of domains.rows) {
+  // Check domain and IP blacklists
+  const blacklistResult = await env.BLACKLIST_MONITOR.checkBlacklists({
+    domain: domain.domain,
+    checkAll: false // High-authority only
+  })
+
+  if (blacklistResult.listed) {
+    await createAlert({
+      severity: 'critical',
+      domainId: domain.id,
+      category: 'blacklist',
+      message: `Listed on ${blacklistResult.blacklistCount} blacklist(s)`,
+      blacklists: blacklistResult.blacklists,
+      recommendation: 'Request delisting and review sending practices immediately'
+    })
+
+    // Auto-pause domain sending if on high-authority blacklist
+    if (blacklistResult.severity === 'critical') {
+      await env.DB.execute(
+        `UPDATE email_domains SET status = 'paused', paused_reason = ? WHERE id = ?`,
+        [`Blacklisted: ${blacklistResult.blacklists.join(', ')}`, domain.id]
+      )
+    }
+  }
+}
+```
+
+**Blacklist providers checked:**
+- Spamhaus (ZEN, SBL, XBL, DBL)
+- Barracuda
+- SORBS, SpamCop
+- And 10+ others
+
+### Step 5: Check Warmup Progress
+
+**Service:** `email-warming`
+**Action:** Monitor warmup adherence
+
+```typescript
+const warmingDomains = await env.DB.execute(
+  `SELECT * FROM email_domains
+   WHERE warmup_status IN ('in_progress', 'paused')`
+)
+
+for (const domain of warmingDomains.rows) {
+  const warmupStats = await env.EMAIL_WARMING.getStats(domain.id)
+
+  // Check if warmup is falling behind
+  if (warmupStats.sentToday < warmupStats.dailyLimit * 0.5) {
+    await createAlert({
+      severity: 'info',
+      domainId: domain.id,
+      category: 'warmup_progress',
+      message: `Warmup behind schedule: ${warmupStats.sentToday}/${warmupStats.dailyLimit} sent`,
+      recommendation: 'Increase sending volume to meet daily targets'
+    })
+  }
+
+  // Check if warmup metrics are healthy
+  if (warmupStats.bounceRate > 0.05) {
+    await createAlert({
+      severity: 'warning',
+      domainId: domain.id,
+      category: 'warmup_metrics',
+      message: `Warmup bounce rate elevated: ${(warmupStats.bounceRate * 100).toFixed(2)}%`,
+      recommendation: 'Clean list and slow down warmup schedule'
+    })
+  }
+}
+```
+
+**Warmup monitoring:**
+- Daily volume targets
+- Bounce/complaint rates
+- Engagement levels
+- Schedule adherence
+
+### Step 6: Generate Deliverability Reports
+
+**Service:** `deliverability`
+**Action:** Create comprehensive reports (daily)
+
+```typescript
+// Only generate full reports once daily (at 2am UTC)
+const currentHour = new Date().getUTCHours()
+
+if (currentHour === 2) {
+  for (const domain of domains.rows) {
+    const report = await env.DELIVERABILITY.analyzeDomain({
+      domainId: domain.id,
+      depth: 'full'
+    })
+
+    // Store report
+    await env.DB.execute(
+      `INSERT INTO deliverability_reports
+       (domain_id, report_date, overall_score, status, metrics, reputation, issues)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        domain.id,
+        new Date().toISOString(),
+        report.score,
+        report.status,
+        JSON.stringify(report.metrics),
+        JSON.stringify(report.reputation),
+        JSON.stringify(report.issues)
+      ]
+    )
+
+    // Email weekly summary (on Mondays)
+    const dayOfWeek = new Date().getDay()
+    if (dayOfWeek === 1) { // Monday
+      await sendWeeklySummary(domain.id, report)
+    }
+  }
+}
+```
+
+**Report schedule:**
+- Hourly: Metrics collection
+- Daily: Full analysis report
+- Weekly: Summary email to stakeholders
+
+### Step 7: Send Alerts
+
+**Service:** Alert routing
+**Action:** Deliver via configured channels
+
+```typescript
+const alerts = await env.DB.execute(
+  `SELECT * FROM reputation_alerts
+   WHERE acknowledged = 0
+   AND created_at > datetime('now', '-1 hour')`
+)
+
+for (const alert of alerts.rows) {
+  // Check if should alert based on severity
+  if (alert.severity === 'critical' ||
+      (alert.severity === 'warning' && input.alertOnWarning)) {
+
+    // Send via configured channels
+    for (const channel of input.alertChannels) {
+      switch (channel) {
+        case 'slack':
+          await sendSlackAlert(alert)
+          break
+        case 'email':
+          await sendEmailAlert(alert)
+          break
+        case 'webhook':
+          await sendWebhookAlert(alert)
+          break
+      }
+    }
+
+    // Mark as sent
+    await env.DB.execute(
+      `UPDATE reputation_alerts SET sent = 1 WHERE id = ?`,
+      [alert.id]
+    )
+  }
+}
+```
+
+**Alert channels:**
+- **Slack**: Immediate team notifications
+- **Email**: Daily/weekly summaries
+- **Webhook**: Integration with monitoring tools
+
+## Alert Types and Responses
+
+### Critical Alerts (Immediate Action)
+
+**Blacklist Listing**
+- **Trigger:** Listed on high-authority DNSBL
+- **Impact:** Emails blocked or sent to spam
+- **Action:** Request delisting, investigate cause, pause sending
+
+**High Bounce Rate (>10%)**
+- **Trigger:** Bounce rate exceeds 10%
+- **Impact:** ISPs will throttle or block
+- **Action:** Immediately pause, clean list, investigate
+
+**High Complaint Rate (>0.5%)**
+- **Trigger:** Spam complaints exceed 0.5%
+- **Impact:** Severe reputation damage
+- **Action:** Pause sending, review content/targeting
+
+**Sender Score <50**
+- **Trigger:** Reputation critically low
+- **Impact:** Poor inbox placement
+- **Action:** Full deliverability audit, address all issues
+
+### Warning Alerts (Address Soon)
+
+**Elevated Bounce Rate (>5%)**
+- **Trigger:** Bounce rate above 5%
+- **Impact:** Gradual reputation decline
+- **Action:** Clean list, validate addresses
+
+**SPF/DKIM/DMARC Issues**
+- **Trigger:** DNS authentication failing
+- **Impact:** Reduced deliverability
+- **Action:** Verify DNS records, fix configuration
+
+**Low Engagement (<10% open)**
+- **Trigger:** Open rate below 10%
+- **Impact:** ISPs may deprioritize
+- **Action:** Improve targeting, test subject lines
+
+**Sender Score 50-70**
+- **Trigger:** Reputation declining
+- **Impact:** Reduced inbox placement
+- **Action:** Review sending practices, fix issues
+
+### Info Alerts (FYI)
+
+**Warmup Behind Schedule**
+- **Trigger:** Not meeting daily targets
+- **Impact:** Delayed warmup completion
+- **Action:** Increase sending volume
+
+**Low Click Rate (<2%)**
+- **Trigger:** Few link clicks
+- **Impact:** Lower engagement signals
+- **Action:** Improve content, CTAs
+
+**Unsubscribe Rate Spike**
+- **Trigger:** Higher than normal unsubscribes
+- **Impact:** List quality decline
+- **Action:** Review targeting and frequency
+
+## Monitoring Dashboard
+
+Real-time dashboard shows:
+- Overall deliverability status per domain
+- Active alerts and their severity
+- Trend charts (delivery, bounce, complaints)
+- Blacklist status indicators
+- DNS authentication health
+- Warmup progress (if applicable)
+
+## Best Practices
+
+### Alert Fatigue Prevention
+- Group similar alerts
+- Don't alert on recovered issues
+- Use severity levels appropriately
+- Daily summary for non-critical
+
+### Response Time SLAs
+- **Critical:** Respond within 1 hour
+- **Warning:** Respond within 24 hours
+- **Info:** Review weekly
+
+### Continuous Improvement
+- Track metrics over time
+- Identify patterns and trends
+- Adjust thresholds based on performance
+- Document lessons learned
+
+## Integration Points
+
+### Automatic Actions
+
+**On Critical Issues:**
+- Pause affected domain
+- Alert on-call team
+- Create incident ticket
+- Log for investigation
+
+**On Warning Issues:**
+- Flag for review
+- Schedule investigation
+- Monitor for escalation
+
+**On Recovery:**
+- Auto-resume if safe
+- Log resolution
+- Update runbooks
+
+### External Integrations
+
+- **PagerDuty**: Critical alerts
+- **Datadog**: Metrics and dashboards
+- **Slack**: Team notifications
+- **JIRA**: Incident tracking
+
+## Reporting Schedule
+
+- **Hourly:** Metrics collection + critical alerts
+- **Daily:** Full analysis report
+- **Weekly:** Summary email to stakeholders
+- **Monthly:** Executive report with trends
+
+## Success Metrics
+
+- **<5 min:** Average time to detect critical issues
+- **<1 hour:** Average time to acknowledge critical alerts
+- **98%+:** Uptime of monitoring service
+- **0:** Missed blacklist listings
+- **<0.1%:** False positive alert rate
+
+## Related Workflows
+
+- **email-warming** → monitors warmup adherence
+- **domain-onboarding** → enables monitoring after setup
+- **campaign-creation** → checks deliverability before launch

@@ -1,0 +1,395 @@
+---
+$type: Workflow
+$id: workflow/reviewcontract
+title: review-contract
+name: review-contract
+description: Complete legal contract review process from upload to negotiation strategy
+
+trigger:
+  type: manual
+  source: legal-team
+  event: contract.uploaded
+
+input:
+  contractFile: Contract document (PDF, Word, or text) (file)
+  contractType: Type of contract - MSA, NDA, SOW, license, employment (string)
+  clientName: Client or company name (string)
+  urgency: Review urgency - standard, expedited, critical (string)
+  reviewerEmail: Attorney email for escalation (string)
+
+steps:
+  - name: extract-text
+    description: Extract text from contract document
+    function: extract-document-text
+    input:
+      file: ${input.contractFile}
+      format: structured
+    onError:
+      action: retry
+      maxAttempts: 2
+
+  - name: identify-parties
+    description: Identify contracting parties and roles
+    agent: contract-reviewer
+    input:
+      contractText: ${steps.extract-text.output.text}
+      contractType: ${input.contractType}
+    output:
+      - parties
+      - roles
+      - effectiveDate
+
+  - name: extract-provisions
+    description: Extract key contract provisions
+    function: extract-contract-provisions
+    input:
+      contractText: ${steps.extract-text.output.text}
+      contractType: ${input.contractType}
+    output:
+      - term
+      - paymentTerms
+      - terminationClause
+      - liabilityClause
+      - ipRights
+      - confidentiality
+      - disputeResolution
+
+  - name: analyze-risks
+    description: Identify risks and unfavorable terms
+    agent: contract-reviewer
+    input:
+      provisions: ${steps.extract-provisions.output}
+      contractType: ${input.contractType}
+      clientName: ${input.clientName}
+    output:
+      - highRisks
+      - mediumRisks
+      - lowRisks
+      - riskScore
+
+  - name: research-precedents
+    description: Find relevant case law if high risks found
+    condition: ${steps.analyze-risks.output.riskScore > 70}
+    agent: legal-researcher
+    input:
+      riskAreas: ${steps.analyze-risks.output.highRisks}
+      jurisdiction: ${steps.identify-parties.output.jurisdiction}
+    retry:
+      maxAttempts: 2
+      backoff: linear
+
+  - name: generate-redlines
+    description: Create redlined document with suggested changes
+    function: generate-contract-redlines
+    input:
+      originalText: ${steps.extract-text.output.text}
+      risks: ${steps.analyze-risks.output}
+      contractType: ${input.contractType}
+    output:
+      - redlinedDocument
+      - changesSummary
+
+  - name: create-review-memo
+    description: Generate detailed review memorandum
+    agent: contract-reviewer
+    input:
+      parties: ${steps.identify-parties.output.parties}
+      provisions: ${steps.extract-provisions.output}
+      risks: ${steps.analyze-risks.output}
+      precedents: ${steps.research-precedents.output}
+      redlines: ${steps.generate-redlines.output.changesSummary}
+    output:
+      - executiveSummary
+      - detailedFindings
+      - negotiationStrategy
+
+  - name: extract-obligations
+    description: Create obligation tracking matrix
+    function: extract-obligations
+    input:
+      contractText: ${steps.extract-text.output.text}
+      parties: ${steps.identify-parties.output.parties}
+    output:
+      - obligationMatrix
+      - deadlines
+      - responsibilities
+
+  - name: calculate-risk-score
+    description: Calculate overall contract risk score
+    function: assess-risk
+    input:
+      risks: ${steps.analyze-risks.output}
+      contractType: ${input.contractType}
+      obligationComplexity: ${steps.extract-obligations.output.complexity}
+    output:
+      - totalScore
+      - riskLevel
+      - majorConcerns
+
+  - name: send-review-report
+    description: Email review report to attorney
+    function: send-email
+    input:
+      to: ${input.reviewerEmail}
+      subject: Contract Review Complete - ${input.clientName}
+      template: contract-review
+      attachments:
+        - ${steps.create-review-memo.output.executiveSummary}
+        - ${steps.generate-redlines.output.redlinedDocument}
+        - ${steps.extract-obligations.output.obligationMatrix}
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+
+  - name: store-in-database
+    description: Store contract review in legal database
+    function: store-contract-review
+    input:
+      clientName: ${input.clientName}
+      contractType: ${input.contractType}
+      riskScore: ${steps.calculate-risk-score.output.totalScore}
+      reviewDate: ${workflow.startTime}
+      reviewer: ${input.reviewerEmail}
+      findings: ${steps.create-review-memo.output}
+
+  - name: escalate-high-risk
+    description: Alert partner if critical risk detected
+    condition: ${steps.calculate-risk-score.output.riskLevel === 'critical'}
+    function: send-slack-alert
+    input:
+      channel: '#legal-escalations'
+      message: |
+        🚨 High-Risk Contract Detected
+        Client: ${input.clientName}
+        Risk Score: ${steps.calculate-risk-score.output.totalScore}
+        Reviewer: ${input.reviewerEmail}
+        Major Concerns: ${steps.calculate-risk-score.output.majorConcerns}
+
+output:
+  reviewId: ${steps.store-in-database.output.reviewId}
+  riskScore: ${steps.calculate-risk-score.output.totalScore}
+  riskLevel: ${steps.calculate-risk-score.output.riskLevel}
+  redlinedDocument: ${steps.generate-redlines.output.redlinedDocument}
+  reviewMemo: ${steps.create-review-memo.output}
+  obligationMatrix: ${steps.extract-obligations.output.obligationMatrix}
+  escalated: ${steps.escalate-high-risk.completed}
+
+timeout: 300000
+
+notifications:
+  onSuccess:
+    - channel: email
+      to: ${input.reviewerEmail}
+      subject: Contract Review Complete
+  onError:
+    - channel: slack
+      webhook: ${env.SLACK_WEBHOOK_URL}
+      message: Contract review failed for ${input.clientName}
+---
+
+# Contract Review Workflow
+
+Automated legal contract review from document upload through risk analysis and redline generation.
+
+## Flow Overview
+
+```
+Upload Contract
+  ↓
+Extract Text
+  ↓
+Identify Parties & Provisions
+  ↓
+Risk Analysis → Legal Research (if high risk)
+  ↓
+Generate Redlines
+  ↓
+Create Review Memo
+  ↓
+Extract Obligations
+  ↓
+Calculate Risk Score
+  ↓
+Send Report → Escalate if Critical
+  ↓
+Store in Database
+```
+
+## Contract Types Supported
+
+- **MSA** - Master Service Agreements
+- **NDA** - Non-Disclosure Agreements
+- **SOW** - Statements of Work
+- **License** - Software/IP licenses
+- **Employment** - Employment agreements
+
+## Risk Scoring
+
+**Risk Levels:**
+- **Low (0-40)** - Standard terms, minimal concerns
+- **Medium (41-70)** - Some unfavorable terms, manageable
+- **High (71-85)** - Significant risks, extensive negotiation needed
+- **Critical (86-100)** - Unacceptable terms, partner review required
+
+**Risk Factors:**
+- Unlimited liability exposure (+25 points)
+- Unfavorable IP terms (+20 points)
+- Unilateral termination rights (+15 points)
+- No liability cap (+20 points)
+- Onerous indemnification (+15 points)
+- Auto-renewal without notice (+5 points)
+
+## Key Features
+
+### Intelligent Risk Detection
+
+The workflow identifies:
+- **Legal Risks** - Unfavorable terms, missing protections
+- **Business Risks** - Operational impact, cost implications
+- **Compliance Risks** - Regulatory violations, policy conflicts
+
+### Automated Redlining
+
+Generates track-changes document with:
+- Suggested revisions for high-risk terms
+- Rationale for each change
+- Alternative language options
+- Comments and annotations
+
+### Obligation Tracking
+
+Creates matrix of all obligations:
+
+| Party | Obligation | Deadline | Penalty if Missed |
+|-------|-----------|----------|-------------------|
+| Company | Deliver services | Ongoing | Breach of contract |
+| Company | Maintain insurance | Annual | Contract voidable |
+| Client | Pay invoices | Net 30 | Late fees + interest |
+
+### Legal Research Integration
+
+For high-risk contracts, automatically:
+1. Identifies concerning provisions
+2. Searches for relevant case law
+3. Finds precedents supporting position
+4. Cites authority in review memo
+
+## Deliverables
+
+### 1. Executive Summary (1 page)
+- Overall risk assessment
+- Top 3-5 concerns
+- Recommended approach
+- Negotiation priorities
+
+### 2. Detailed Review Memo (5-15 pages)
+- Section-by-section analysis
+- Risk categorization
+- Legal precedents (if applicable)
+- Specific recommendations
+
+### 3. Redlined Document
+- Track-changes showing suggested edits
+- Comments explaining rationale
+- Alternative language options
+
+### 4. Obligation Matrix (Spreadsheet)
+- All contractual obligations
+- Deadlines and milestones
+- Responsible parties
+- Consequence if missed
+
+### 5. Negotiation Strategy
+- Must-have changes
+- Nice-to-have improvements
+- Acceptable compromises
+- Walk-away issues
+
+## Urgency Levels
+
+### Standard (3-5 business days)
+- Normal processing queue
+- Thorough review with research
+- Complete deliverables
+
+### Expedited (24-48 hours)
+- Priority processing
+- Essential research only
+- Abbreviated memo
+
+### Critical (Same day)
+- Immediate processing
+- Risk assessment focus
+- Verbal briefing + written summary
+
+## Example Output
+
+**Contract:** Software License Agreement
+**Client:** Acme Corp
+**Risk Score:** 78 (High)
+
+**Executive Summary:**
+```
+This software license agreement contains several high-risk provisions
+that require significant negotiation before execution:
+
+1. [CRITICAL] Unlimited Liability (Section 8.2)
+   - No cap on damages
+   - Recommend: Cap at 12 months fees paid
+
+2. [HIGH] Broad IP License (Section 6.1)
+   - Perpetual, irrevocable license to all client data
+   - Recommend: License for service delivery only, terminable
+
+3. [MEDIUM] Auto-Renewal (Section 2.3)
+   - Automatic renewal without affirmative consent
+   - Recommend: Require opt-in for renewal
+```
+
+## Escalation Triggers
+
+Workflow automatically escalates if:
+- Risk score >85 (Critical)
+- Unlimited liability found
+- IP assignment to vendor
+- Regulatory compliance issues
+- Material terms missing
+
+**Escalation Actions:**
+- Slack alert to #legal-escalations channel
+- Email to managing partner
+- Flag in legal database
+- Hold for senior review
+
+## Integration Points
+
+- **Agents:** [[contract-reviewer-agent.mdx|Contract Reviewer]], [[legal-researcher-agent.mdx|Legal Researcher]]
+- **Functions:** [[check-compliance-function.mdx|Compliance Checker]], [[assess-risk-function.mdx|Risk Assessor]]
+- **Database:** [[legal-case-schema.mdx|Legal Case Schema]]
+
+## Related
+
+- [[contract-reviewer-agent.mdx|Contract Reviewer Agent]]
+- [[legal-researcher-agent.mdx|Legal Research Agent]]
+- [[legal-case-schema.mdx|Legal Case Schema]]
+- [[check-compliance-function.mdx|Compliance Check Function]]
+- [[assess-risk-function.mdx|Risk Assessment Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Contract { id: string; clientId: string; content: string; type: string; value: number }
+
+export const reviewContract: BusinessModule = $ => {
+  const { db, ai, send, on } = $
+
+  on.contract.submitted(async (contract: Contract) => {
+    const review = await ai.generate({ prompt: `Review contract:\n${contract.content}\n\nIdentify: risks, missing clauses, unfavorable terms.`, maxTokens: 1000 })
+
+    await db.contracts.update(contract.id, { aiReview: review, status: 'under_review' })
+    await send.email(contract.clientId, 'Contract Review Complete', { review })
+  })
+}
+```

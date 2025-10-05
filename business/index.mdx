@@ -1,0 +1,107 @@
+---
+$type: Business
+$id: business/index
+title: Businesses
+description: Business and organization definitions for the .do ecosystem
+metadata:
+  ns: business
+  visibility: public
+---
+
+# Business Portfolio
+
+**8 business definitions** organized into four categories:
+
+## Holding Company (1)
+
+Parent organization for all .do properties:
+
+- **[Dot Do Holdings](./holding/dot-do.mdx)** - AI-native holding company enabling businesses-as-code
+
+## Product Businesses (6)
+
+### Infrastructure & Platform
+
+- **[do.industries](./products/do.industries.mdx)** - Business-as-Code platform with $ runtime primitives
+- **[API.Services](./products/api.services.mdx)** - Function catalog with 1,000+ executable functions
+- **[Agents.do](./products/agents.do.mdx)** - AI agents platform with 33 production agents
+
+### Marketplace & Creator Tools
+
+- **[Services.Studio](./products/services.studio.mdx)** - "Vibe-Code" AI services from idea to profit
+- **[Services.Delivery](./products/services.delivery.mdx)** - Professional services marketplace
+- **[Builder.Domains](./products/builder.domains.mdx)** - Free *.do subdomains + domain registration
+
+## Service Agencies (1)
+
+Professional service businesses:
+
+- **[AI Tax Services](./agencies/ai-tax-services.mdx)** - AI-powered tax preparation
+
+## OKRs (2)
+
+Quarterly objectives and key results:
+
+- **[Q4 2025 Revenue Objective](./okrs/q4-2025-revenue.mdx)** - $1M ARR target
+- **[Q4 2025 Product Objective](./okrs/q4-2025-product.mdx)** - Quality & reliability
+
+## Platform Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    do.industries                         │
+│              (Platform Foundation)                       │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  $ Runtime Primitives                            │   │
+│  │  db, ai, send, on, decide, every                 │   │
+│  └──────────────────────────────────────────────────┘   │
+└──────────────┬──────────────────────────────────────────┘
+               │
+       ┌───────┴────────┐
+       │                │
+   ┌───▼────┐      ┌────▼────┐
+   │API.Svc │      │Agents.do│
+   │1K+ fns │      │33 agents│
+   └───┬────┘      └────┬────┘
+       │                │
+       └────────┬───────┘
+                │
+        ┌───────▼────────┐
+        │                │
+   ┌────▼─────┐    ┌────▼──────┐
+   │Services  │    │Services    │
+   │.Studio   │───▶│.Delivery   │
+   │(Create)  │    │(Marketplace)│
+   └──────────┘    └────────────┘
+```
+
+## 2025 Goals
+
+**North Star:** $1M ARR by December 2025
+
+### O1: API.Services (30% weight)
+- 1,000+ functions catalogued
+- 100% test coverage, zero type errors
+- 10+ SDKs published to npm
+
+### O2: Services.Delivery (50% weight)
+- $500K+ GMV with 15-20% take rate
+- 200+ services listed, 100+ active providers
+- 4.5+ average rating, <5% dispute rate
+
+### O3: Services.Studio (20% weight)
+- Natural language → Function/Workflow generation (80%+ success)
+- 100+ human-in-the-loop function configurations
+- 50+ creators publishing profitable services
+
+## Revenue Model
+
+| Product | Revenue Stream | 2025 Target | Margin |
+|---------|----------------|-------------|---------|
+| Services.Delivery | 15-20% take rate | $75K-$100K | 80%+ |
+| API.Services | Usage-based + subs | $500K MRR | 98% |
+| Services.Studio | Subscriptions | $108K ARR | 85% |
+| Agents.do | Conversations + subs | $1.2M ARR | 45-78% |
+| Builder.Domains | Domain margins | $250K/year | 40% |
+
+**Total Target:** $1M+ ARR

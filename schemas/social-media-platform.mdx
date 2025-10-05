@@ -1,0 +1,69 @@
+---
+$type: Schema
+$id: schema/social-media-platform
+title: Social Media Platform Connection
+description: OAuth connections for social media platforms
+category: growth
+tags: [social-media, oauth, authentication, integration]
+version: 1.0.0
+status: active
+created: 2025-10-04
+updated: 2025-10-04
+---
+
+# Social Media Platform Connection Schema
+
+## Overview
+
+Platform connections manage OAuth credentials for publishing to social media platforms. Supports 6 platforms with token refresh and permission management.
+
+## Data Model
+
+```typescript
+interface PlatformConnection {
+  id: string
+  userId: string
+  platform: 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'tiktok' | 'youtube'
+  status: 'active' | 'expired' | 'revoked' | 'error'
+
+  // OAuth tokens (encrypted)
+  accessToken: string
+  refreshToken?: string
+  expiresAt?: string
+
+  // Platform identifiers
+  platformUserId: string
+  platformUsername: string
+  displayName?: string
+  profileUrl?: string
+  avatarUrl?: string
+
+  // Permissions
+  permissions: string[]
+
+  // Timestamps
+  connectedAt: string
+  lastUsedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+```
+
+## Supported Platforms
+
+- **Twitter/X**: OAuth 2.0 with PKCE
+- **LinkedIn**: OAuth 2.0
+- **Facebook**: OAuth 2.0, Graph API
+- **Instagram**: OAuth 2.0 via Facebook
+- **TikTok**: OAuth 2.0
+- **YouTube**: OAuth 2.0 via Google
+
+## Service Implementation
+
+-  **Service**: `workers/social-media-automation`
+- **RPC**: `env.SOCIAL_SERVICE.connectPlatform()`
+- **HTTP**: `POST /api/social/platforms/connect`
+
+## Version History
+
+- **1.0.0** (2025-10-04) - Initial schema

@@ -1,0 +1,382 @@
+---
+$type: Business
+$id: business/builder.domains
+title: Builder.Domains
+legalName: Builder.Domains
+type: product
+category: Platform
+industry: Technology
+vertical: Domain Services
+description: Free *.do subdomains and domain registration for builders
+mission: Make domain names accessible and affordable for every builder
+tagline: "Your Project Deserves a Domain"
+website: https://builder.domains
+status: Active
+launched: "2024"
+metadata:
+  ns: business
+  visibility: public
+tags:
+  - domains
+  - dns
+  - hosting
+  - builders
+---
+
+# Builder.Domains
+
+**Domain platform** providing free `.do` subdomains and affordable domain registration for builders, developers, and creators.
+
+## Overview
+
+Builder.Domains removes the friction of getting a domain for your project. Get 10 free subdomains instantly, or register a custom domain with transparent pricing and instant provisioning.
+
+## Core Value Proposition
+
+**For Builders:**
+- 10 free `.do` subdomains
+- Instant provisioning
+- Free SSL certificates
+- Built-in DNS management
+- No credit card required
+
+**For Projects:**
+- Professional web presence
+- Custom domain options
+- Email forwarding
+- Subdomain management
+- API access
+
+## Free Subdomains
+
+### Features
+
+**Instant Setup:**
+```bash
+# Reserve your subdomain
+curl https://builder.domains/api/subdomains \
+  -d '{ "name": "myproject" }' \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Available immediately
+https://myproject.do
+```
+
+**Included:**
+- Automatic SSL (Let's Encrypt)
+- Global CDN (Cloudflare)
+- DNS management
+- 99.9% uptime SLA
+- DDoS protection
+
+**Limits:**
+- 10 subdomains per account
+- Must be actively used (no squatting)
+- No adult/illegal content
+- Subject to Terms of Service
+
+### Popular Patterns
+
+**Development:**
+- `demo.do` - Product demos
+- `docs.do` - Documentation sites
+- `api.do` - API endpoints
+- `cdn.do` - Static assets
+
+**Products:**
+- `[productname].do` - Main product site
+- `app.[productname].do` - Web application
+- `blog.[productname].do` - Content blog
+
+**Personal:**
+- `[name].do` - Personal site
+- `portfolio.[name].do` - Portfolio
+- `blog.[name].do` - Personal blog
+
+## Domain Registration
+
+### Pricing
+
+**Competitive Rates:**
+- `.com` - $12/year (vs $15+ elsewhere)
+- `.io` - $35/year (vs $40+ elsewhere)
+- `.ai` - $85/year (vs $100+ elsewhere)
+- `.dev` - $15/year (vs $18+ elsewhere)
+- `.app` - $15/year (vs $18+ elsewhere)
+- 100+ other TLDs available
+
+**No Hidden Fees:**
+- Transparent pricing
+- Free WHOIS privacy
+- Free DNS management
+- Free email forwarding
+- No renewal surprises
+
+### Registration Process
+
+**1. Search Available Domains:**
+```typescript
+const domains = await search('myproject')
+// Returns: myproject.com, myproject.io, myproject.ai, etc.
+// With pricing and availability
+```
+
+**2. Add to Cart:**
+```typescript
+await cart.add('myproject.com', { years: 2 })
+```
+
+**3. Checkout:**
+- Secure payment via Stripe
+- Instant provisioning
+- Auto-renewal option
+- Email confirmation
+
+**4. DNS Setup:**
+```typescript
+// Point to Cloudflare Pages
+await dns.setRecords('myproject.com', [
+  { type: 'CNAME', name: '@', value: 'project.pages.dev' },
+  { type: 'CNAME', name: 'www', value: 'project.pages.dev' }
+])
+```
+
+## DNS Management
+
+### Features
+
+**Full DNS Control:**
+- A, AAAA, CNAME, MX, TXT records
+- Subdomain management
+- DNSSEC support
+- API access
+- Bulk operations
+
+**Cloudflare Integration:**
+- Automatic Cloudflare setup
+- Global CDN
+- DDoS protection
+- Analytics
+- Web Application Firewall
+
+**Email Services:**
+```typescript
+// Forward email to existing inbox
+await email.forward('myproject.com', {
+  from: 'hello@myproject.com',
+  to: 'myemail@gmail.com'
+})
+```
+
+### DNS Propagation
+
+**Fast Propagation:**
+- Cloudflare's global network
+- ~5 minute propagation
+- Real-time status updates
+- Verification tools
+
+## API Access
+
+### Authentication
+
+```typescript
+import { DomainsClient } from '@dot-do/builder-domains'
+
+const client = new DomainsClient({
+  apiKey: process.env.BUILDER_DOMAINS_API_KEY
+})
+```
+
+### Endpoints
+
+**Subdomains:**
+```typescript
+// List subdomains
+const subdomains = await client.subdomains.list()
+
+// Create subdomain
+const subdomain = await client.subdomains.create({
+  name: 'myproject',
+  target: 'myproject.pages.dev'
+})
+
+// Update DNS
+await client.subdomains.updateDNS('myproject', {
+  records: [
+    { type: 'CNAME', name: '@', value: 'new-target.pages.dev' }
+  ]
+})
+
+// Delete subdomain
+await client.subdomains.delete('myproject')
+```
+
+**Domains:**
+```typescript
+// Search domains
+const results = await client.domains.search('myproject')
+
+// Register domain
+const domain = await client.domains.register('myproject.com', {
+  years: 2,
+  autoRenew: true
+})
+
+// Manage DNS
+await client.dns.setRecords('myproject.com', records)
+
+// Transfer domain
+await client.domains.transfer('myproject.com', {
+  authCode: 'ABC123'
+})
+```
+
+## Business Model
+
+### Revenue Streams
+
+**Domain Registration:**
+- Average: $25/domain/year
+- Margin: ~$10/domain/year (40%)
+- Target: 10K registered domains
+- Revenue: $250K/year
+
+**Premium Subdomains:**
+- Reserved short names
+- $5-$50/month depending on desirability
+- Target: 100 premium subdomains
+- Revenue: $6K-$60K/year
+
+**API Access:**
+- Free: 10 subdomains
+- Pro ($9/month): 100 subdomains + bulk operations
+- Enterprise (custom): Unlimited + SLA
+- Target: 1K Pro users
+- Revenue: $108K/year
+
+### Unit Economics
+
+**Free Subdomain:**
+- Cost: $0.10/month (Cloudflare)
+- Revenue: $0 (lead generation)
+- LTV: $25 (eventual domain purchase)
+
+**Registered Domain:**
+- Cost: $15 (wholesale)
+- Revenue: $25 (retail)
+- Margin: $10 (40%)
+- Retention: 85%/year
+
+## Target Metrics
+
+### 2025
+- 10K free subdomains active
+- 1K registered domains
+- 100 Pro API users
+- $250K revenue
+- 85% domain renewal rate
+
+### 2026
+- 100K free subdomains
+- 10K registered domains
+- 1K Pro API users
+- $2.5M revenue
+- 90% domain renewal rate
+
+## Technology Stack
+
+- **DNS:** Cloudflare
+- **Registrar:** Cloudflare Registrar
+- **Platform:** do.industries
+- **Payments:** Stripe
+- **Database:** PostgreSQL (Neon) + D1
+
+## Competitive Positioning
+
+**vs Namecheap/GoDaddy:**
+- ✅ 10 free subdomains
+- ✅ More transparent pricing
+- ✅ Better UX (no upsells)
+- ✅ API-first architecture
+
+**vs Vercel/Netlify domains:**
+- ✅ Not tied to hosting platform
+- ✅ More TLDs available
+- ✅ Lower prices
+- ✅ Subdomain-first approach
+
+**vs Freenom (free domains):**
+- ✅ Real TLD (.do subdomains)
+- ✅ No ads or restrictions
+- ✅ Professional service
+- ✅ SSL included
+
+## Policies
+
+### Subdomain Policies
+
+**Acceptable Use:**
+- Must be actively used within 30 days
+- No domain squatting or hoarding
+- No trademark infringement
+- No adult/illegal content
+- No phishing or malware
+
+**Reclamation:**
+- Inactive subdomains (90+ days) may be reclaimed
+- Warning email sent at 60 days
+- Grace period for reactivation
+- After reclamation, name available to others
+
+### Privacy
+
+**WHOIS Privacy:**
+- Free with every domain
+- Hide personal information
+- Compliant with GDPR
+- Proxy contact information
+
+## Support
+
+**Documentation:**
+- Quick start guides
+- API reference
+- Video tutorials
+- Community forum
+
+**Support Channels:**
+- Email support (24-hour response)
+- Live chat (Pro/Enterprise)
+- Priority support (Enterprise)
+- Status page
+
+## Roadmap
+
+### Q4 2025
+- ✅ Free subdomain service
+- ✅ Domain registration
+- 🔄 Email forwarding
+- 🔄 API v1
+
+### Q1 2026
+- Bulk operations
+- Team management
+- Domain marketplace
+- Premium DNS features
+
+### Q2 2026
+- SSL certificate management
+- Custom nameservers
+- DNSSEC UI
+- White-label option
+
+## Parent Organization
+
+Part of **[Dot Do Holdings](../holding/dot-do.mdx)** portfolio.
+
+## Related Products
+
+- **[do.industries](./do.industries.mdx)** - Platform for building on .do domains
+- **[Services.Studio](./services.studio.mdx)** - Build services on custom domains
+- **[Services.Delivery](./services.delivery.mdx)** - Deliver services via custom domains

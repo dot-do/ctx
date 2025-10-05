@@ -1,0 +1,41 @@
+---
+$type: Brand
+$id: brand/test-brand
+title: Test Brand
+description: Test brand to verify webhook integration with repo.do GitHub App
+logo: /images/test-logo.svg
+website: https://test.example.com
+industry: Technology
+founded: "2025"
+headquarters: San Francisco, CA
+colors:
+  primary: "#0066FF"
+  secondary: "#FF6600"
+  accent: "#00FF66"
+metadata:
+  ns: brand
+  visibility: public
+tags:
+  - test
+  - webhook-integration
+---
+
+# Test Brand
+
+This is a test brand definition created to verify that the GitHub webhook integration is working correctly with the repo.do GitHub App.
+
+## Purpose
+
+When this file is committed and pushed, the webhook should trigger and sync this brand definition to the PostgreSQL database in the `things` table with:
+- `ns: 'brand'`
+- `id: 'test-brand'`
+- `type: 'Brand'`
+- `content: [markdown content]`
+- `data: [frontmatter JSON]`
+
+## Verification
+
+To verify the webhook worked:
+1. Check GitHub App webhook delivery logs
+2. Query the database: `SELECT * FROM things WHERE ns = 'brand' AND id = 'test-brand'`
+3. Check API logs for any errors

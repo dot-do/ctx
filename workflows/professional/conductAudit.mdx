@@ -1,0 +1,196 @@
+---
+$type: Workflow
+$id: workflow/conductaudit
+title: conductAudit
+name: conductAudit
+description: Financial or compliance audit workflow
+
+trigger:
+  type: api
+  method: POST
+  path: /audit/conduct
+
+input:
+  auditType: Type of audit (financial, compliance, security, operational)
+  entityId: Entity being audited (uuid)
+  period: Audit period (Q1-2024, 2024-FY)
+  auditorId: Lead auditor identifier (uuid)
+
+steps:
+  - name: gather-documentation
+    description: Collect all required audit documentation
+    function: gather-audit-documents
+    input:
+      entityId: ${input.entityId}
+      period: ${input.period}
+      auditType: ${input.auditType}
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+
+  - name: review-controls
+    description: Review internal controls and procedures
+    agent: SecurityAuditor
+    input:
+      documents: ${steps.gather-documentation.output.documents}
+      controlFramework: ${steps.gather-documentation.output.framework}
+
+  - name: sample-transactions
+    description: Select representative transaction sample
+    function: select-audit-sample
+    input:
+      population: ${steps.gather-documentation.output.transactions}
+      confidence: 95
+      sampleSize: 100
+
+  - name: test-transactions
+    description: Test sampled transactions
+    agent: FinancialAdvisor
+    input:
+      sample: ${steps.sample-transactions.output.samples}
+      criteria: ${steps.gather-documentation.output.testCriteria}
+
+  - name: identify-findings
+    description: Identify audit findings and issues
+    function: analyze-audit-results
+    input:
+      controlReview: ${steps.review-controls.output}
+      transactionTests: ${steps.test-transactions.output}
+      threshold: ${input.materialityThreshold}
+
+  - name: assess-risk
+    description: Assess risks from findings
+    function: assessRisk
+    input:
+      riskFactors: ${steps.identify-findings.output.findings}
+      context:
+        auditType: ${input.auditType}
+        entity: ${input.entityId}
+      riskType: ${input.auditType}
+
+  - name: draft-report
+    description: Draft audit report
+    agent: DocumentationWriter
+    input:
+      findings: ${steps.identify-findings.output.findings}
+      riskAssessment: ${steps.assess-risk.output}
+      recommendations: ${steps.assess-risk.output.recommendations}
+      period: ${input.period}
+
+  - name: review-report
+    description: Internal review of audit report
+    condition: ${steps.identify-findings.output.findingCount > 0}
+    agent: LegalResearcher
+    input:
+      report: ${steps.draft-report.output.report}
+      findings: ${steps.identify-findings.output.findings}
+
+  - name: finalize-report
+    description: Finalize and sign audit report
+    function: finalize-audit-report
+    input:
+      draft: ${steps.draft-report.output.report}
+      review: ${steps.review-report.output}
+      auditorId: ${input.auditorId}
+
+  - name: notify-stakeholders
+    description: Notify relevant stakeholders
+    function: sendEmail
+    input:
+      to: ${steps.gather-documentation.output.stakeholders}
+      subject: Audit Complete - ${input.period}
+      body: Audit report available
+      attachments:
+        - ${steps.finalize-report.output.reportUrl}
+
+output:
+  reportId: ${steps.finalize-report.output.reportId}
+  findingCount: ${steps.identify-findings.output.findingCount}
+  riskLevel: ${steps.assess-risk.output.riskLevel}
+  recommendations: ${steps.assess-risk.output.recommendations}
+  reportUrl: ${steps.finalize-report.output.reportUrl}
+  completedAt: ${workflow.timestamp}
+
+timeout: 300000
+---
+
+# Conduct Audit Workflow
+
+Comprehensive audit workflow for financial, compliance, security, or operational audits.
+
+## Audit Process
+
+```
+Gather Documentation
+  ↓
+Review Internal Controls
+  ↓
+Select Transaction Sample
+  ↓
+Test Transactions
+  ↓
+Identify Findings
+  ↓
+Assess Risk
+  ↓
+Draft Report
+  ↓
+Internal Review (if findings)
+  ↓
+Finalize Report
+  ↓
+Notify Stakeholders
+```
+
+## Audit Types
+
+### Financial Audit
+- Revenue recognition
+- Expense classification
+- Balance sheet items
+- Cash flow analysis
+
+### Compliance Audit
+- Regulatory requirements
+- Policy adherence
+- Documentation completeness
+- Training compliance
+
+### Security Audit
+- Access controls
+- Data protection
+- Incident response
+- Vulnerability management
+
+### Operational Audit
+- Process efficiency
+- Resource utilization
+- Performance metrics
+- Risk management
+
+## Related
+
+- [[prepareAudit|Prepare Audit Workflow]]
+- [[../agents/SecurityAuditor|Security Auditor Agent]]
+- [[../agents/FinancialAdvisor|Financial Advisor Agent]]
+- [[../functions/assessRisk|Assess Risk Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Audit { id: string; companyId: string; findings: Finding[]; status: 'in_progress' | 'complete' }
+interface Finding { area: string; severity: 'low' | 'medium' | 'high'; description: string }
+
+export const conductAudit: BusinessModule = $ => {
+  const { db, ai, send, on } = $
+
+  on.audit.started(async (audit: Audit) => {
+    const findings = await ai.extract({ prompt: `Audit company ${audit.companyId}. Review financials, compliance, operations. Identify issues.`, schema: { findings: 'array<object>' } })
+
+    await db.audits.update(audit.id, { findings: findings.findings, status: 'complete' })
+    await send.email(audit.companyId, 'Audit Report', { findings: findings.findings })
+  })
+}
+```

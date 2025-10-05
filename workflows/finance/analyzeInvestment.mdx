@@ -1,0 +1,460 @@
+---
+$type: Workflow
+$id: workflow/analyzeinvestment
+title: analyze-investment
+name: analyze-investment
+description: Comprehensive investment analysis from research to recommendation
+
+trigger:
+  type: manual
+  source: investment-team
+  event: analysis.requested
+
+input:
+  ticker: Stock ticker symbol or investment identifier (string)
+  investmentType: Asset type - stock, bond, mutual-fund, etf, real-estate (string)
+  clientId: Client requesting analysis (uuid)
+  analysisDepth: Level of analysis - quick, standard, comprehensive (string)
+  timeHorizon: Investment timeline in years (integer)
+
+steps:
+  - name: gather-market-data
+    description: Collect current market data and pricing
+    function: fetch-market-data
+    input:
+      ticker: ${input.ticker}
+      dataPoints: [price, volume, marketCap, peRatio, dividendYield]
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+
+  - name: fetch-fundamentals
+    description: Get fundamental financial data
+    function: fetch-financial-data
+    input:
+      ticker: ${input.ticker}
+      statements: [income, balance, cashflow]
+      periods: 5
+    output:
+      - revenue
+      - earnings
+      - debt
+      - freeCashFlow
+
+  - name: calculate-metrics
+    description: Calculate key investment metrics
+    function: calculate-roi
+    input:
+      fundamentals: ${steps.fetch-fundamentals.output}
+      marketData: ${steps.gather-market-data.output}
+      timeHorizon: ${input.timeHorizon}
+    output:
+      - roi
+      - cagr
+      - sharpeRatio
+      - volatility
+      - beta
+
+  - name: analyze-competitors
+    description: Compare against industry peers
+    condition: ${input.analysisDepth !== 'quick'}
+    function: fetch-peer-analysis
+    input:
+      ticker: ${input.ticker}
+      industry: ${steps.gather-market-data.output.industry}
+    output:
+      - peerGroup
+      - relativeValuation
+      - marketPosition
+
+  - name: assess-risk
+    description: Comprehensive risk assessment
+    function: assess-risk
+    input:
+      fundamentals: ${steps.fetch-fundamentals.output}
+      marketData: ${steps.gather-market-data.output}
+      metrics: ${steps.calculate-metrics.output}
+      investmentType: ${input.investmentType}
+    output:
+      - riskScore
+      - riskFactors
+      - riskLevel
+
+  - name: get-analyst-ratings
+    description: Aggregate analyst opinions
+    condition: ${input.analysisDepth === 'comprehensive'}
+    function: fetch-analyst-ratings
+    input:
+      ticker: ${input.ticker}
+    output:
+      - consensusRating
+      - priceTarget
+      - analystCount
+
+  - name: technical-analysis
+    description: Perform technical analysis
+    condition: ${input.analysisDepth === 'comprehensive'}
+    function: technical-analysis
+    input:
+      ticker: ${input.ticker}
+      indicators: [sma_50, sma_200, rsi, macd]
+    output:
+      - trend
+      - support
+      - resistance
+      - momentum
+
+  - name: get-client-profile
+    description: Retrieve client risk tolerance and goals
+    function: get-client-profile
+    input:
+      clientId: ${input.clientId}
+    output:
+      - riskTolerance
+      - investmentGoals
+      - currentPortfolio
+      - taxBracket
+
+  - name: generate-recommendation
+    description: Generate investment recommendation using AI
+    agent: financial-advisor
+    input:
+      ticker: ${input.ticker}
+      marketData: ${steps.gather-market-data.output}
+      fundamentals: ${steps.fetch-fundamentals.output}
+      metrics: ${steps.calculate-metrics.output}
+      competitors: ${steps.analyze-competitors.output}
+      risk: ${steps.assess-risk.output}
+      analystRatings: ${steps.get-analyst-ratings.output}
+      technicals: ${steps.technical-analysis.output}
+      clientProfile: ${steps.get-client-profile.output}
+      timeHorizon: ${input.timeHorizon}
+    output:
+      - recommendation
+      - targetPrice
+      - positionSize
+      - rationale
+
+  - name: portfolio-fit-analysis
+    description: Analyze how investment fits client portfolio
+    function: analyze-portfolio-fit
+    input:
+      currentPortfolio: ${steps.get-client-profile.output.currentPortfolio}
+      proposedInvestment: ${input.ticker}
+      positionSize: ${steps.generate-recommendation.output.positionSize}
+    output:
+      - diversificationImpact
+      - riskChange
+      - expectedReturn
+
+  - name: tax-implications
+    description: Calculate tax implications
+    function: calculate-tax-impact
+    input:
+      investmentType: ${input.investmentType}
+      holdingPeriod: ${input.timeHorizon}
+      expectedReturn: ${steps.portfolio-fit-analysis.output.expectedReturn}
+      taxBracket: ${steps.get-client-profile.output.taxBracket}
+    output:
+      - capitalGainsTax
+      - afterTaxReturn
+      - taxStrategy
+
+  - name: create-analysis-report
+    description: Generate comprehensive PDF report
+    function: generate-pdf-report
+    input:
+      template: investment-analysis
+      data:
+        ticker: ${input.ticker}
+        marketData: ${steps.gather-market-data.output}
+        fundamentals: ${steps.fetch-fundamentals.output}
+        metrics: ${steps.calculate-metrics.output}
+        risk: ${steps.assess-risk.output}
+        recommendation: ${steps.generate-recommendation.output}
+        portfolioFit: ${steps.portfolio-fit-analysis.output}
+        taxImplications: ${steps.tax-implications.output}
+    output:
+      - reportUrl
+      - reportPdf
+
+  - name: store-analysis
+    description: Save analysis to database
+    function: store-investment-analysis
+    input:
+      clientId: ${input.clientId}
+      ticker: ${input.ticker}
+      analysisDate: ${workflow.startTime}
+      recommendation: ${steps.generate-recommendation.output.recommendation}
+      riskScore: ${steps.assess-risk.output.riskScore}
+      reportUrl: ${steps.create-analysis-report.output.reportUrl}
+
+  - name: notify-advisor
+    description: Send report to financial advisor
+    function: send-email
+    input:
+      to: ${steps.get-client-profile.output.advisorEmail}
+      subject: Investment Analysis Complete - ${input.ticker}
+      template: investment-analysis-complete
+      attachments:
+        - ${steps.create-analysis-report.output.reportPdf}
+      data:
+        ticker: ${input.ticker}
+        recommendation: ${steps.generate-recommendation.output.recommendation}
+        clientName: ${steps.get-client-profile.output.name}
+
+output:
+  analysisId: ${steps.store-analysis.output.analysisId}
+  recommendation: ${steps.generate-recommendation.output.recommendation}
+  targetPrice: ${steps.generate-recommendation.output.targetPrice}
+  riskScore: ${steps.assess-risk.output.riskScore}
+  expectedReturn: ${steps.portfolio-fit-analysis.output.expectedReturn}
+  reportUrl: ${steps.create-analysis-report.output.reportUrl}
+
+timeout: 180000
+
+notifications:
+  onSuccess:
+    - channel: email
+      to: ${steps.get-client-profile.output.advisorEmail}
+      subject: Analysis ready for ${input.ticker}
+  onError:
+    - channel: slack
+      webhook: ${env.SLACK_WEBHOOK_URL}
+      message: Investment analysis failed for ${input.ticker}
+---
+
+# Investment Analysis Workflow
+
+Complete investment analysis workflow from data gathering through recommendation generation.
+
+## Flow Overview
+
+```
+Request Analysis
+  ↓
+Gather Market Data
+  ↓
+Fetch Fundamentals
+  ↓
+Calculate Metrics (ROI, Sharpe, etc)
+  ↓
+Analyze Competitors → Assess Risk → Get Analyst Ratings → Technical Analysis
+  ↓
+Get Client Profile
+  ↓
+Generate Recommendation (AI)
+  ↓
+Portfolio Fit Analysis
+  ↓
+Tax Implications
+  ↓
+Create PDF Report → Store in Database → Notify Advisor
+```
+
+## Investment Types
+
+- **Stocks** - Individual equities
+- **Bonds** - Fixed income securities
+- **Mutual Funds** - Actively managed funds
+- **ETFs** - Exchange-traded funds
+- **Real Estate** - REITs or direct property
+
+## Analysis Depths
+
+### Quick Analysis (30 seconds)
+- Current price and valuation metrics
+- Basic risk assessment
+- Simple buy/hold/sell recommendation
+
+### Standard Analysis (2-3 minutes)
+- Fundamental financial analysis
+- Peer comparison
+- Risk assessment
+- Detailed recommendation
+
+### Comprehensive Analysis (5-10 minutes)
+- Everything in Standard, plus:
+- Analyst consensus and price targets
+- Technical analysis (charts, indicators)
+- Deep competitor analysis
+- Portfolio fit modeling
+
+## Key Metrics Calculated
+
+### Valuation Metrics
+- **P/E Ratio** - Price to earnings
+- **P/B Ratio** - Price to book value
+- **PEG Ratio** - P/E to growth rate
+- **Dividend Yield** - Annual dividend / price
+
+### Profitability Metrics
+- **ROE** - Return on equity
+- **ROA** - Return on assets
+- **Profit Margin** - Net income / revenue
+- **ROIC** - Return on invested capital
+
+### Growth Metrics
+- **Revenue Growth** - YoY revenue change
+- **Earnings Growth** - YoY EPS change
+- **CAGR** - Compound annual growth rate
+
+### Risk Metrics
+- **Beta** - Volatility vs market
+- **Sharpe Ratio** - Risk-adjusted return
+- **Standard Deviation** - Price volatility
+- **Max Drawdown** - Largest peak-to-trough decline
+
+## Risk Assessment
+
+**Risk Factors Analyzed:**
+- **Market Risk** - Overall market volatility
+- **Company-Specific Risk** - Business model, competition
+- **Financial Risk** - Debt levels, cash flow
+- **Regulatory Risk** - Industry regulations
+- **Management Risk** - Leadership quality
+- **Liquidity Risk** - Trading volume
+
+**Risk Levels:**
+- **Conservative** (0-30) - Low volatility, stable companies
+- **Moderate** (31-60) - Balanced risk/reward
+- **Aggressive** (61-100) - High growth, high volatility
+
+## Recommendation Types
+
+### Strong Buy
+- Significantly undervalued
+- Strong fundamentals
+- Positive catalysts
+- Fits client risk profile
+- **Target allocation:** 5-10% of portfolio
+
+### Buy
+- Moderately undervalued
+- Solid fundamentals
+- Good long-term prospects
+- **Target allocation:** 3-5% of portfolio
+
+### Hold
+- Fairly valued
+- Maintain current position
+- Monitor for changes
+
+### Sell
+- Overvalued
+- Deteriorating fundamentals
+- Better alternatives available
+
+### Strong Sell
+- Significantly overvalued
+- Red flags in financials
+- Exit position immediately
+
+## Portfolio Fit Analysis
+
+Evaluates impact on existing portfolio:
+
+**Diversification:**
+- Sector exposure changes
+- Geographic diversification
+- Asset class balance
+
+**Risk Impact:**
+- Overall portfolio beta change
+- Volatility impact
+- Correlation with existing holdings
+
+**Expected Return:**
+- Portfolio return impact
+- Risk-adjusted return (Sharpe)
+- Probability of meeting goals
+
+## Tax Optimization
+
+**Strategies Considered:**
+- **Tax-Loss Harvesting** - Offset gains with losses
+- **Holding Period** - Long-term vs short-term gains
+- **Asset Location** - Tax-advantaged vs taxable accounts
+- **Dividend Treatment** - Qualified vs ordinary
+
+**After-Tax Returns:**
+```
+Pre-tax return: 8.5%
+- Federal tax (24%): -2.04%
+- State tax (6%): -0.51%
+= After-tax return: 5.95%
+```
+
+## Example Analysis
+
+**Investment:** Apple Inc (AAPL)
+**Client:** Conservative investor, $500k portfolio, 10-year horizon
+
+**Market Data:**
+- Price: $178.50
+- Market Cap: $2.8T
+- P/E Ratio: 29.5
+- Dividend Yield: 0.5%
+
+**Fundamentals:**
+- Revenue: $383B (↑ 8% YoY)
+- Net Income: $97B (↑ 10% YoY)
+- Free Cash Flow: $99B
+- Debt/Equity: 1.8
+
+**Risk Assessment:**
+- Risk Score: 42 (Moderate)
+- Beta: 1.25 (More volatile than market)
+- Key Risks: Regulatory, competitive
+
+**Recommendation: BUY**
+- Target Price: $210 (18% upside)
+- Position Size: 4% of portfolio ($20k)
+- Rationale: Strong brand, recurring revenue from services, shareholder-friendly capital allocation
+
+**Portfolio Impact:**
+- Diversification: +0.5% tech exposure (acceptable)
+- Risk Change: Portfolio beta 1.05 → 1.08
+- Expected Return: +0.15% annualized
+
+**Tax Implications:**
+- Expected capital gain: $3,600 over 10 years
+- Long-term cap gains tax: $540 (15% rate)
+- After-tax return: 6.8% annualized
+
+## Integration Points
+
+- **Agents:** [[../agents/FinancialAdvisor|Financial Advisor]]
+- **Functions:** [[../functions/calculateROI|ROI Calculator]], [[../functions/assessRisk|Risk Assessor]]
+- **Schemas:** [[../schemas/InvestmentPortfolio|Investment Portfolio]]
+- **Workflows:** [[generateTaxReturn|Tax Return Workflow]]
+
+## Related
+
+- [[../agents/FinancialAdvisor|Financial Advisor Agent]]
+- [[../agents/TaxAdvisor|Tax Advisor Agent]]
+- [[../functions/calculateROI|Calculate ROI Function]]
+- [[../functions/assessRisk|Assess Risk Function]]
+- [[../schemas/InvestmentPortfolio|Investment Portfolio Schema]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Portfolio { id: string; clientId: string; totalValue: number; riskTolerance: 'conservative' | 'moderate' | 'aggressive' }
+
+export const analyzeInvestment: BusinessModule = $ => {
+  const { db, ai, send, every } = $
+
+  every.week(async () => {
+    const portfolios = await db.portfolios.findMany({ status: 'active' })
+
+    for (const portfolio of portfolios) {
+      const analysis = await ai.generate({ prompt: `Analyze portfolio ${portfolio.id}: $${portfolio.totalValue}, risk: ${portfolio.riskTolerance}. Provide recommendations.`, maxTokens: 500 })
+
+      await send.email(portfolio.clientId, 'Weekly Portfolio Review', { analysis })
+    }
+  })
+}
+```

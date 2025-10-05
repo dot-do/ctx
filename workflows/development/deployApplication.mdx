@@ -1,0 +1,784 @@
+---
+$type: Workflow
+$id: workflow/deployapplication
+title: Deploy Application
+name: Deploy Application
+description: CI/CD deployment workflow - build, test, deploy to staging, run smoke tests, deploy to production
+category: DevOps
+occupation: [[Software Developer]]
+agents:
+  - [[agents/SecurityAuditor]]
+  - [[agents/TestGenerator]]
+functions:
+  - [[functions/parseCode]]
+  - [[functions/analyzePerformance]]
+sources:
+  - [[sources/GitHubActivity]]
+triggers:
+  - type: git-push
+    branch: main
+  - type: manual
+    button: Deploy
+steps:
+  - id: checkout
+    name: Checkout Code
+    type: action
+  - id: build
+    name: Build Application
+    type: action
+    dependsOn: [checkout]
+  - id: test
+    name: Run Tests
+    type: workflow
+    workflow: [[workflows/runTests]]
+    dependsOn: [build]
+  - id: security-scan
+    name: Security Scan
+    type: agent
+    agent: [[agents/SecurityAuditor]]
+    dependsOn: [build]
+  - id: deploy-staging
+    name: Deploy to Staging
+    type: action
+    dependsOn: [test, security-scan]
+  - id: smoke-tests
+    name: Run Smoke Tests
+    type: action
+    dependsOn: [deploy-staging]
+  - id: approval
+    name: Approve Production Deploy
+    type: manual
+    dependsOn: [smoke-tests]
+  - id: deploy-production
+    name: Deploy to Production
+    type: action
+    dependsOn: [approval]
+  - id: notify
+    name: Notify Team
+    type: action
+    dependsOn: [deploy-production]
+duration: (number) 15-30 minutes
+sla: (number) 99.9
+---
+
+# Deploy Application Workflow
+
+Automated CI/CD deployment workflow that builds, tests, and deploys applications through staging to production.
+
+## Overview
+
+This workflow implements a complete CI/CD pipeline with multiple quality gates:
+
+1. **Build** - Compile code, bundle assets
+2. **Test** - Run [[workflows/runTests]] suite
+3. **Security** - Scan with [[agents/SecurityAuditor]]
+4. **Staging** - Deploy to staging environment
+5. **Smoke Tests** - Validate deployment
+6. **Approval** - Manual production gate
+7. **Production** - Deploy to production
+8. **Notify** - Alert team
+
+## Trigger Conditions
+
+### Automatic Triggers
+
+**Git Push to Main:**
+```yaml
+trigger:
+  type: git-push
+  branches:
+    - main
+  paths:
+    - src/**
+    - package.json
+```
+
+**Pull Request Merge:**
+```yaml
+trigger:
+  type: pull-request
+  action: merged
+  targetBranch: main
+```
+
+### Manual Triggers
+
+**Deploy Button:**
+- Trigger from admin dashboard
+- Select environment and version
+- Optional: Skip staging for hotfixes
+
+## Workflow Steps
+
+### Step 1: Checkout Code
+
+```typescript
+async function checkout(context: WorkflowContext) {
+  const { repository, commit } = context.trigger
+
+  await git.checkout(repository, commit)
+
+  return {
+    commit,
+    branch: await git.getCurrentBranch(),
+    timestamp: new Date().toISOString()
+  }
+}
+```
+
+**Outputs:**
+- `commit`: Git commit SHA
+- `branch`: Branch name
+- `timestamp`: Checkout time
+
+### Step 2: Build Application
+
+```typescript
+async function build(context: WorkflowContext) {
+  const { commit } = context.steps.checkout
+
+  // Install dependencies
+  await exec('npm ci')
+
+  // Run build
+  await exec('npm run build')
+
+  // Generate build info
+  const buildInfo = {
+    commit,
+    timestamp: new Date().toISOString(),
+    artifacts: await listBuildArtifacts()
+  }
+
+  // Upload artifacts
+  await uploadArtifacts(buildInfo.artifacts)
+
+  return buildInfo
+}
+```
+
+**Actions:**
+- Install dependencies
+- Compile TypeScript
+- Bundle assets
+- Optimize images
+- Generate source maps
+- Upload artifacts
+
+### Step 3: Run Tests
+
+Executes [[workflows/runTests]] workflow:
+
+```typescript
+async function runTests(context: WorkflowContext) {
+  const { commit } = context.steps.checkout
+
+  // Run test workflow
+  const result = await runWorkflow('runTests', {
+    commit,
+    coverage: true,
+    reporters: ['junit', 'html']
+  })
+
+  if (!result.success) {
+    throw new Error(`Tests failed: ${result.failedCount} failures`)
+  }
+
+  return result
+}
+```
+
+**Test Types:**
+- Unit tests
+- Integration tests
+- E2E tests
+- Visual regression tests
+
+**Success Criteria:**
+- All tests pass
+- Code coverage ≥ 80%
+- No critical vulnerabilities
+
+### Step 4: Security Scan
+
+Uses [[agents/SecurityAuditor]] to scan for vulnerabilities:
+
+```typescript
+async function securityScan(context: WorkflowContext) {
+  const { commit } = context.steps.checkout
+
+  const scanner = new SecurityAuditor()
+  const results = await scanner.scan({
+    commit,
+    includeOWASP: true,
+    includeDependencies: true,
+    includeSecrets: true
+  })
+
+  // Block on critical issues
+  if (results.critical > 0) {
+    throw new Error(
+      `Security scan failed: ${results.critical} critical issues found`
+    )
+  }
+
+  return results
+}
+```
+
+**Checks:**
+- OWASP Top 10
+- Dependency vulnerabilities
+- Secret detection
+- Security best practices
+
+### Step 5: Deploy to Staging
+
+```typescript
+async function deployStaging(context: WorkflowContext) {
+  const { commit, artifacts } = context.steps.build
+
+  // Deploy to staging environment
+  const deployment = await deploy({
+    environment: 'staging',
+    commit,
+    artifacts,
+    strategy: 'rolling',
+    healthCheck: true
+  })
+
+  // Wait for deployment to stabilize
+  await waitForHealthy(deployment, { timeout: 300000 })
+
+  return {
+    deploymentId: deployment.id,
+    url: 'https://staging.example.com',
+    timestamp: new Date().toISOString()
+  }
+}
+```
+
+**Deployment Strategy:**
+- Rolling deployment (zero downtime)
+- Health checks every 10 seconds
+- Automatic rollback on failure
+- Blue-green for critical services
+
+### Step 6: Run Smoke Tests
+
+```typescript
+async function smokeTests(context: WorkflowContext) {
+  const { url } = context.steps.deployStaging
+
+  const tests = [
+    // Health check
+    async () => {
+      const response = await fetch(`${url}/health`)
+      assert(response.status === 200)
+    },
+
+    // Auth check
+    async () => {
+      const response = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'test@example.com',
+          password: 'test123'
+        })
+      })
+      assert(response.status === 200)
+    },
+
+    // Database check
+    async () => {
+      const response = await fetch(`${url}/api/users/1`)
+      assert(response.status === 200)
+    },
+
+    // Cache check
+    async () => {
+      const response = await fetch(`${url}/api/cache/status`)
+      assert(response.status === 200)
+    }
+  ]
+
+  const results = await Promise.all(
+    tests.map(async (test, i) => {
+      try {
+        await test()
+        return { test: i, passed: true }
+      } catch (error) {
+        return { test: i, passed: false, error: error.message }
+      }
+    })
+  )
+
+  const failedTests = results.filter(r => !r.passed)
+
+  if (failedTests.length > 0) {
+    throw new Error(`Smoke tests failed: ${failedTests.length} failures`)
+  }
+
+  return { passed: results.length, failed: 0 }
+}
+```
+
+**Smoke Tests:**
+- Health endpoint responding
+- Authentication working
+- Database accessible
+- Cache working
+- Critical APIs functional
+
+### Step 7: Approve Production Deploy
+
+Manual approval gate:
+
+```typescript
+async function approveProductionDeploy(context: WorkflowContext) {
+  const { deploymentId } = context.steps.deployStaging
+
+  // Request approval
+  const approval = await requestApproval({
+    title: 'Approve Production Deployment',
+    description: `Deploy ${deploymentId} to production?`,
+    approvers: ['devops-team', 'tech-lead'],
+    requiredApprovals: 1,
+    timeout: 3600000 // 1 hour
+  })
+
+  if (!approval.approved) {
+    throw new Error('Production deployment not approved')
+  }
+
+  return {
+    approved: true,
+    approvedBy: approval.approver,
+    timestamp: new Date().toISOString()
+  }
+}
+```
+
+**Approval Options:**
+- **Approve**: Deploy to production
+- **Reject**: Cancel deployment
+- **Defer**: Schedule for later
+
+**Timeout:** 1 hour (auto-reject)
+
+### Step 8: Deploy to Production
+
+```typescript
+async function deployProduction(context: WorkflowContext) {
+  const { commit, artifacts } = context.steps.build
+  const { approved } = context.steps.approval
+
+  if (!approved) {
+    throw new Error('Production deployment requires approval')
+  }
+
+  // Deploy to production
+  const deployment = await deploy({
+    environment: 'production',
+    commit,
+    artifacts,
+    strategy: 'blue-green',
+    canary: {
+      enabled: true,
+      percentage: 10,
+      duration: 300000 // 5 minutes
+    },
+    healthCheck: true
+  })
+
+  // Monitor canary deployment
+  const canaryHealthy = await monitorCanary(deployment, {
+    errorRateThreshold: 0.01,
+    latencyThreshold: 1000,
+    duration: 300000
+  })
+
+  if (!canaryHealthy) {
+    await rollback(deployment)
+    throw new Error('Canary deployment failed health checks')
+  }
+
+  // Complete rollout
+  await completeRollout(deployment)
+
+  return {
+    deploymentId: deployment.id,
+    url: 'https://example.com',
+    timestamp: new Date().toISOString(),
+    strategy: 'blue-green',
+    canarySuccess: true
+  }
+}
+```
+
+**Production Deployment:**
+- Blue-green strategy
+- 10% canary deployment
+- Monitor error rates and latency
+- Automatic rollback on failure
+- Complete rollout after 5 minutes
+
+### Step 9: Notify Team
+
+```typescript
+async function notify(context: WorkflowContext) {
+  const { commit } = context.steps.checkout
+  const { deploymentId, url } = context.steps.deployProduction
+
+  // Slack notification
+  await slack.sendMessage({
+    channel: '#deployments',
+    text: `✅ Production deployment successful!`,
+    attachments: [
+      {
+        title: 'Deployment Details',
+        fields: [
+          { title: 'Commit', value: commit, short: true },
+          { title: 'Deployment ID', value: deploymentId, short: true },
+          { title: 'URL', value: url, short: false }
+        ]
+      }
+    ]
+  })
+
+  // Email notification
+  await email.send({
+    to: 'team@example.com',
+    subject: 'Production Deployment Successful',
+    template: 'deployment-success',
+    data: context.steps
+  })
+
+  return { notified: true }
+}
+```
+
+## Error Handling
+
+### Rollback Strategy
+
+```typescript
+async function rollback(deployment: Deployment) {
+  // Switch traffic back to previous version
+  await switchTraffic(deployment.previousVersion)
+
+  // Wait for traffic to settle
+  await sleep(30000)
+
+  // Verify previous version is healthy
+  await waitForHealthy(deployment.previousVersion)
+
+  // Send rollback notification
+  await slack.sendMessage({
+    channel: '#deployments',
+    text: '⚠️ Deployment rolled back due to failures'
+  })
+}
+```
+
+### Failure Notifications
+
+```typescript
+async function onFailure(context: WorkflowContext, error: Error) {
+  await slack.sendMessage({
+    channel: '#deployments',
+    text: `❌ Deployment failed at step: ${context.currentStep}`,
+    attachments: [
+      {
+        title: 'Error Details',
+        text: error.message,
+        color: 'danger'
+      }
+    ]
+  })
+
+  // Create incident ticket
+  await jira.createIssue({
+    project: 'OPS',
+    type: 'Incident',
+    title: `Deployment failed: ${error.message}`,
+    priority: 'High'
+  })
+}
+```
+
+## Configuration
+
+```yaml
+deployment:
+  environments:
+    staging:
+      url: https://staging.example.com
+      provider: cloudflare
+      regions: [us-east, eu-west]
+
+    production:
+      url: https://example.com
+      provider: cloudflare
+      regions: [global]
+      canary:
+        enabled: true
+        percentage: 10
+        duration: 5m
+
+  healthCheck:
+    path: /health
+    interval: 10s
+    timeout: 5s
+    healthy: 2
+    unhealthy: 3
+
+  rollback:
+    automatic: true
+    errorRateThreshold: 0.05
+    latencyThreshold: 2000
+
+  notifications:
+    slack:
+      channel: '#deployments'
+      mentions: ['@devops-team']
+    email:
+      recipients: ['team@example.com']
+```
+
+## Metrics
+
+Tracks deployment metrics:
+
+- **Deployment Frequency**: Times per day/week
+- **Lead Time**: Commit to production time
+- **Change Failure Rate**: Failed deployments %
+- **MTTR**: Mean time to recovery
+- **Deployment Duration**: Time per stage
+
+## Related Workflows
+
+- [[workflows/runTests]] - Test execution
+- [[workflows/releaseVersion]] - Version management
+- [[workflows/fixBug]] - Hotfix deployments
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Deployment {
+  id: string
+  commit: string
+  branch: string
+  environment: 'staging' | 'production'
+  status: 'pending' | 'building' | 'testing' | 'deploying' | 'success' | 'failed' | 'rolled_back'
+  buildArtifacts?: string[]
+  testResults?: { passed: number; failed: number; total: number }
+  canaryPercentage?: number
+  triggeredBy: string
+  createdAt: Date
+  completedAt?: Date
+}
+
+/**
+ * Deploy Application Workflow - CI/CD pipeline with canary deployments
+ *
+ * Relationships:
+ * - Deployment triggered by GitCommit
+ * - Deployment builds Artifacts
+ * - Deployment runs Tests
+ * - Deployment creates Release
+ * - Deployment may trigger Rollback
+ */
+export const deployApplication: BusinessModule = $ => {
+  const { db, ai, api, send, on, decide, every } = $
+
+  on.commit.pushed(async (commit: { sha: string; branch: string; author: string }) => {
+    // Only deploy from main branch
+    if (commit.branch !== 'main') return
+
+    const deployment = await db.deployments.create({
+      commit: commit.sha,
+      branch: commit.branch,
+      environment: 'staging',
+      status: 'pending',
+      triggeredBy: commit.author,
+      createdAt: new Date(),
+    })
+
+    // Build application
+    await db.deployments.update(deployment.id, { status: 'building' })
+
+    const buildResult = await api.post('https://api.github.com/actions/workflows/build.yml/dispatches', {
+      ref: commit.branch,
+      inputs: { commit: commit.sha },
+    })
+
+    const artifacts = await api.get(`https://api.github.com/actions/runs/${buildResult.id}/artifacts`)
+
+    await db.deployments.update(deployment.id, {
+      buildArtifacts: artifacts.map((a: any) => a.archive_download_url),
+    })
+
+    // Run tests
+    await db.deployments.update(deployment.id, { status: 'testing' })
+
+    const testResult = await api.post('https://api.github.com/actions/workflows/test.yml/dispatches', {
+      ref: commit.branch,
+    })
+
+    // AI-powered test failure analysis
+    if (testResult.failures > 0) {
+      const analysis = await ai.generate({
+        prompt: `Analyze test failures:
+          Total: ${testResult.total}
+          Failed: ${testResult.failures}
+          Errors: ${JSON.stringify(testResult.errors)}
+
+          Provide:
+          1. Root cause analysis
+          2. Affected areas
+          3. Rollback recommendation`,
+        maxTokens: 500,
+      })
+
+      await send.slack('#engineering', {
+        text: `⚠️ Deployment ${deployment.id} has test failures`,
+        attachments: [{ text: analysis }],
+      })
+
+      await db.deployments.update(deployment.id, { status: 'failed' })
+      return
+    }
+
+    await db.deployments.update(deployment.id, {
+      testResults: {
+        passed: testResult.passed,
+        failed: testResult.failures,
+        total: testResult.total,
+      },
+    })
+
+    // Deploy to staging
+    await db.deployments.update(deployment.id, { status: 'deploying' })
+
+    await api.post('https://api.cloudflare.com/client/v4/pages/deployments', {
+      project: 'my-app-staging',
+      branch: commit.branch,
+      commit: commit.sha,
+    })
+
+    await db.deployments.update(deployment.id, {
+      status: 'success',
+      completedAt: new Date(),
+    })
+
+    // Notify success
+    await send.slack('#deployments', {
+      text: `✅ Deployed to staging: ${commit.sha.substring(0, 7)}`,
+      attachments: [
+        {
+          fields: [
+            { title: 'Branch', value: commit.branch },
+            { title: 'Tests', value: `${testResult.passed}/${testResult.total}` },
+            { title: 'Author', value: commit.author },
+          ],
+        },
+      ],
+    })
+  })
+
+  on.deployment.approved(async (deployment: Deployment) => {
+    // Canary deployment to production
+    const prodDeployment = await db.deployments.create({
+      commit: deployment.commit,
+      branch: deployment.branch,
+      environment: 'production',
+      status: 'deploying',
+      canaryPercentage: 10, // Start with 10% traffic
+      triggeredBy: deployment.triggeredBy,
+      createdAt: new Date(),
+    })
+
+    // Deploy canary
+    await api.post('https://api.cloudflare.com/client/v4/workers/scripts/my-app/routes', {
+      pattern: 'app.example.com/*',
+      script: 'my-app-canary',
+      weight: 10,
+    })
+
+    // AI-powered monitoring for anomalies
+    const monitor = await ai.classify(
+      `Monitor canary deployment ${prodDeployment.id}. Check error rates, latency, user complaints.`,
+      ['healthy', 'degraded', 'failing']
+    )
+
+    decide
+      .switch(monitor)
+      .case('healthy', async () => {
+        // Gradually increase canary traffic
+        for (const percentage of [25, 50, 75, 100]) {
+          await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000)) // 5 min intervals
+
+          await api.patch(`https://api.cloudflare.com/client/v4/workers/scripts/my-app-canary`, {
+            weight: percentage,
+          })
+
+          await db.deployments.update(prodDeployment.id, {
+            canaryPercentage: percentage,
+          })
+        }
+
+        await db.deployments.update(prodDeployment.id, {
+          status: 'success',
+          completedAt: new Date(),
+        })
+
+        await send.slack('#deployments', `🚀 Production deployment complete: ${deployment.commit.substring(0, 7)}`)
+      })
+      .case('degraded', async () => {
+        await send.slack('#deployments', `⚠️ Canary showing degraded performance, holding at 10%`)
+      })
+      .case('failing', async () => {
+        // Automatic rollback
+        await api.delete('https://api.cloudflare.com/client/v4/workers/scripts/my-app-canary')
+
+        await db.deployments.update(prodDeployment.id, {
+          status: 'rolled_back',
+          completedAt: new Date(),
+        })
+
+        await send.slack('#deployments', `🔴 Canary failed, automatic rollback initiated`)
+      })
+  })
+
+  // Monitor production health every 5 minutes
+  every.minutes(5, async () => {
+    const latestDeployment = await db.deployments.findOne({
+      environment: 'production',
+      status: 'success',
+      order: { createdAt: 'desc' },
+    })
+
+    if (!latestDeployment) return
+
+    const health = await api.get('https://api.example.com/health')
+
+    if (health.status !== 'healthy') {
+      await send.slack('#deployments', {
+        text: `🚨 Production health check failed`,
+        attachments: [
+          {
+            fields: [
+              { title: 'Error Rate', value: `${health.errorRate}%` },
+              { title: 'Latency', value: `${health.latency}ms` },
+              { title: 'Deployment', value: latestDeployment.commit },
+            ],
+          },
+        ],
+      })
+    }
+  })
+}
+```

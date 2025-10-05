@@ -1,0 +1,406 @@
+---
+$type: Schema
+$id: schema/deliverability-report
+title: Deliverability Report
+description: Comprehensive email deliverability and reputation report for domains
+type: custom/DeliverabilityReport
+properties:
+  - name: id
+    type: string
+    description: Unique report identifier (ULID)
+  - name: domainId
+    type: string
+    description: Email domain ID
+  - name: domain
+    type: string
+    description: Domain name
+  - name: reportDate
+    type: string
+    format: date-time
+    description: Report generation date
+  - name: period
+    type: string
+    description: Reporting period (day, week, month, quarter, year)
+  - name: overallScore
+    type: number
+    description: Overall deliverability score (0-100)
+  - name: status
+    type: string
+    description: Overall status (excellent, good, warning, critical)
+  - name: metrics
+    type: object
+    description: Email delivery metrics
+    properties:
+      - name: sent
+        type: number
+        description: Total emails sent
+      - name: delivered
+        type: number
+        description: Successfully delivered
+      - name: bounced
+        type: number
+        description: Hard + soft bounces
+      - name: complained
+        type: number
+        description: Spam complaints
+      - name: opened
+        type: number
+        description: Emails opened
+      - name: clicked
+        type: number
+        description: Links clicked
+      - name: replied
+        type: number
+        description: Replies received
+      - name: unsubscribed
+        type: number
+        description: Unsubscribes
+      - name: deliveryRate
+        type: number
+        description: delivered / sent (percentage)
+      - name: bounceRate
+        type: number
+        description: bounced / sent (percentage)
+      - name: complaintRate
+        type: number
+        description: complained / delivered (percentage)
+      - name: openRate
+        type: number
+        description: opened / delivered (percentage)
+      - name: clickRate
+        type: number
+        description: clicked / delivered (percentage)
+      - name: replyRate
+        type: number
+        description: replied / delivered (percentage)
+      - name: unsubscribeRate
+        type: number
+        description: unsubscribed / delivered (percentage)
+  - name: reputation
+    type: object
+    description: Domain and IP reputation
+    properties:
+      - name: senderScore
+        type: number
+        description: Sender reputation score (0-100)
+      - name: ipReputation
+        type: number
+        description: IP address reputation (0-100)
+      - name: domainReputation
+        type: number
+        description: Domain reputation (0-100)
+      - name: blacklistCount
+        type: number
+        description: Number of blacklists found on
+      - name: blacklists
+        type: array
+        description: List of blacklists
+        items:
+          type: string
+      - name: spfStatus
+        type: string
+        description: SPF authentication status (pass, fail, neutral, none)
+      - name: dkimStatus
+        type: string
+        description: DKIM authentication status (pass, fail, none)
+      - name: dmarcStatus
+        type: string
+        description: DMARC authentication status (pass, fail, none, quarantine, reject)
+      - name: warmupStatus
+        type: string
+        description: IP warmup status (not_started, in_progress, paused, completed)
+      - name: warmupProgress
+        type: number
+        description: Warmup completion percentage (0-100)
+  - name: issues
+    type: array
+    description: Identified issues with severity
+    items:
+      type: object
+      properties:
+        - name: severity
+          type: string
+          description: Issue severity (critical, warning, info)
+        - name: category
+          type: string
+          description: Issue category (bounce_rate, complaint_rate, blacklist, dns_auth, sender_score)
+        - name: message
+          type: string
+          description: Issue description
+        - name: recommendation
+          type: string
+          description: Recommended action
+        - name: impact
+          type: string
+          description: Impact description
+  - name: recommendations
+    type: array
+    description: Actionable recommendations
+    items:
+      type: object
+      properties:
+        - name: priority
+          type: string
+          description: Recommendation priority (high, medium, low)
+        - name: category
+          type: string
+          description: Recommendation category
+        - name: action
+          type: string
+          description: Recommended action
+        - name: rationale
+          type: string
+          description: Why this is recommended
+        - name: estimatedImpact
+          type: string
+          description: Expected improvement
+  - name: trends
+    type: object
+    description: Metric trends vs previous period
+    properties:
+      - name: deliveryRate
+        type: object
+        properties:
+          - name: current
+            type: number
+          - name: previous
+            type: number
+          - name: change
+            type: number
+          - name: trend
+            type: string
+            description: up, down, stable
+      - name: bounceRate
+        type: object
+        properties:
+          - name: current
+            type: number
+          - name: previous
+            type: number
+          - name: change
+            type: number
+          - name: trend
+            type: string
+      - name: complaintRate
+        type: object
+        properties:
+          - name: current
+            type: number
+          - name: previous
+            type: number
+          - name: change
+            type: number
+          - name: trend
+            type: string
+      - name: openRate
+        type: object
+        properties:
+          - name: current
+            type: number
+          - name: previous
+            type: number
+          - name: change
+            type: number
+          - name: trend
+            type: string
+  - name: benchmarks
+    type: object
+    description: Industry benchmark comparisons
+    properties:
+      - name: deliveryRate
+        type: object
+        properties:
+          - name: yours
+            type: number
+          - name: average
+            type: number
+          - name: best
+            type: number
+      - name: bounceRate
+        type: object
+        properties:
+          - name: yours
+            type: number
+          - name: average
+            type: number
+          - name: best
+            type: number
+      - name: openRate
+        type: object
+        properties:
+          - name: yours
+            type: number
+          - name: average
+            type: number
+          - name: best
+            type: number
+  - name: generatedAt
+    type: string
+    format: date-time
+    description: Report generation timestamp
+  - name: generatedBy
+    type: string
+    description: User ID who generated report
+required:
+  - domainId
+  - domain
+  - reportDate
+  - period
+  - overallScore
+  - status
+  - metrics
+  - reputation
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - email
+  - deliverability
+  - reputation
+  - report
+  - analytics
+---
+
+# Deliverability Report Schema
+
+Comprehensive report of email deliverability metrics, reputation, and recommendations.
+
+## Report Components
+
+### 1. Overall Score (0-100)
+
+Weighted calculation:
+- 40% Sender reputation
+- 30% Delivery rate
+- 20% Engagement (opens/clicks)
+- 10% DNS authentication
+
+### 2. Status Indicators
+
+- **Excellent** (90+): All metrics optimal
+- **Good** (70-89): Acceptable performance
+- **Warning** (50-69): Issues need attention
+- **Critical** (<50): Immediate action required
+
+### 3. Key Metrics
+
+**Deliverability:**
+- Delivery rate > 98% (excellent)
+- Bounce rate < 2% (excellent)
+- Complaint rate < 0.05% (excellent)
+
+**Engagement:**
+- Open rate: 15-25% (good for cold email)
+- Click rate: 2-5% (good)
+- Reply rate: 1-3% (excellent)
+
+### 4. Reputation Factors
+
+**DNS Authentication:**
+- SPF: Prevents spoofing
+- DKIM: Email signing
+- DMARC: Policy enforcement
+
+**Sender Score:**
+- 90-100: Excellent reputation
+- 70-89: Good reputation
+- 50-69: Questionable reputation
+- <50: Poor reputation
+
+**Blacklists:**
+- 0 listings: Clean
+- 1-2 listings: Warning
+- 3+ listings: Critical
+
+### 5. Issue Categories
+
+**Critical Issues:**
+- Bounce rate > 10%
+- Complaint rate > 0.5%
+- Found on high-authority blacklist
+- Sender score < 50
+
+**Warning Issues:**
+- Bounce rate > 5%
+- Complaint rate > 0.1%
+- SPF/DKIM/DMARC not passing
+- Sender score < 70
+
+**Info Issues:**
+- Low engagement rates
+- Incomplete warmup
+- Missing optional configurations
+
+### 6. Recommendations
+
+**Immediate Actions:**
+- Fix DNS authentication
+- Clean email list
+- Request blacklist removal
+- Pause sending (if critical)
+
+**Short-term (1-2 weeks):**
+- Improve content quality
+- Adjust sending frequency
+- Complete IP warmup
+- Segment by engagement
+
+**Long-term (1+ months):**
+- Build sender reputation
+- Optimize send times
+- A/B test content
+- Monitor competitors
+
+## Report Frequency
+
+- **Daily**: For domains under warmup or with issues
+- **Weekly**: For active sending domains
+- **Monthly**: For established domains with good reputation
+
+## Trend Analysis
+
+Compare current period to previous:
+- Improving trends: ↑ in positive metrics, ↓ in negative
+- Declining trends: ↓ in positive metrics, ↑ in negative
+- Stable trends: <5% change
+
+## Industry Benchmarks
+
+Typical cold email benchmarks:
+- Delivery rate: 95-98%
+- Bounce rate: 1-3%
+- Complaint rate: <0.1%
+- Open rate: 15-25%
+- Reply rate: 1-3%
+
+## Example Report Structure
+
+```json
+{
+  "domainId": "domain_xxx",
+  "domain": "example.com",
+  "period": "week",
+  "overallScore": 85,
+  "status": "good",
+  "metrics": {
+    "sent": 10000,
+    "delivered": 9750,
+    "bounced": 250,
+    "deliveryRate": 97.5,
+    "bounceRate": 2.5
+  },
+  "reputation": {
+    "senderScore": 85,
+    "spfStatus": "pass",
+    "dkimStatus": "pass",
+    "dmarcStatus": "pass"
+  },
+  "issues": [
+    {
+      "severity": "warning",
+      "category": "bounce_rate",
+      "message": "Bounce rate slightly elevated at 2.5%"
+    }
+  ]
+}
+```

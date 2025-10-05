@@ -1,0 +1,498 @@
+---
+$type: Workflow
+$id: workflow/trackshipment
+title: track-shipment
+name: track-shipment
+description: Real-time shipment tracking with customer updates and exception handling
+
+trigger:
+  type: event
+  event: shipment.created
+
+input:
+  trackingNumber: Carrier tracking number
+  carrier: Carrier name (UPS, FedEx, USPS)
+  orderId: Associated order ID
+  customerId: Customer ID
+  customerEmail: Customer email address
+  estimatedDelivery: Initial delivery estimate (ISO date)
+
+steps:
+  - name: register-tracking
+    description: Register tracking number in system
+    function: register-tracking
+    input:
+      trackingNumber: ${input.trackingNumber}
+      carrier: ${input.carrier}
+      orderId: ${input.orderId}
+      customerId: ${input.customerId}
+
+  - name: subscribe-webhooks
+    description: Subscribe to carrier tracking webhooks
+    function: subscribe-carrier-webhooks
+    input:
+      trackingNumber: ${input.trackingNumber}
+      carrier: ${input.carrier}
+      callbackUrl: ${env.WEBHOOK_BASE_URL}/tracking/${input.trackingNumber}
+
+  - name: send-tracking-email
+    description: Send initial tracking email to customer
+    function: send-email
+    input:
+      to: ${input.customerEmail}
+      template: shipment-tracking
+      data:
+        orderId: ${input.orderId}
+        trackingNumber: ${input.trackingNumber}
+        carrier: ${input.carrier}
+        estimatedDelivery: ${input.estimatedDelivery}
+        trackingUrl: ${steps.register-tracking.output.trackingUrl}
+
+  - name: monitor-status
+    description: Monitor shipment status via webhooks
+    type: wait-for-event
+    events:
+      - shipment.in_transit
+      - shipment.out_for_delivery
+      - shipment.delivered
+      - shipment.exception
+    timeout: 604800000 # 7 days
+
+  - name: handle-status-update
+    description: Process status change and notify customer
+    condition: ${steps.monitor-status.event !== 'shipment.delivered'}
+    function: handle-tracking-update
+    input:
+      trackingNumber: ${input.trackingNumber}
+      status: ${steps.monitor-status.event}
+      location: ${steps.monitor-status.data.location}
+      timestamp: ${steps.monitor-status.data.timestamp}
+
+  - name: notify-in-transit
+    description: Send in-transit notification
+    condition: ${steps.monitor-status.event === 'shipment.in_transit'}
+    function: send-sms
+    input:
+      to: ${input.customerPhone}
+      message: "Your package is in transit. Track: ${steps.register-tracking.output.trackingUrl}"
+
+  - name: notify-out-for-delivery
+    description: Send out-for-delivery notification
+    condition: ${steps.monitor-status.event === 'shipment.out_for_delivery'}
+    function: send-notification
+    input:
+      to: ${input.customerId}
+      channels: [sms, email, push]
+      template: out-for-delivery
+      data:
+        orderId: ${input.orderId}
+        trackingNumber: ${input.trackingNumber}
+        estimatedTime: ${steps.monitor-status.data.estimatedTime}
+
+  - name: handle-exception
+    description: Handle delivery exceptions
+    condition: ${steps.monitor-status.event === 'shipment.exception'}
+    function: handle-delivery-exception
+    input:
+      trackingNumber: ${input.trackingNumber}
+      exceptionType: ${steps.monitor-status.data.exceptionType}
+      exceptionDetails: ${steps.monitor-status.data.details}
+      customerId: ${input.customerId}
+
+  - name: confirm-delivery
+    description: Process delivery confirmation
+    condition: ${steps.monitor-status.event === 'shipment.delivered'}
+    function: confirm-delivery
+    input:
+      trackingNumber: ${input.trackingNumber}
+      orderId: ${input.orderId}
+      deliveryTime: ${steps.monitor-status.data.timestamp}
+      deliveryLocation: ${steps.monitor-status.data.location}
+      signedBy: ${steps.monitor-status.data.signedBy}
+
+  - name: send-delivery-confirmation
+    description: Email delivery confirmation
+    condition: ${steps.monitor-status.event === 'shipment.delivered'}
+    function: send-email
+    input:
+      to: ${input.customerEmail}
+      template: delivery-confirmed
+      data:
+        orderId: ${input.orderId}
+        deliveryTime: ${steps.monitor-status.data.timestamp}
+        signedBy: ${steps.monitor-status.data.signedBy}
+        proofOfDelivery: ${steps.monitor-status.data.photoUrl}
+
+  - name: track-analytics
+    description: Log delivery metrics
+    function: track-event
+    input:
+      event: shipment_delivered
+      userId: ${input.customerId}
+      properties:
+        orderId: ${input.orderId}
+        carrier: ${input.carrier}
+        actualDelivery: ${steps.monitor-status.data.timestamp}
+        estimatedDelivery: ${input.estimatedDelivery}
+        onTime: ${steps.confirm-delivery.output.onTime}
+        transitDays: ${steps.confirm-delivery.output.transitDays}
+
+output:
+  trackingNumber: ${input.trackingNumber}
+  status: ${steps.monitor-status.event}
+  deliveredAt: ${steps.monitor-status.data.timestamp}
+  onTime: ${steps.confirm-delivery.output.onTime}
+  transitDays: ${steps.confirm-delivery.output.transitDays}
+
+timeout: 604800000 # 7 days
+
+notifications:
+  onSuccess:
+    - channel: internal
+      message: Package delivered - ${input.orderId}
+  onError:
+    - channel: slack
+      webhook: ${env.SLACK_ALERTS_URL}
+      message: 🚨 Tracking workflow failed - ${input.trackingNumber}
+---
+
+# Track Shipment Workflow
+
+Real-time package tracking with proactive customer notifications and automated exception handling.
+
+## Flow Overview
+
+```
+Shipment Created
+  ↓
+Register Tracking Number
+  ↓
+Subscribe to Carrier Webhooks
+  ↓
+Send Initial Tracking Email
+  ↓
+Wait for Status Events ⟳
+  ↓
+─────────────────────────────
+Status Update Received
+  ↓
+  ├─→ In Transit → SMS notification
+  ├─→ Out for Delivery → Multi-channel alert
+  ├─→ Exception → Handle + notify
+  └─→ Delivered → Confirm + email
+  ↓
+Track Analytics
+  ↓
+Complete! 🎉
+```
+
+## Status Events
+
+### Shipment Created
+**Initial state when label generated**
+- Register in tracking database
+- Subscribe to carrier webhooks
+- Send tracking info to customer
+- Start monitoring
+
+### In Transit
+**Package moving through carrier network**
+- Update location in database
+- Optional SMS notification
+- Update delivery estimate if changed
+
+### Out for Delivery
+**Package on delivery vehicle**
+- High-priority multi-channel notification
+- SMS + Email + Push notification
+- Include estimated delivery window
+- Enable delivery preferences (leave at door, etc)
+
+### Exception
+**Delivery issue encountered**
+
+**Common Exceptions:**
+- Address not found
+- Delivery attempt failed (nobody home)
+- Weather delay
+- Damaged package
+- Lost in transit
+
+**Handling:**
+- Classify exception type
+- Notify customer immediately
+- Provide resolution options
+- Track until resolved
+
+### Delivered
+**Package successfully delivered**
+- Record delivery time and location
+- Log who signed for package
+- Request proof of delivery photo
+- Send confirmation email
+- Calculate on-time performance
+- Close tracking workflow
+
+## Customer Notifications
+
+### Initial Tracking Email
+
+```yaml
+subject: Your order has shipped! 📦
+body: |
+  Order #{{orderId}} is on its way!
+
+  Tracking Number: {{trackingNumber}}
+  Carrier: {{carrier}}
+  Estimated Delivery: {{estimatedDelivery}}
+
+  Track your package: {{trackingUrl}}
+
+  You'll receive updates as your package moves.
+```
+
+### In Transit SMS
+
+```
+Your package is in transit 🚚
+Track: bit.ly/track-abc123
+```
+
+### Out for Delivery Alert
+
+**SMS:**
+```
+Your package arrives TODAY! 🎉
+Estimated between 2-5 PM
+Track: bit.ly/track-abc123
+```
+
+**Email:**
+```yaml
+subject: Arriving today! 📦
+body: |
+  Your package is out for delivery!
+
+  Estimated arrival: 2-5 PM today
+  Driver is 4 stops away
+
+  Delivery preferences:
+  - Leave at front door ✓
+  - Signature required
+
+  Real-time map: {{trackingUrl}}
+```
+
+### Delivery Confirmation
+
+```yaml
+subject: Package delivered! ✅
+body: |
+  Your order was delivered on {{deliveryDate}}
+  at {{deliveryTime}}.
+
+  Delivered to: {{deliveryLocation}}
+  Received by: {{signedBy}}
+
+  {{proofOfDeliveryPhoto}}
+
+  Questions? Reply to this email.
+```
+
+## Exception Handling
+
+### Address Not Found
+
+**Workflow:**
+1. Notify customer immediately
+2. Request address verification
+3. Update carrier with correction
+4. Resume delivery
+
+**Customer Message:**
+```
+🚨 Delivery issue with order #{{orderId}}
+
+Your address could not be found:
+{{originalAddress}}
+
+Please confirm or correct:
+{{correctionForm}}
+```
+
+### Delivery Attempt Failed
+
+**Workflow:**
+1. Alert customer of attempt
+2. Provide redelivery options
+3. Offer pickup location alternative
+4. Schedule redelivery
+
+**Options:**
+- Reschedule delivery (date/time)
+- Hold at carrier location
+- Reroute to alternate address
+- Leave without signature
+
+### Weather Delay
+
+**Workflow:**
+1. Detect delay notification from carrier
+2. Update delivery estimate
+3. Notify customer proactively
+4. Continue monitoring
+
+**Customer Message:**
+```
+Weather delay affecting your delivery 🌧️
+
+Original estimate: {{originalDate}}
+New estimate: {{newDate}}
+
+Track updates: {{trackingUrl}}
+```
+
+### Package Lost
+
+**Workflow:**
+1. Escalate after 3 days no update
+2. File carrier claim
+3. Offer immediate replacement or refund
+4. Customer chooses resolution
+
+**Resolution Options:**
+- Rush replacement (2-day shipping)
+- Full refund to original payment
+- Store credit with 10% bonus
+
+## Carrier Integration
+
+### Webhook Events
+
+All carriers support webhooks for real-time updates:
+
+**UPS:**
+- `departure_scan` - Left origin facility
+- `arrival_scan` - Arrived at facility
+- `out_for_delivery` - On delivery vehicle
+- `delivered` - Successfully delivered
+- `exception` - Delivery issue
+
+**FedEx:**
+- `PU` - Picked up
+- `IT` - In transit
+- `OD` - Out for delivery
+- `DL` - Delivered
+- `DE` - Delivery exception
+
+**USPS:**
+- `Accepted` - Package accepted
+- `In Transit` - Moving
+- `Out for Delivery` - On truck
+- `Delivered` - Completed
+- `Notice Left` - Delivery attempted
+
+### Webhook Security
+
+```typescript
+// Verify webhook signature
+const signature = request.headers['x-carrier-signature']
+const isValid = verifySignature(
+  request.body,
+  signature,
+  process.env.CARRIER_WEBHOOK_SECRET
+)
+
+if (!isValid) {
+  return { status: 401, error: 'Invalid signature' }
+}
+```
+
+## Performance Metrics
+
+**Delivery Performance:**
+- **On-Time Rate** - % delivered by estimate
+- **Average Transit Time** - Days from ship to delivery
+- **Exception Rate** - % with delivery issues
+- **First-Attempt Success** - % delivered first try
+
+**Customer Experience:**
+- **Notification Open Rate** - % reading tracking updates
+- **Tracking Page Views** - Average views per shipment
+- **Support Tickets** - Delivery-related inquiries
+- **CSAT Score** - Customer satisfaction rating
+
+**Targets:**
+- 95%+ on-time delivery
+- <3 days average transit (domestic)
+- <5% exception rate
+- 90%+ first-attempt success
+- 4.5+ CSAT score
+
+## Related
+
+- [[shipping-coordinator-agent.mdx|Shipping Coordinator Agent]]
+- [[processOrder.mdx|Process Order Workflow]]
+- [[handleReturn.mdx|Handle Return Workflow]]
+- [[UPSTracking.mdx|UPS Tracking Integration]]
+- [[calculateShipping.mdx|Calculate Shipping Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Shipment {
+  id: string
+  orderId: string
+  trackingNumber: string
+  carrier: string
+  status: 'pending' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'exception'
+  estimatedDelivery: Date
+  currentLocation?: string
+  updates: TrackingUpdate[]
+}
+
+interface TrackingUpdate {
+  timestamp: Date
+  status: string
+  location: string
+  description: string
+}
+
+export const trackShipment: BusinessModule = $ => {
+  const { db, ai, api, send, on, every } = $
+
+  // Poll carrier APIs for updates every hour
+  every.hour(async () => {
+    const activeShipments = await db.shipments.findMany({
+      status: { in: ['pending', 'in_transit', 'out_for_delivery'] },
+    })
+
+    for (const shipment of activeShipments) {
+      const tracking = await api.get(`https://api.shippo.com/tracks/${shipment.carrier}/${shipment.trackingNumber}`)
+
+      if (tracking.status !== shipment.status) {
+        await db.shipments.update(shipment.id, {
+          status: tracking.status,
+          currentLocation: tracking.location,
+        })
+
+        // Notify customer of status change
+        await send.email(shipment.customerId, `Shipment Update: ${tracking.status}`, {
+          trackingNumber: shipment.trackingNumber,
+          location: tracking.location,
+          estimatedDelivery: shipment.estimatedDelivery,
+        })
+      }
+    }
+  })
+
+  on.shipment.delivered(async (shipment: Shipment) => {
+    await send.email(shipment.customerId, 'Package Delivered!', {
+      orderId: shipment.orderId,
+      deliveryDate: new Date(),
+    })
+  })
+}
+```

@@ -1,0 +1,246 @@
+---
+$type: Workflow
+$id: workflow/processpayment
+title: processPayment
+name: processPayment
+description: Handle payment from validation to receipt
+
+trigger:
+  type: api
+  method: POST
+  path: /payments
+
+input:
+  amount: Payment amount in cents (number)
+  currency: Currency code (USD, EUR, GBP, etc)
+  customerId: Stripe customer identifier
+  paymentMethod: Stripe payment method identifier
+
+steps:
+  - name: validate
+    function: validate-card
+    input:
+      paymentMethod: ${input.paymentMethod}
+      amount: ${input.amount}
+    onError:
+      action: return
+      status: 400
+      message: Invalid payment method
+
+  - name: charge
+    function: stripe-charge
+    input:
+      amount: ${input.amount}
+      currency: ${input.currency}
+      customer: ${input.customerId}
+      paymentMethod: ${input.paymentMethod}
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+
+  - name: receipt
+    function: send-email
+    input:
+      to: ${steps.charge.output.customerEmail}
+      template: payment-receipt
+      data:
+        amount: ${input.amount}
+        receiptUrl: ${steps.charge.output.receiptUrl}
+
+output:
+  paymentId: ${steps.charge.output.id}
+  status: success
+
+timeout: 30000
+---
+
+# Payment Processing Workflow
+
+Automated payment processing from validation through receipt delivery.
+
+## Flow
+
+```
+POST /payments
+  ↓
+Validate Payment Method
+  ↓
+Charge via Stripe (with retry)
+  ↓
+Send Receipt Email
+  ↓
+Return Payment ID
+```
+
+## Steps
+
+1. **Validate** - Ensures payment method is valid before charging
+2. **Charge** - Processes payment through Stripe with automatic retry
+3. **Receipt** - Sends confirmation email to customer
+
+## Error Handling
+
+**Validation Failure:**
+- Returns 400 status
+- Workflow stops immediately
+- Customer sees error message
+
+**Charge Failure:**
+- Retries up to 3 times
+- Exponential backoff between attempts
+- If all retries fail, returns error
+
+**Receipt Failure:**
+- Payment already succeeded
+- Receipt send is non-critical
+- Logged for manual follow-up
+
+## Example Request
+
+```yaml
+POST /payments
+amount: 9900
+currency: usd
+customerId: cus_abc123
+paymentMethod: pm_xyz789
+```
+
+## Example Response
+
+```yaml
+paymentId: ch_def456
+status: success
+```
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface PaymentRequest {
+  id: string
+  amount: number
+  currency: string
+  customerId: string
+  paymentMethodId: string
+  status: 'pending' | 'processing' | 'succeeded' | 'failed'
+  createdAt: Date
+}
+
+interface Payment {
+  id: string
+  amount: number
+  currency: string
+  customerId: string
+  paymentMethodId: string
+  status: 'pending' | 'processing' | 'succeeded' | 'failed'
+  stripeChargeId?: string
+  failureReason?: string
+  receiptUrl?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+/**
+ * Payment Processing Workflow - Complete payment flow with AI fraud detection
+ *
+ * Relationships:
+ * - PaymentRequest triggers Payment creation
+ * - Payment belongs to Customer
+ * - Payment uses PaymentMethod
+ * - Payment generates Receipt (sent via email)
+ */
+export const processPayment: BusinessModule = $ => {
+  const { db, ai, api, send, on, decide } = $
+
+  on.payment.requested(async (request: PaymentRequest) => {
+    // Create payment record
+    const payment = await db.payments.create({
+      id: request.id,
+      amount: request.amount,
+      currency: request.currency,
+      customerId: request.customerId,
+      paymentMethodId: request.paymentMethodId,
+      status: 'processing',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+
+    // AI-powered fraud detection
+    const fraudCheck = await ai.classify(
+      `Analyze payment: Amount ${payment.amount} ${payment.currency}, Customer ID ${payment.customerId}.
+       Check for suspicious patterns, unusual amounts, or risky behavior.`,
+      ['legitimate', 'suspicious', 'fraudulent']
+    )
+
+    decide
+      .switch(fraudCheck)
+      .case('legitimate', async () => {
+        // Process payment normally
+        try {
+          const charge = await api.post('https://api.stripe.com/v1/charges', {
+            amount: payment.amount,
+            currency: payment.currency,
+            customer: payment.customerId,
+            payment_method: payment.paymentMethodId,
+          })
+
+          await db.payments.update(payment.id, {
+            status: 'succeeded',
+            stripeChargeId: charge.id,
+            receiptUrl: charge.receipt_url,
+            updatedAt: new Date(),
+          })
+
+          // Send receipt email
+          await send.email(charge.customer_email, 'Payment Receipt', {
+            amount: payment.amount,
+            currency: payment.currency,
+            receiptUrl: charge.receipt_url,
+          })
+        } catch (error: any) {
+          await db.payments.update(payment.id, {
+            status: 'failed',
+            failureReason: error.message,
+            updatedAt: new Date(),
+          })
+        }
+      })
+      .case('suspicious', async () => {
+        // Require additional verification
+        await db.payments.update(payment.id, {
+          status: 'pending',
+          updatedAt: new Date(),
+        })
+
+        await send.email(payment.customerId, 'Payment Verification Required', {
+          amount: payment.amount,
+          verificationUrl: `https://app.example.com/verify/${payment.id}`,
+        })
+      })
+      .case('fraudulent', async () => {
+        // Block payment and alert fraud team
+        await db.payments.update(payment.id, {
+          status: 'failed',
+          failureReason: 'Suspected fraud',
+          updatedAt: new Date(),
+        })
+
+        await send.email('fraud@example.com', 'Fraudulent Payment Blocked', {
+          paymentId: payment.id,
+          customerId: payment.customerId,
+          amount: payment.amount,
+        })
+      })
+  })
+
+  on.payment.succeeded(async (payment: Payment) => {
+    // Update customer stats
+    const customer = await db.customers.findById(payment.customerId)
+    await db.customers.update(customer.id, {
+      totalSpent: customer.totalSpent + payment.amount,
+      lastPaymentDate: payment.updatedAt,
+    })
+  })
+}
+```

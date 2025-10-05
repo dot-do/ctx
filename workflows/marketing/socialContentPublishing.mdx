@@ -1,0 +1,67 @@
+---
+$type: Workflow
+$id: workflow/socialcontentpublishing
+title: Social Content Publishing
+description: Automated workflow for publishing social media content
+category: growth
+tags: [social-media, publishing, automation, scheduling]
+version: 1.0.0
+status: active
+triggers: [queue, cron]
+created: 2025-10-04
+updated: 2025-10-04
+---
+
+# Social Content Publishing Workflow
+
+## Overview
+
+Automates social media content publishing across 6 platforms with scheduling, queue processing, and analytics syncing.
+
+## Steps
+
+### 1. Validate Post
+- Check post exists and is publishable
+- Verify platform connection active
+- Validate content meets platform requirements
+
+### 2. Prepare Content
+- Process media URLs
+- Format hashtags and mentions
+- Generate link previews
+- Optimize for platform
+
+### 3. Publish to Platform
+- Call platform API with OAuth token
+- Handle rate limits and retries
+- Capture platform post ID
+
+### 4. Update Status
+- Mark post as published
+- Save platform URL
+- Record publish timestamp
+
+### 5. Sync Analytics
+- Queue initial analytics fetch
+- Schedule periodic syncs
+- Track engagement metrics
+
+## Queue Messages
+
+```typescript
+{ type: 'publish_post', postId: 'ulid' }
+{ type: 'sync_analytics', userId: 'user_123', platform: 'twitter' }
+{ type: 'process_queue', queueId: 'ulid' }
+{ type: 'refresh_token', connectionId: 'ulid' }
+```
+
+## Service Implementation
+
+- **Service**: `workers/social-media-automation`
+- **Queue**: `social-queue`
+- **Batch Size**: 10 messages
+- **Timeout**: 30 seconds
+
+## Version History
+
+- **1.0.0** (2025-10-04) - Initial workflow

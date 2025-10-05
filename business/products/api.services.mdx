@@ -1,0 +1,414 @@
+---
+$type: Business
+$id: business/api.services
+title: API.Services
+legalName: API.Services (functions.do)
+type: product
+category: Platform
+industry: Technology
+vertical: API Infrastructure
+description: Function catalog with 1,000+ executable functions over API/MCP/RPC
+mission: Make every function discoverable, composable, and executable
+tagline: "Everything is a Function"
+website: https://api.services
+status: Active
+launched: "2024"
+metadata:
+  ns: business
+  visibility: public
+tags:
+  - api
+  - functions
+  - rpc
+  - mcp
+  - developer-tools
+---
+
+# API.Services
+
+**Universal function catalog** providing 1,000+ executable functions accessible via REST API, Model Context Protocol (MCP), Workers RPC, and type-safe SDKs.
+
+## Overview
+
+API.Services is the foundational function layer for the .do ecosystem. Every capability—from sending emails to analyzing data—is exposed as a discoverable, composable function with multiple access protocols.
+
+## Core Value Proposition
+
+**For Developers:**
+- 1,000+ pre-built functions
+- Multi-protocol access (REST, MCP, RPC, SDK)
+- Type-safe SDKs for TypeScript
+- Complete OpenAPI documentation
+- Sub-50ms response times (edge network)
+
+**For AI Agents:**
+- MCP tools for all functions
+- Semantic search via embeddings
+- Function composition and chaining
+- Automatic retry and error handling
+- Real-time function discovery
+
+## Access Protocols
+
+### 1. REST API
+
+```bash
+# Standard HTTP requests
+curl https://api.services/v1/functions/send-email \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "to": "user@example.com",
+    "subject": "Hello",
+    "body": "Message content"
+  }'
+```
+
+### 2. Model Context Protocol (MCP)
+
+```typescript
+// AI agents use MCP tools
+const result = await mcp.call('send-email', {
+  to: 'user@example.com',
+  subject: 'Hello',
+  body: 'Message content'
+})
+```
+
+### 3. Workers RPC (Service Bindings)
+
+```typescript
+// Direct RPC calls from Workers
+const result = await env.API_SERVICES.sendEmail({
+  to: 'user@example.com',
+  subject: 'Hello',
+  body: 'Message content'
+})
+```
+
+### 4. Type-Safe SDKs
+
+```typescript
+import { functions } from '@dot-do/api-services'
+
+const result = await functions.sendEmail({
+  to: 'user@example.com',
+  subject: 'Hello',
+  body: 'Message content'
+})
+```
+
+## Function Categories
+
+### Communication (50+ functions)
+- Email sending (transactional, marketing)
+- SMS messaging
+- Push notifications
+- Slack/Discord/Teams integration
+- Webhook management
+
+### Data Processing (200+ functions)
+- Data validation
+- Data transformation
+- Data enrichment
+- Data aggregation
+- Data export
+
+### AI & ML (100+ functions)
+- Text generation
+- Image generation
+- Embeddings
+- Classification
+- Sentiment analysis
+- Translation
+
+### Business Logic (150+ functions)
+- Payment processing
+- Order management
+- Inventory tracking
+- User authentication
+- Subscription management
+
+### Integrations (300+ functions)
+- Stripe, PayPal payments
+- Salesforce, HubSpot CRM
+- Google, Microsoft APIs
+- Social media platforms
+- Analytics platforms
+
+### Utilities (200+ functions)
+- Date/time manipulation
+- String processing
+- Number formatting
+- File conversion
+- Validation/sanitization
+
+## Key Features
+
+### Function Discovery
+
+**Semantic Search:**
+```typescript
+// Natural language search
+const functions = await search('send transactional email')
+// Returns: sendEmail, sendTransactionalEmail, etc.
+```
+
+**Catalog Browser:**
+- Browse by category
+- Filter by tags
+- Sort by popularity
+- View usage examples
+
+**AI Recommendations:**
+```typescript
+// Get function recommendations
+const suggestions = await recommend({
+  task: 'process customer payment',
+  context: { stripe: true }
+})
+// Returns: [processStripePayment, handleWebhook, sendReceipt]
+```
+
+### Function Composition
+
+**Workflows:**
+```typescript
+// Chain functions together
+const workflow = compose([
+  'validate-order',
+  'process-payment',
+  'send-confirmation',
+  'update-inventory'
+])
+
+const result = await workflow.execute({ order })
+```
+
+**Parallel Execution:**
+```typescript
+// Run functions in parallel
+const results = await parallel([
+  ['send-email', { to: 'user@example.com' }],
+  ['send-sms', { to: '+1234567890' }],
+  ['log-event', { type: 'order_placed' }]
+])
+```
+
+### Error Handling
+
+**Automatic Retries:**
+```typescript
+// Configurable retry logic
+const result = await call('send-email', {
+  to: 'user@example.com',
+  subject: 'Hello'
+}, {
+  retry: {
+    count: 3,
+    delay: 1000,
+    backoff: 'exponential'
+  }
+})
+```
+
+**Circuit Breaker:**
+```typescript
+// Prevent cascading failures
+const result = await call('external-api', data, {
+  circuitBreaker: {
+    threshold: 5,
+    timeout: 30000,
+    resetTime: 60000
+  }
+})
+```
+
+### Observability
+
+**Request Tracing:**
+- End-to-end request tracking
+- Performance metrics
+- Error logging
+- Usage analytics
+
+**Monitoring:**
+- Real-time function health
+- Latency percentiles (p50, p95, p99)
+- Error rates
+- Throughput
+
+## Pricing
+
+### Free Tier
+- 1,000 function calls/month
+- All functions available
+- Community support
+- Basic analytics
+
+### Pro Tier ($49/month)
+- 10,000 function calls/month
+- $0.01 per additional call
+- Priority support
+- Advanced analytics
+- Custom integrations
+
+### Enterprise (Custom)
+- Unlimited function calls
+- Volume discounts
+- SLA guarantees
+- Dedicated support
+- Private functions
+- Custom deployments
+
+## Business Model
+
+### Revenue Streams
+
+**Subscription Revenue:**
+- 1,000 Pro users × $49 = $49K MRR
+- Enterprise contracts: $10K-$100K/year
+
+**Usage-Based Revenue:**
+- $0.01 per function call (above free tier)
+- Target: 50M calls/month = $500K MRR
+
+**Private Functions:**
+- Host customer-specific functions
+- $99-$499/month per function
+
+### Unit Economics
+
+**Cost per Function Call:**
+- Cloudflare Workers: ~$0.0001
+- Database query: ~$0.00001
+- Total cost: ~$0.0002
+
+**Margin:**
+- Revenue: $0.01 per call
+- Cost: $0.0002 per call
+- Margin: 98%
+
+## Target Metrics
+
+### Q4 2025
+- 1,000+ functions catalogued
+- 100% test coverage
+- 10+ SDKs published
+- 10K function calls/day
+- 1,000 registered developers
+
+### 2026
+- 5,000+ functions
+- 50K+ function calls/day
+- 10K+ developers
+- $1M ARR
+- 99.99% uptime
+
+## Technology Stack
+
+- **Runtime:** Cloudflare Workers
+- **Database:** PostgreSQL (Neon), D1
+- **Cache:** Cloudflare KV
+- **Queue:** Cloudflare Queues
+- **Search:** Embeddings + vector search
+- **Documentation:** OpenAPI 3.1
+
+## Competitive Positioning
+
+**vs AWS Lambda:**
+- ✅ No cold starts (Workers)
+- ✅ Global edge deployment
+- ✅ Simpler pricing
+- ✅ Type-safe SDKs included
+
+**vs RapidAPI:**
+- ✅ Consistent interface
+- ✅ Function composition
+- ✅ MCP support for AI agents
+- ✅ Better developer experience
+
+**vs Zapier/Make:**
+- ✅ Developer-first (not no-code)
+- ✅ Programmatic access
+- ✅ Sub-50ms latency
+- ✅ Unlimited function calls
+
+## Architecture
+
+### Microservices Pattern
+
+```
+Client Request
+  ↓
+API Gateway (gateway/)
+  ↓
+Service Router
+  ↓
+Function Service (functions/)
+  ↓
+[Parallel Execution]
+  ├→ Database (db/)
+  ├→ AI (ai/)
+  ├→ Email (email/)
+  └→ External APIs
+```
+
+### Service Bindings
+
+```typescript
+// Internal RPC communication
+export class FunctionService extends WorkerEntrypoint {
+  async execute(name: string, input: any) {
+    // Validate input
+    const validated = await this.env.DB.validate(name, input)
+
+    // Execute function
+    const result = await this[name](validated)
+
+    // Log to analytics
+    await this.env.ANALYTICS.log('function_execution', {
+      name, duration, success: true
+    })
+
+    return result
+  }
+}
+```
+
+## Roadmap
+
+### Q4 2025
+- ✅ 1,000+ functions catalogued
+- ✅ MCP integration complete
+- 🔄 OpenAPI documentation
+- 🔄 SDK generator
+
+### Q1 2026
+- Function marketplace
+- Private functions
+- GraphQL API
+- Webhooks
+
+### Q2 2026
+- Real-time functions (WebSocket)
+- Streaming responses
+- Batch operations
+- Function versioning
+
+## Parent Organization
+
+Part of **[Dot Do Holdings](../holding/dot-do.mdx)** portfolio.
+
+**OKR Contribution:** O1 - Establish API.Services as definitive platform for discoverable, composable functions
+
+**Key Results:**
+- 1,000+ functions catalogued and executable
+- 100% test coverage, zero type errors
+- 10+ SDKs published to npm
+
+## Related Products
+
+- **[do.industries](./do.industries.mdx)** - Platform foundation
+- **[Services.Studio](./services.studio.mdx)** - Uses functions for service creation
+- **[Services.Delivery](./services.delivery.mdx)** - Services powered by functions
+- **[Agents.do](./agents.do.mdx)** - AI agents use functions via MCP

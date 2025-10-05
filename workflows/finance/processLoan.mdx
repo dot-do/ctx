@@ -1,0 +1,241 @@
+---
+$type: Workflow
+$id: workflow/processloan
+title: processLoan
+name: processLoan
+description: Loan application processing and approval workflow
+
+trigger:
+  type: api
+  method: POST
+  path: /loans/apply
+
+input:
+  applicantId: Applicant identifier (uuid)
+  loanType: Loan type (personal, mortgage, auto, business)
+  amount: Requested amount in cents (integer)
+  term: Loan term in months (integer)
+  purpose: Loan purpose
+
+steps:
+  - name: verify-identity
+    description: Verify applicant identity
+    function: verify-identity
+    input:
+      applicantId: ${input.applicantId}
+      verificationLevel: enhanced
+    retry:
+      maxAttempts: 3
+
+  - name: check-credit
+    description: Pull credit report and score
+    function: check-credit-report
+    input:
+      applicantId: ${input.applicantId}
+      bureaus:
+        - equifax
+        - experian
+        - transunion
+
+  - name: calculate-dti
+    description: Calculate debt-to-income ratio
+    function: calculate-debt-to-income
+    input:
+      applicantId: ${input.applicantId}
+      monthlyIncome: ${steps.check-credit.output.reportedIncome}
+      existingDebts: ${steps.check-credit.output.monthlyObligations}
+
+  - name: assess-risk
+    description: Assess lending risk
+    function: assessRisk
+    input:
+      riskFactors:
+        - creditScore: ${steps.check-credit.output.averageScore}
+        - dtiRatio: ${steps.calculate-dti.output.ratio}
+        - employmentHistory: ${steps.verify-identity.output.employmentYears}
+        - loanAmount: ${input.amount}
+      context:
+        loanType: ${input.loanType}
+        loanTerm: ${input.term}
+      riskType: financial
+
+  - name: verify-income
+    description: Verify income documentation
+    condition: ${input.amount > 5000000}
+    agent: FinancialAdvisor
+    input:
+      applicantId: ${input.applicantId}
+      documents: ${steps.verify-identity.output.documents}
+      reportedIncome: ${steps.check-credit.output.reportedIncome}
+
+  - name: appraisal
+    description: Property appraisal for mortgage
+    condition: ${input.loanType === 'mortgage'}
+    function: order-appraisal
+    input:
+      propertyAddress: ${input.propertyAddress}
+      purchasePrice: ${input.propertyPrice}
+
+  - name: make-decision
+    description: Automated lending decision
+    function: make-lending-decision
+    input:
+      creditScore: ${steps.check-credit.output.averageScore}
+      dtiRatio: ${steps.calculate-dti.output.ratio}
+      riskAssessment: ${steps.assess-risk.output}
+      loanToValue: ${input.loanType === 'mortgage' ? steps.appraisal.output.ltv : null}
+      loanAmount: ${input.amount}
+
+  - name: manual-review
+    description: Manual underwriter review
+    condition: ${steps.make-decision.output.decision === 'refer'}
+    agent: FinancialAdvisor
+    input:
+      application: ${input}
+      creditReport: ${steps.check-credit.output}
+      riskAssessment: ${steps.assess-risk.output}
+      aiDecision: ${steps.make-decision.output}
+
+  - name: generate-terms
+    description: Generate loan terms and documents
+    condition: ${steps.make-decision.output.decision === 'approved' || steps.manual-review.output.decision === 'approved'}
+    function: generate-loan-terms
+    input:
+      loanAmount: ${input.amount}
+      term: ${input.term}
+      creditScore: ${steps.check-credit.output.averageScore}
+      riskTier: ${steps.assess-risk.output.riskLevel}
+
+  - name: send-decision
+    description: Notify applicant of decision
+    function: sendEmail
+    input:
+      to: ${steps.verify-identity.output.email}
+      subject: Loan Application Decision
+      template: loan-decision
+      data:
+        decision: ${steps.manual-review.output.decision || steps.make-decision.output.decision}
+        terms: ${steps.generate-terms.output}
+        loanId: ${workflow.id}
+
+  - name: send-documents
+    description: Send loan documents for signature
+    condition: ${steps.make-decision.output.decision === 'approved' || steps.manual-review.output.decision === 'approved'}
+    function: send-for-signature
+    input:
+      applicantId: ${input.applicantId}
+      documents: ${steps.generate-terms.output.documents}
+
+output:
+  loanId: ${workflow.id}
+  decision: ${steps.manual-review.output.decision || steps.make-decision.output.decision}
+  amount: ${input.amount}
+  interestRate: ${steps.generate-terms.output.interestRate}
+  monthlyPayment: ${steps.generate-terms.output.monthlyPayment}
+  approvedAt: ${workflow.timestamp}
+
+timeout: 300000
+---
+
+# Process Loan Workflow
+
+Automated loan application processing with credit checks and risk assessment.
+
+## Loan Process
+
+```
+Verify Identity
+  ↓
+Check Credit Report
+  ↓
+Calculate Debt-to-Income
+  ↓
+Assess Risk
+  ↓
+Verify Income (if amount > $50k)
+  ↓
+Property Appraisal (mortgages only)
+  ↓
+Automated Decision
+  ↓
+Manual Review (if referred)
+  ↓
+Generate Loan Terms
+  ↓
+Send Decision Email
+  ↓
+Send Documents for Signature
+```
+
+## Loan Types
+
+### Personal Loan
+- $1,000 - $50,000
+- 12-60 months
+- Unsecured
+- Credit score 640+
+
+### Mortgage
+- $50,000 - $1,000,000+
+- 15-30 years
+- Secured by property
+- Appraisal required
+- Credit score 620+
+
+### Auto Loan
+- $5,000 - $75,000
+- 36-72 months
+- Secured by vehicle
+- Credit score 580+
+
+### Business Loan
+- $10,000 - $500,000
+- 12-120 months
+- Business financials required
+- Personal guarantee
+
+## Decision Criteria
+
+**Auto-Approve:**
+- Credit score 720+
+- DTI < 36%
+- Stable employment 2+ years
+- Low risk assessment
+
+**Refer for Manual Review:**
+- Credit score 640-719
+- DTI 36-43%
+- Recent credit issues
+- High loan amount
+
+**Auto-Decline:**
+- Credit score < 640
+- DTI > 43%
+- Recent bankruptcy
+- Critical risk factors
+
+## Related
+
+- [[../agents/FinancialAdvisor|Financial Advisor Agent]]
+- [[../functions/assessRisk|Assess Risk Function]]
+- [[../functions/calculateROI|Calculate ROI Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface LoanApplication { id: string; applicantId: string; amount: number; purpose: string; creditScore: number; income: number; status: 'pending' | 'approved' | 'rejected' }
+
+export const processLoan: BusinessModule = $ => {
+  const { db, ai, send, on, decide } = $
+
+  on.loan.applied(async (loan: LoanApplication) => {
+    const approval = await ai.classify(`Loan: $${loan.amount}, Credit: ${loan.creditScore}, Income: $${loan.income}`, ['approve', 'reject', 'review'])
+
+    decide.switch(approval)
+      .case('approve', async () => { await db.loans.update(loan.id, { status: 'approved' }); await send.email(loan.applicantId, 'Loan Approved!', { amount: loan.amount }) })
+      .case('reject', async () => { await db.loans.update(loan.id, { status: 'rejected' }); await send.email(loan.applicantId, 'Loan Application Update', { status: 'rejected' }) })
+  })
+}
+```

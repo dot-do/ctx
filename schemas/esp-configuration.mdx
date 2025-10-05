@@ -1,0 +1,547 @@
+---
+$type: Schema
+$id: schema/esp-configuration
+title: ESP Configuration
+description: Email Service Provider configuration for cold email campaigns
+type: custom/EspConfiguration
+properties:
+  - name: id
+    type: string
+    description: Unique configuration identifier (ULID)
+  - name: organizationId
+    type: string
+    description: Organization ID that owns this configuration
+  - name: provider
+    type: string
+    description: ESP provider name (mailgun, sendgrid, amazon-ses, resend, postmark)
+  - name: name
+    type: string
+    description: Friendly name for this configuration
+  - name: status
+    type: string
+    description: Configuration status (active, paused, suspended, error)
+  - name: credentials
+    type: object
+    description: Provider-specific credentials (encrypted)
+    properties:
+      - name: apiKey
+        type: string
+        description: API key or token
+      - name: apiSecret
+        type: string
+        description: API secret (for providers that require it)
+      - name: domain
+        type: string
+        description: Verified sending domain
+      - name: region
+        type: string
+        description: AWS region (for SES)
+      - name: accessKeyId
+        type: string
+        description: AWS access key (for SES)
+      - name: secretAccessKey
+        type: string
+        description: AWS secret key (for SES)
+  - name: sendingDomain
+    type: string
+    description: Primary sending domain
+  - name: fromName
+    type: string
+    description: Default sender name
+  - name: fromEmail
+    type: string
+    description: Default sender email address
+  - name: replyTo
+    type: string
+    description: Default reply-to address
+  - name: limits
+    type: object
+    description: Sending limits and quotas
+    properties:
+      - name: dailyLimit
+        type: number
+        description: Maximum emails per day
+      - name: hourlyLimit
+        type: number
+        description: Maximum emails per hour
+      - name: perSecond
+        type: number
+        description: Maximum emails per second
+      - name: warmupEnabled
+        type: boolean
+        description: Whether domain is in warmup mode
+      - name: warmupDailyLimit
+        type: number
+        description: Current warmup daily limit
+  - name: tracking
+    type: object
+    description: Email tracking configuration
+    properties:
+      - name: opens
+        type: boolean
+        description: Track email opens
+      - name: clicks
+        type: boolean
+        description: Track link clicks
+      - name: unsubscribes
+        type: boolean
+        description: Track unsubscribes
+      - name: bounces
+        type: boolean
+        description: Track bounces
+      - name: complaints
+        type: boolean
+        description: Track spam complaints
+  - name: webhooks
+    type: object
+    description: Webhook configuration
+    properties:
+      - name: enabled
+        type: boolean
+        description: Whether webhooks are enabled
+      - name: url
+        type: string
+        description: Webhook endpoint URL
+      - name: events
+        type: array
+        description: Events to send webhooks for
+        items:
+          type: string
+      - name: secret
+        type: string
+        description: Webhook signature secret
+  - name: dnsRecords
+    type: object
+    description: DNS records for domain verification
+    properties:
+      - name: spf
+        type: object
+        properties:
+          - name: record
+            type: string
+          - name: status
+            type: string
+            description: verified, pending, failed
+      - name: dkim
+        type: object
+        properties:
+          - name: selector
+            type: string
+          - name: publicKey
+            type: string
+          - name: privateKey
+            type: string
+          - name: status
+            type: string
+      - name: dmarc
+        type: object
+        properties:
+          - name: record
+            type: string
+          - name: status
+            type: string
+      - name: returnPath
+        type: object
+        properties:
+          - name: record
+            type: string
+          - name: status
+            type: string
+  - name: reputation
+    type: object
+    description: Sender reputation metrics
+    properties:
+      - name: senderScore
+        type: number
+        description: Sender reputation score (0-100)
+      - name: deliveryRate
+        type: number
+        description: Recent delivery rate percentage
+      - name: bounceRate
+        type: number
+        description: Recent bounce rate percentage
+      - name: complaintRate
+        type: number
+        description: Recent complaint rate percentage
+      - name: lastChecked
+        type: string
+        format: date-time
+  - name: usage
+    type: object
+    description: Usage statistics
+    properties:
+      - name: sentToday
+        type: number
+        description: Emails sent today
+      - name: sentThisMonth
+        type: number
+        description: Emails sent this month
+      - name: totalSent
+        type: number
+        description: Total emails sent all-time
+      - name: creditsRemaining
+        type: number
+        description: Remaining API credits (if applicable)
+  - name: verifiedAt
+    type: string
+    format: date-time
+    description: When domain was verified
+  - name: createdAt
+    type: string
+    format: date-time
+    description: Creation timestamp
+  - name: updatedAt
+    type: string
+    format: date-time
+    description: Last update timestamp
+  - name: createdBy
+    type: string
+    description: User ID who created config
+required:
+  - organizationId
+  - provider
+  - name
+  - credentials
+  - sendingDomain
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - email
+  - esp
+  - cold-outreach
+  - configuration
+---
+
+# ESP Configuration Schema
+
+Defines Email Service Provider configurations for cold email campaigns.
+
+## Overview
+
+**Purpose**: Store ESP credentials, limits, tracking settings, and DNS verification status for cold email sending.
+
+**Use Cases:**
+- Configure Mailgun, SendGrid, Amazon SES, Resend, Postmark
+- Store domain verification status
+- Track sender reputation
+- Enforce sending limits
+- Configure webhooks
+
+## Supported Providers
+
+### Mailgun
+- **Best For**: High-volume sending, flexible API
+- **Credentials**: API key + domain
+- **Features**: Email validation, tagging, templates
+- **Pricing**: Pay-as-you-go, $35/month base
+
+### SendGrid
+- **Best For**: Marketing + transactional, analytics
+- **Credentials**: API key
+- **Features**: Marketing campaigns, A/B testing, templates
+- **Pricing**: Free tier (100/day), $15+/month
+
+### Amazon SES
+- **Best For**: AWS ecosystem, lowest cost
+- **Credentials**: Access key + secret + region
+- **Features**: High deliverability, bounce handling
+- **Pricing**: $0.10 per 1,000 emails
+
+### Resend
+- **Best For**: Developer-friendly, modern API
+- **Credentials**: API key
+- **Features**: Simple API, webhooks, analytics
+- **Pricing**: Free tier (100/day), $20+/month
+
+### Postmark
+- **Best For**: Transactional emails, deliverability
+- **Credentials**: API token
+- **Features**: Best-in-class deliverability, templates
+- **Pricing**: Free tier (100/month), $10+/month
+
+## Configuration Fields
+
+### Credentials (Encrypted)
+All credential fields are **encrypted at rest** using AES-256:
+
+```typescript
+{
+  credentials: {
+    apiKey: 'key-abc123...', // Encrypted
+    domain: 'mg.example.com', // Mailgun only
+    region: 'us-east-1', // SES only
+    accessKeyId: 'AKIA...', // SES only
+    secretAccessKey: 'secret...', // SES only (encrypted)
+  }
+}
+```
+
+### Limits
+
+Enforce sending limits to prevent abuse and stay within quotas:
+
+```typescript
+{
+  limits: {
+    dailyLimit: 5000, // Max per day
+    hourlyLimit: 500, // Max per hour
+    perSecond: 10, // Max per second
+    warmupEnabled: true, // Is domain warming up?
+    warmupDailyLimit: 200, // Current warmup limit
+  }
+}
+```
+
+**Warmup progression** (managed by email-warming service):
+- Day 1-7: 50-500 emails/day
+- Day 8-14: 500-2,000 emails/day
+- Day 15-30: 2,000-10,000 emails/day
+- Day 30+: Full volume
+
+### Tracking
+
+Configure what email events to track:
+
+```typescript
+{
+  tracking: {
+    opens: true, // Track opens via pixel
+    clicks: true, // Track clicks via link rewriting
+    unsubscribes: true, // Track unsubscribe requests
+    bounces: true, // Track bounces
+    complaints: true, // Track spam complaints
+  }
+}
+```
+
+### Webhooks
+
+Receive real-time event notifications:
+
+```typescript
+{
+  webhooks: {
+    enabled: true,
+    url: 'https://api.example.com/webhooks/esp',
+    events: [
+      'delivered',
+      'opened',
+      'clicked',
+      'bounced',
+      'complained',
+      'unsubscribed',
+    ],
+    secret: 'whsec_...' // For signature verification
+  }
+}
+```
+
+### DNS Records
+
+Track verification status of email authentication records:
+
+```typescript
+{
+  dnsRecords: {
+    spf: {
+      record: 'v=spf1 include:mailgun.org ~all',
+      status: 'verified' // verified, pending, failed
+    },
+    dkim: {
+      selector: 'default._domainkey',
+      publicKey: 'k=rsa; p=MIGfMA0...',
+      privateKey: '-----BEGIN RSA...', // Encrypted
+      status: 'verified'
+    },
+    dmarc: {
+      record: 'v=DMARC1; p=none; rua=mailto:dmarc@example.com',
+      status: 'verified'
+    },
+    returnPath: {
+      record: 'email.example.com',
+      status: 'verified'
+    }
+  }
+}
+```
+
+### Reputation
+
+Track sender reputation metrics:
+
+```typescript
+{
+  reputation: {
+    senderScore: 85, // 0-100 (higher is better)
+    deliveryRate: 98.5, // % of emails delivered
+    bounceRate: 1.2, // % of emails bounced
+    complaintRate: 0.05, // % of spam complaints
+    lastChecked: '2025-10-03T12:00:00Z'
+  }
+}
+```
+
+**Thresholds:**
+- **Excellent**: deliveryRate >98%, bounceRate <2%, complaintRate <0.05%
+- **Good**: deliveryRate >95%, bounceRate <5%, complaintRate <0.1%
+- **Warning**: deliveryRate >90%, bounceRate <10%, complaintRate <0.5%
+- **Critical**: deliveryRate <90%, bounceRate >10%, complaintRate >0.5%
+
+## Example Configuration
+
+### Mailgun
+
+```json
+{
+  "provider": "mailgun",
+  "name": "Mailgun Production",
+  "credentials": {
+    "apiKey": "key-abc123...",
+    "domain": "mg.example.com"
+  },
+  "sendingDomain": "example.com",
+  "fromName": "John Doe",
+  "fromEmail": "john@example.com",
+  "replyTo": "replies@example.com",
+  "limits": {
+    "dailyLimit": 5000,
+    "hourlyLimit": 500,
+    "perSecond": 10
+  },
+  "tracking": {
+    "opens": true,
+    "clicks": true,
+    "unsubscribes": true,
+    "bounces": true,
+    "complaints": true
+  },
+  "webhooks": {
+    "enabled": true,
+    "url": "https://api.example.com/webhooks/mailgun",
+    "events": ["delivered", "opened", "clicked", "bounced", "complained"],
+    "secret": "whsec_..."
+  }
+}
+```
+
+### Amazon SES
+
+```json
+{
+  "provider": "amazon-ses",
+  "name": "AWS SES Production",
+  "credentials": {
+    "region": "us-east-1",
+    "accessKeyId": "AKIA...",
+    "secretAccessKey": "encrypted..."
+  },
+  "sendingDomain": "example.com",
+  "limits": {
+    "dailyLimit": 50000,
+    "perSecond": 14
+  }
+}
+```
+
+## Workflow Integration
+
+### domain-onboarding Workflow
+
+When onboarding a new domain:
+1. Create ESP configuration with credentials
+2. Generate DNS records (via dns-tools service)
+3. Wait for DNS verification
+4. Initialize warmup schedule
+5. Start sending at warmup limits
+
+### email-warming Workflow
+
+Warmup automatically adjusts `limits.warmupDailyLimit`:
+- Starts at 50 emails/day
+- Increases gradually based on metrics
+- Auto-pauses if bounce/complaint rate exceeds thresholds
+- Completes after 30-60 days
+
+### deliverability-monitoring Workflow
+
+Continuously monitors reputation:
+- Updates `reputation` field hourly
+- Alerts on critical issues
+- Auto-pauses sending if reputation drops
+
+## Security
+
+### Encryption
+- All `credentials` fields encrypted at rest (AES-256)
+- Decrypted only when needed by services
+- Never logged or exposed in APIs
+
+### Access Control
+- Only organization admins can create/edit configs
+- API keys never returned in GET requests
+- Audit log for all changes
+
+### Secrets Management
+```bash
+# Store ESP credentials as Cloudflare secrets
+wrangler secret put MAILGUN_API_KEY
+wrangler secret put SENDGRID_API_KEY
+wrangler secret put SES_ACCESS_KEY
+```
+
+## Usage in Services
+
+### email-sender Service
+```typescript
+// Load ESP config
+const config = await env.DB.execute(
+  'SELECT * FROM esp_configurations WHERE id = ?',
+  [configId]
+)
+
+// Check limits
+if (config.usage.sentToday >= config.limits.dailyLimit) {
+  throw new Error('Daily limit reached')
+}
+
+// Send via ESP gateway
+await env.ESP_GATEWAY.send({
+  provider: config.provider,
+  credentials: config.credentials,
+  from: `${config.fromName} <${config.fromEmail}>`,
+  to: recipient,
+  subject,
+  html,
+  tracking: config.tracking,
+})
+```
+
+### esp-gateway Service
+```typescript
+// Route to appropriate ESP
+switch (provider) {
+  case 'mailgun':
+    return await sendViaMailgun(credentials, message)
+  case 'sendgrid':
+    return await sendViaSendGrid(credentials, message)
+  case 'amazon-ses':
+    return await sendViaAmazonSES(credentials, message)
+  // ...
+}
+```
+
+## Related Schemas
+
+- **email-domain** - Domain verification and DNS
+- **cold-email-campaign** - Campaign configuration
+- **email-contact** - Contact data
+- **deliverability-report** - Reputation metrics
+
+## Related Services
+
+- **esp-gateway** - Multi-provider sending
+- **email-sender** - Email sending logic
+- **email-campaigns** - Campaign management
+- **email-warming** - Domain warmup
+- **deliverability** - Reputation monitoring

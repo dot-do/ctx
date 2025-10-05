@@ -1,0 +1,739 @@
+---
+$type: Workflow
+$id: workflow/referralrewarddistribution
+title: Referral Reward Distribution
+description: Automated workflow for distributing rewards and updating user tiers
+category: growth
+tags: [referral, rewards, automation, gamification]
+version: 1.0.0
+status: active
+triggers: [queue, cron]
+created: 2025-10-03
+updated: 2025-10-03
+---
+
+# Referral Reward Distribution Workflow
+
+## Overview
+
+This workflow automates the complete referral reward lifecycle: from conversion tracking to credit distribution to tier progression. It runs asynchronously via queue messages to ensure reliable, scalable reward processing.
+
+## Purpose
+
+**Goals:**
+- Automatically distribute credits when referrals convert
+- Update referrer tiers based on successful referral count
+- Detect and prevent fraudulent referrals
+- Send notifications at key milestone events
+- Track analytics for viral growth metrics
+
+**Business Impact:**
+- Incentivizes organic user acquisition
+- Gamifies the referral experience
+- Reduces manual reward processing
+- Scales to handle viral growth
+
+## Trigger Conditions
+
+### 1. Queue Messages
+
+The workflow processes three types of queue messages:
+
+```typescript
+type ReferralQueueMessage =
+  | { type: 'distribute_reward'; referralId: string }
+  | { type: 'check_fraud'; referralId: string }
+  | { type: 'update_tier'; userId: string }
+```
+
+**Message Flow:**
+
+```
+Referral Conversion
+       ↓
+Queue: distribute_reward
+       ↓
+Queue: check_fraud (parallel)
+       ↓
+Queue: update_tier (after reward)
+```
+
+### 2. Scheduled Cron
+
+Optional cron trigger for periodic processing:
+
+```typescript
+// Daily tier recalculation
+schedule: '0 2 * * *' // 2 AM UTC daily
+
+// Fraud detection batch
+schedule: '0 */4 * * *' // Every 4 hours
+```
+
+## Workflow Steps
+
+### Step 1: Validate Input
+
+**Purpose**: Ensure message contains valid referral ID or user ID
+
+**Inputs:**
+```typescript
+interface WorkflowInput {
+  type: 'distribute_reward' | 'check_fraud' | 'update_tier'
+  referralId?: string
+  userId?: string
+}
+```
+
+**Validation:**
+- Type is one of three valid types
+- referralId is provided for distribute_reward and check_fraud
+- userId is provided for update_tier
+- IDs exist in database
+
+**Error Handling:**
+- Invalid type → Log error, skip message
+- Missing IDs → Log error, skip message
+- Invalid IDs → Log error, move to DLQ
+
+**Output:**
+```typescript
+{
+  validated: true,
+  type: 'distribute_reward',
+  referralId: '01J1234...',
+}
+```
+
+---
+
+### Step 2: Process by Type
+
+**Purpose**: Route to appropriate sub-workflow based on message type
+
+**Branch A: Distribute Reward**
+
+#### 2A.1: Fetch Referral Details
+
+```typescript
+const referral = await env.DB_SERVICE.query(
+  'SELECT * FROM referrals WHERE id = ?',
+  referralId
+)
+
+const referralCode = await env.DB_SERVICE.query(
+  'SELECT * FROM referral_codes WHERE id = ?',
+  referral.referral_code_id
+)
+```
+
+**Data Retrieved:**
+- Referral status (must be 'converted')
+- Reward amount (calculated at conversion)
+- Referrer user ID
+- Referred user ID and email
+
+**Error Handling:**
+- Referral not found → Log error, skip
+- Already credited → Log warning, skip
+- Status not 'converted' → Log error, retry later
+
+#### 2A.2: Check Fraud Status
+
+```typescript
+const fraudCheck = await env.REFERRAL_SERVICE.checkFraud(referralId)
+
+if (fraudCheck.isFraudulent && fraudCheck.confidence > 0.8) {
+  // Mark as fraudulent, no reward
+  await env.DB_SERVICE.execute(
+    'UPDATE referrals SET status = ? WHERE id = ?',
+    ['fraudulent', referralId]
+  )
+
+  // Alert admins
+  await env.EMAIL_SERVICE.send({
+    to: 'admin@do.industries',
+    template: 'fraud-alert',
+    data: { referralId, fraudCheck },
+  })
+
+  return { distributed: false, reason: 'fraud_detected' }
+}
+```
+
+**Fraud Signals:**
+- Rapid referrals (>10 in 1 hour)
+- Same IP address pattern
+- Disposable email services
+- Bot-like behavior patterns
+
+**Actions:**
+- High confidence (>0.8) → Block automatically
+- Medium confidence (0.5-0.8) → Flag for review
+- Low confidence (<0.5) → Allow but monitor
+
+#### 2A.3: Distribute Credits
+
+```typescript
+// Credit referrer
+await env.DB_SERVICE.execute(`
+  UPDATE referral_codes
+  SET credits_earned = credits_earned + ?,
+      updated_at = ?
+  WHERE user_id = ?
+`, [referral.reward_amount, new Date().toISOString(), referral.referrer_user_id])
+
+// Update referral status
+await env.DB_SERVICE.execute(`
+  UPDATE referrals
+  SET status = 'credited',
+      credited_at = ?
+  WHERE id = ?
+`, [new Date().toISOString(), referralId])
+```
+
+**Credits Applied:**
+- Bronze tier: 100 credits
+- Silver tier: 120 credits
+- Gold tier: 150 credits
+- Platinum tier: 200 credits
+- Diamond tier: 300 credits
+
+#### 2A.4: Send Notification
+
+```typescript
+await env.EMAIL_SERVICE.send({
+  to: referralCode.email,
+  template: 'referral-credited',
+  data: {
+    referralName: referral.referred_email.split('@')[0],
+    rewardAmount: referral.reward_amount,
+    totalCredits: referralCode.credits_earned + referral.reward_amount,
+    currentTier: referralCode.tier,
+  },
+})
+```
+
+**Email Contains:**
+- Referred user's name/email
+- Credits earned for this referral
+- New total credits balance
+- Current tier status
+- Progress to next tier
+
+#### 2A.5: Queue Tier Update
+
+```typescript
+await env.REFERRAL_QUEUE.send({
+  type: 'update_tier',
+  userId: referral.referrer_user_id,
+})
+```
+
+**Purpose**: Check if user has reached next tier threshold
+
+---
+
+**Branch B: Check Fraud**
+
+#### 2B.1: Fetch Referral History
+
+```typescript
+const recentReferrals = await env.DB_SERVICE.query(`
+  SELECT * FROM referrals
+  WHERE referrer_user_id = ?
+    AND created_at > datetime('now', '-1 hour')
+  ORDER BY created_at DESC
+`, referral.referrer_user_id)
+
+const referralsByIP = await env.ANALYTICS_SERVICE.getReferralsByIP(
+  referral.metadata?.ip
+)
+```
+
+**Signals to Check:**
+- Referral velocity (count in last hour)
+- IP address patterns
+- Email domain patterns
+- User agent patterns
+- Timing patterns
+
+#### 2B.2: Run Fraud Detection
+
+```typescript
+const fraudScore = calculateFraudScore({
+  rapidReferrals: recentReferrals.length > 10,
+  sameIPCount: referralsByIP.length,
+  disposableEmail: isDisposableEmail(referral.referred_email),
+  suspiciousPattern: detectBotPattern(referral.metadata),
+})
+```
+
+**Scoring:**
+- Rapid referrals (>10/hr): +0.4
+- Same IP (>3 referrals): +0.3
+- Disposable email: +0.2
+- Bot pattern detected: +0.5
+- Total score range: 0.0-1.0
+
+#### 2B.3: Take Action
+
+```typescript
+if (fraudScore > 0.8) {
+  // High confidence fraud
+  await env.DB_SERVICE.execute(
+    'UPDATE referrals SET status = ? WHERE id = ?',
+    ['fraudulent', referralId]
+  )
+
+  // Flag user for review
+  await env.DB_SERVICE.execute(
+    'UPDATE referral_codes SET status = ? WHERE user_id = ?',
+    ['suspended', referral.referrer_user_id]
+  )
+
+  // Alert admins
+  await env.EMAIL_SERVICE.send({
+    to: 'admin@do.industries',
+    template: 'fraud-alert',
+    data: { referralId, fraudScore, signals },
+  })
+} else if (fraudScore > 0.5) {
+  // Medium confidence - flag for review
+  await env.DB_SERVICE.execute(
+    'UPDATE referrals SET metadata = ? WHERE id = ?',
+    [JSON.stringify({ ...referral.metadata, fraud_flagged: true }), referralId]
+  )
+}
+```
+
+---
+
+**Branch C: Update Tier**
+
+#### 2C.1: Fetch Current Status
+
+```typescript
+const referralCode = await env.DB_SERVICE.query(
+  'SELECT * FROM referral_codes WHERE user_id = ?',
+  userId
+)
+
+const currentTier = referralCode.tier
+const successfulReferrals = referralCode.successful_referrals
+```
+
+**Current State:**
+- User's current tier
+- Count of successful referrals
+- Credits earned to date
+
+#### 2C.2: Calculate New Tier
+
+```typescript
+const TIER_THRESHOLDS = {
+  bronze: 0,
+  silver: 5,
+  gold: 15,
+  platinum: 30,
+  diamond: 50,
+}
+
+function calculateTier(successfulReferrals: number): ReferralTier {
+  if (successfulReferrals >= TIER_THRESHOLDS.diamond) return 'diamond'
+  if (successfulReferrals >= TIER_THRESHOLDS.platinum) return 'platinum'
+  if (successfulReferrals >= TIER_THRESHOLDS.gold) return 'gold'
+  if (successfulReferrals >= TIER_THRESHOLDS.silver) return 'silver'
+  return 'bronze'
+}
+
+const newTier = calculateTier(successfulReferrals)
+```
+
+**Tier Calculation:**
+- Based solely on successful_referrals count
+- Tier can only increase, never decrease
+- Automatic progression when threshold reached
+
+#### 2C.3: Update if Changed
+
+```typescript
+if (newTier !== currentTier) {
+  // Update tier
+  await env.DB_SERVICE.execute(`
+    UPDATE referral_codes
+    SET tier = ?,
+        updated_at = ?
+    WHERE user_id = ?
+  `, [newTier, new Date().toISOString(), userId])
+
+  // Send tier upgrade notification
+  await env.EMAIL_SERVICE.send({
+    to: referralCode.email,
+    template: 'tier-upgraded',
+    data: {
+      oldTier: currentTier,
+      newTier: newTier,
+      newMultiplier: getTierMultiplier(newTier),
+      successfulReferrals,
+      nextTier: getNextTier(newTier),
+      nextTierAt: getNextTierThreshold(newTier),
+    },
+  })
+
+  // Track analytics
+  await env.ANALYTICS_SERVICE.track({
+    event: 'tier_upgraded',
+    userId,
+    properties: {
+      from_tier: currentTier,
+      to_tier: newTier,
+      successful_referrals: successfulReferrals,
+    },
+  })
+}
+```
+
+**Notification Contains:**
+- Congratulations message
+- Old tier → New tier
+- New reward multiplier
+- Current successful referral count
+- Next tier name and threshold
+- Exclusive benefits unlocked
+
+#### 2C.4: Update Cache
+
+```typescript
+await env.KV.put(
+  `referral:tier:${userId}`,
+  JSON.stringify({
+    tier: newTier,
+    successfulReferrals,
+    updatedAt: new Date().toISOString(),
+  }),
+  { expirationTtl: 3600 } // 1 hour cache
+)
+```
+
+**Purpose**: Cache tier status for fast lookups without DB query
+
+---
+
+### Step 3: Track Analytics
+
+**Purpose**: Record workflow execution for monitoring and optimization
+
+```typescript
+await env.ANALYTICS_SERVICE.track({
+  event: 'referral_workflow_completed',
+  properties: {
+    workflow_type: input.type,
+    referral_id: input.referralId,
+    user_id: input.userId,
+    success: true,
+    duration_ms: Date.now() - startTime,
+  },
+})
+```
+
+**Metrics Tracked:**
+- Workflow execution count by type
+- Success/failure rates
+- Average duration
+- Error types and frequency
+- Fraud detection rate
+
+---
+
+### Step 4: Clean Up
+
+**Purpose**: Remove processed messages, update counters
+
+```typescript
+// Acknowledge message
+message.ack()
+
+// Update processing stats
+await env.KV.increment('referral:processed:count')
+await env.KV.increment(`referral:processed:${input.type}`)
+```
+
+---
+
+## Error Handling
+
+### Retry Strategy
+
+```typescript
+const RETRY_CONFIG = {
+  distribute_reward: {
+    maxRetries: 3,
+    backoff: 'exponential', // 1min, 5min, 15min
+  },
+  check_fraud: {
+    maxRetries: 2,
+    backoff: 'exponential',
+  },
+  update_tier: {
+    maxRetries: 2,
+    backoff: 'linear', // 1min, 2min
+  },
+}
+```
+
+**Retry Conditions:**
+- Database connection errors → Retry
+- Rate limit errors → Retry with backoff
+- Validation errors → No retry (move to DLQ)
+- Fraud detection errors → Retry once
+
+### Dead Letter Queue
+
+Messages that fail all retries go to DLQ for manual review:
+
+```typescript
+if (retryCount >= maxRetries) {
+  await env.DLQ.send({
+    original_message: message.body,
+    error: error.message,
+    retry_count: retryCount,
+    timestamp: new Date().toISOString(),
+  })
+}
+```
+
+**DLQ Processing:**
+- Manual review by admins
+- Identify systemic issues
+- Fix and replay messages
+- Adjust fraud thresholds
+
+## Performance Optimization
+
+### Batch Processing
+
+```typescript
+// Process up to 10 messages per batch
+async function processBatch(batch: MessageBatch) {
+  const results = await Promise.allSettled(
+    batch.messages.map(msg => processMessage(msg))
+  )
+
+  // Ack successful, retry failed
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      batch.messages[i].ack()
+    } else {
+      batch.messages[i].retry()
+    }
+  })
+}
+```
+
+**Benefits:**
+- Process multiple messages concurrently
+- Reduce cold start overhead
+- Improve throughput
+
+### Caching Strategy
+
+```typescript
+// Cache referral codes for 1 hour
+const cacheKey = `referral:code:${referralCode.code}`
+const cached = await env.KV.get(cacheKey, 'json')
+
+if (cached) {
+  return cached
+}
+
+const code = await fetchFromDB(referralCode.code)
+
+await env.KV.put(cacheKey, JSON.stringify(code), {
+  expirationTtl: 3600,
+})
+```
+
+**Cache Keys:**
+- `referral:code:{code}` - Referral code details (1 hour)
+- `referral:tier:{userId}` - User tier status (1 hour)
+- `referral:stats:{userId}` - User stats (30 minutes)
+
+## Integration Points
+
+### With Email Service
+
+```typescript
+// Reward credited notification
+await env.EMAIL_SERVICE.send({
+  to: referrer.email,
+  template: 'referral-credited',
+  data: { referralName, rewardAmount, totalCredits, currentTier },
+})
+
+// Tier upgrade notification
+await env.EMAIL_SERVICE.send({
+  to: referrer.email,
+  template: 'tier-upgraded',
+  data: { oldTier, newTier, newMultiplier, benefits },
+})
+
+// Fraud alert (to admins)
+await env.EMAIL_SERVICE.send({
+  to: 'admin@do.industries',
+  template: 'fraud-alert',
+  data: { referralId, fraudScore, signals },
+})
+```
+
+### With Analytics Service
+
+```typescript
+// Track reward distribution
+await env.ANALYTICS_SERVICE.track({
+  event: 'referral_credited',
+  userId: referrer.userId,
+  properties: { rewardAmount, tier, totalCredits },
+})
+
+// Track tier progression
+await env.ANALYTICS_SERVICE.track({
+  event: 'tier_upgraded',
+  userId: referrer.userId,
+  properties: { fromTier, toTier, successfulReferrals },
+})
+
+// Track fraud detection
+await env.ANALYTICS_SERVICE.track({
+  event: 'fraud_detected',
+  properties: { referralId, fraudScore, signals },
+})
+```
+
+### With Waitlist Service
+
+```typescript
+// Boost referrer's waitlist priority
+await env.WAITLIST_SERVICE.incrementReferrerScore(referralCode.code)
+
+// Boost referred user's waitlist priority
+await env.WAITLIST_SERVICE.applyReferralBonus(referral.referred_email)
+```
+
+## Monitoring & Alerts
+
+### Key Metrics
+
+```typescript
+// Processing metrics
+- referral_workflow_executed (counter)
+- referral_workflow_duration (histogram)
+- referral_workflow_errors (counter by type)
+
+// Business metrics
+- rewards_distributed (counter)
+- credits_distributed (sum)
+- fraud_detected (counter)
+- tiers_upgraded (counter by tier)
+
+// Queue metrics
+- queue_depth (gauge)
+- message_processing_time (histogram)
+- message_retry_count (histogram)
+```
+
+### Alert Conditions
+
+```typescript
+// High fraud rate
+if (fraudRate > 0.1) {
+  alert('High fraud detection rate: ${fraudRate}')
+}
+
+// Queue backlog
+if (queueDepth > 1000) {
+  alert('Referral queue backlog: ${queueDepth} messages')
+}
+
+// Processing errors
+if (errorRate > 0.05) {
+  alert('High error rate in referral workflow: ${errorRate}')
+}
+```
+
+## Success Metrics
+
+### Week 1 Targets
+- Process 100+ reward distributions
+- <1% fraud detection rate
+- <5% error rate
+- <30s average processing time
+
+### Month 1 Targets
+- Process 1,000+ reward distributions
+- 10+ tier upgrades to Silver
+- <2% fraud detection rate
+- <10s average processing time
+
+### Month 3 Targets
+- Process 10,000+ reward distributions
+- 100+ tier upgrades (Silver+)
+- 5+ Diamond tier users
+- <1% fraud detection rate
+- <5s average processing time
+
+## Testing Strategy
+
+### Unit Tests
+
+```typescript
+describe('Reward Distribution', () => {
+  it('should distribute correct reward based on tier', async () => {
+    const result = await distributeReward({
+      referralId: 'test',
+      tier: 'silver',
+    })
+
+    expect(result.rewardAmount).toBe(120) // 1.2x multiplier
+  })
+})
+```
+
+### Integration Tests
+
+```typescript
+describe('End-to-End Workflow', () => {
+  it('should complete full reward cycle', async () => {
+    // 1. Track referral
+    const referral = await trackReferral(...)
+
+    // 2. Convert referral
+    await convertReferral(...)
+
+    // 3. Process queue message
+    await processQueueMessage({ type: 'distribute_reward', ... })
+
+    // 4. Verify credits distributed
+    const updated = await getReferralCode(...)
+    expect(updated.creditsEarned).toBeGreaterThan(0)
+  })
+})
+```
+
+## Related Documentation
+
+- [Referral Code Schema](../schemas/referral-code.mdx) - Data model and tier system
+- [Waitlist Invitation Workflow](./waitlist-invitation.mdx) - Integration with waitlist
+- [Email Templates](../schemas/email-template.mdx) - Notification templates
+
+## Service Implementation
+
+- **Service**: `workers/referral-program`
+- **Queue**: `referral-queue`
+- **Batch Size**: 10 messages
+- **Batch Timeout**: 30 seconds
+- **Max Retries**: 3 (exponential backoff)
+
+## Version History
+
+- **1.0.0** (2025-10-03) - Initial workflow with 3 message types

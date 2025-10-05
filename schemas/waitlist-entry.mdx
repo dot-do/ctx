@@ -1,0 +1,455 @@
+---
+$type: Schema
+$id: schema/waitlist-entry
+title: Waitlist Entry
+description: Launch waitlist signup with priority scoring for beta access
+type: custom/WaitlistEntry
+properties:
+  - name: id
+    type: string
+    description: Unique entry identifier (ULID)
+  - name: email
+    type: string
+    format: email
+    description: User's email address (unique)
+  - name: name
+    type: string
+    description: User's full name
+  - name: company
+    type: string
+    description: Company name
+  - name: role
+    type: string
+    description: Job title or role
+  - name: useCase
+    type: string
+    description: Intended use case for the platform
+  - name: source
+    type: string
+    description: Signup source (utm_source tracking)
+  - name: referralCode
+    type: string
+    description: Email of user who referred them
+  - name: priorityScore
+    type: number
+    description: Priority score (0-100, higher = earlier access)
+  - name: metadata
+    type: object
+    description: Additional metadata (JSON)
+  - name: status
+    type: string
+    enum: [pending, invited, accepted, rejected, expired]
+    description: Current waitlist status
+  - name: signedUpAt
+    type: string
+    format: date-time
+    description: When they joined the waitlist
+  - name: invitedAt
+    type: string
+    format: date-time
+    description: When beta invitation was sent
+  - name: convertedAt
+    type: string
+    format: date-time
+    description: When they accepted invitation
+  - name: createdAt
+    type: string
+    format: date-time
+    description: Creation timestamp
+  - name: updatedAt
+    type: string
+    format: date-time
+    description: Last update timestamp
+required:
+  - email
+  - priorityScore
+  - status
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - waitlist
+  - beta
+  - launch
+  - growth
+---
+
+# Waitlist Entry Schema
+
+Defines waitlist signup records for managing beta access and launch priorities.
+
+## Overview
+
+**Purpose**: Track waitlist signups, calculate priority scores, and manage beta invitation eligibility.
+
+**Use Cases:**
+- Launch waitlist management
+- Beta access prioritization
+- Referral tracking
+- Source attribution
+- Conversion analytics
+
+## Status Lifecycle
+
+```
+pending → invited → accepted
+   ↓         ↓
+expired    rejected
+```
+
+**Status Descriptions:**
+- **pending**: On waitlist, waiting for invitation
+- **invited**: Beta invitation sent, awaiting response
+- **accepted**: Invitation accepted, granted access
+- **rejected**: Declined invitation (manual or expired)
+- **expired**: Invitation expired without response
+
+## Priority Scoring (0-100)
+
+Priority score determines invitation order. Higher scores get earlier access.
+
+### Scoring Factors
+
+| Factor | Points | Description |
+|--------|--------|-------------|
+| **Has Referral** | +20 | Was referred by existing user |
+| **Early Signup** | +15 | First 100 signups |
+| **Has Company** | +10 | Provided company name |
+| **Has Use Case** | +10 | Described their use case (min 10 chars) |
+| **Source Quality** | 0-20 | Based on signup source |
+| **Referral Count** | +5 each (max 25) | Bonus for referring others |
+
+### Source Quality Scores
+
+| Source | Points | Description |
+|--------|--------|-------------|
+| Twitter/X | 20 | High-quality, engaged audience |
+| LinkedIn | 18 | Professional network |
+| Product Hunt | 15 | Early adopter community |
+| Hacker News | 15 | Technical audience |
+| Reddit | 12 | Community-driven |
+| Blog | 10 | Content-driven traffic |
+| Email | 8 | Newsletter or email campaign |
+| Other | 5 | Default for unknown sources |
+
+### Example Calculations
+
+**High Priority (85 points):**
+```typescript
+{
+  email: 'jane@startup.com',
+  name: 'Jane Doe',
+  company: 'Startup Inc',               // +10
+  useCase: 'Building automation...',     // +10
+  source: 'twitter',                     // +20
+  referralCode: 'john@example.com',      // +20
+  // Plus: referred 5 others             // +25
+}
+// Total: 10 + 10 + 20 + 20 + 25 = 85
+```
+
+**Medium Priority (45 points):**
+```typescript
+{
+  email: 'user@example.com',
+  company: 'Acme Corp',                  // +10
+  source: 'reddit',                      // +12
+  // Plus: early signup (user #42)       // +15
+  // Plus: referred 1 other              // +5
+}
+// Total: 10 + 12 + 15 + 5 = 42
+```
+
+**Low Priority (10 points):**
+```typescript
+{
+  email: 'late@example.com',
+  // No company, no use case, no referral
+  source: 'other',                       // +5
+  // Plus: late signup (user #500)       // +0
+}
+// Total: 5
+```
+
+## Example Entry
+
+```json
+{
+  "id": "01J1234ABC5678XYZ",
+  "email": "jane@startup.com",
+  "name": "Jane Doe",
+  "company": "Startup Inc",
+  "role": "CTO",
+  "useCase": "Building automation platform for API workflows. Need fast deployment and easy integration.",
+  "source": "twitter",
+  "referralCode": "john@example.com",
+  "priorityScore": 85,
+  "metadata": {
+    "utm_campaign": "launch_week",
+    "utm_medium": "social",
+    "device": "mobile",
+    "country": "US"
+  },
+  "status": "pending",
+  "signedUpAt": "2025-10-01T10:00:00Z",
+  "createdAt": "2025-10-01T10:00:00Z",
+  "updatedAt": "2025-10-01T10:00:00Z"
+}
+```
+
+## Database Schema
+
+```sql
+CREATE TABLE waitlist_entries (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  company TEXT,
+  role TEXT,
+  use_case TEXT,
+  source TEXT,
+  referral_code TEXT,
+  priority_score INTEGER NOT NULL DEFAULT 0,
+  metadata TEXT, -- JSON
+  status TEXT NOT NULL DEFAULT 'pending',
+  signed_up_at TEXT NOT NULL,
+  invited_at TEXT,
+  converted_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Indexes for performance
+CREATE INDEX idx_waitlist_email ON waitlist_entries(email);
+CREATE INDEX idx_waitlist_status ON waitlist_entries(status);
+CREATE INDEX idx_waitlist_priority ON waitlist_entries(priority_score DESC, signed_up_at ASC);
+CREATE INDEX idx_waitlist_referral ON waitlist_entries(referral_code);
+CREATE INDEX idx_waitlist_source ON waitlist_entries(source);
+```
+
+## Validation Rules
+
+### Email
+- **Required**: Yes
+- **Format**: Valid email address
+- **Unique**: One entry per email
+- **Example**: `user@example.com`
+
+### Name
+- **Required**: No
+- **Length**: 1-100 characters
+- **Example**: `Jane Doe`
+
+### Company
+- **Required**: No
+- **Length**: 1-100 characters
+- **Affects Priority**: +10 points
+- **Example**: `Startup Inc`
+
+### Use Case
+- **Required**: No
+- **Length**: 10-500 characters
+- **Affects Priority**: +10 points (min 10 chars)
+- **Example**: `Building automation platform for API workflows`
+
+### Source
+- **Required**: No
+- **Values**: Any string (typically utm_source)
+- **Affects Priority**: 0-20 points based on value
+- **Examples**: `twitter`, `linkedin`, `producthunt`, `blog`
+
+### Referral Code
+- **Required**: No
+- **Format**: Email address of referrer
+- **Affects Priority**: +20 points for having one, +5 per referral made
+- **Example**: `john@example.com`
+
+### Priority Score
+- **Required**: Yes (auto-calculated)
+- **Range**: 0-100
+- **Default**: Calculated on creation
+- **Updates**: When referral count changes
+
+### Status
+- **Required**: Yes
+- **Values**: `pending`, `invited`, `accepted`, `rejected`, `expired`
+- **Default**: `pending`
+- **Transitions**: See lifecycle diagram above
+
+## API Integration
+
+### Add to Waitlist
+
+```typescript
+POST /waitlist
+
+{
+  "email": "jane@startup.com",
+  "name": "Jane Doe",
+  "company": "Startup Inc",
+  "role": "CTO",
+  "useCase": "Building automation platform",
+  "source": "twitter",
+  "referralCode": "john@example.com"
+}
+
+// Response
+{
+  "success": true,
+  "data": {
+    "id": "01J1234ABC5678XYZ",
+    "email": "jane@startup.com",
+    "priorityScore": 85,
+    "status": "pending",
+    "signedUpAt": "2025-10-01T10:00:00Z"
+  }
+}
+```
+
+### Get Waitlist Position
+
+```typescript
+GET /waitlist/position/:email
+
+// Response
+{
+  "success": true,
+  "data": {
+    "position": 42,
+    "total": 500,
+    "priorityScore": 75,
+    "percentile": 91.6
+  }
+}
+```
+
+## Workflows
+
+### waitlist-invitation Workflow
+Uses this schema to select top-priority entries for beta invitations.
+
+**Selection Criteria:**
+- Status: `pending` (not already invited)
+- Priority Score: Above threshold (e.g., 70+)
+- Order: Priority score DESC, signed up date ASC
+
+## Analytics
+
+### Key Metrics
+
+**Signup Metrics:**
+- Total signups
+- Signups by source
+- Signups by day/week
+- Average priority score
+
+**Conversion Metrics:**
+- Invitation rate (invited / total)
+- Acceptance rate (accepted / invited)
+- Time to conversion (signup → accepted)
+- Conversion by priority tier
+
+**Source Performance:**
+- Signups by source
+- Average priority by source
+- Conversion rate by source
+- Cost per acquisition (CPA) by source
+
+**Referral Metrics:**
+- Referral rate (with referral / total)
+- Top referrers (by count)
+- Viral coefficient (referrals / user)
+
+### Example Analytics Query
+
+```sql
+-- Top 10 priority entries waiting for invitation
+SELECT email, name, company, priority_score, signed_up_at
+FROM waitlist_entries
+WHERE status = 'pending'
+ORDER BY priority_score DESC, signed_up_at ASC
+LIMIT 10;
+
+-- Conversion rate by source
+SELECT
+  source,
+  COUNT(*) as signups,
+  SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted,
+  ROUND(SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as conversion_rate
+FROM waitlist_entries
+WHERE source IS NOT NULL
+GROUP BY source
+ORDER BY signups DESC;
+
+-- Top referrers
+SELECT
+  referral_code,
+  COUNT(*) as referral_count,
+  AVG(priority_score) as avg_priority
+FROM waitlist_entries
+WHERE referral_code IS NOT NULL
+GROUP BY referral_code
+ORDER BY referral_count DESC
+LIMIT 10;
+```
+
+## Best Practices
+
+### Priority Optimization
+- **Reward engagement**: Higher scores for complete profiles
+- **Incentivize referrals**: Boost both referrer and referee
+- **Value quality sources**: Prioritize engaged communities
+- **Recognize early adopters**: Bonus for first 100 signups
+
+### Email Capture
+- **Keep forms short**: Email + name minimum
+- **Make optional fields valuable**: Company and use case boost priority
+- **Show waitlist position**: Motivate early signup
+- **Offer referral incentive**: "Invite 3 friends, move up 100 spots"
+
+### Source Tracking
+- **Always include utm_source**: Track attribution
+- **Use consistent naming**: lowercase, underscore-separated
+- **Analyze by source**: Optimize high-converting channels
+- **A/B test messaging**: By source
+
+### Referral Strategy
+- **Use email as referral code**: Easy to remember, unique
+- **Show referral count**: Gamify with leaderboard
+- **Reward both parties**: Referrer +5 points, referee +20 points
+- **Set limits**: Max 5 referrals per user (25 points)
+
+## Success Metrics
+
+**Week 1:**
+- 100+ signups
+- <5% invalid/duplicate emails
+- Average priority score >40
+
+**Month 1:**
+- 1,000+ signups
+- 50+ referrals
+- 80%+ valid email rate
+
+**Launch (Month 3):**
+- 5,000+ signups
+- 500+ referrals
+- Top 10% priority >80 points
+- Ready to invite first 500
+
+## Related Schemas
+
+- **beta-invitation** - Invitation records and codes
+- **referral-code** - Referral tracking (separate service)
+- **user-account** - Linked after invitation accepted
+
+## Related Services
+
+- **waitlist-beta-management** - Service managing this data
+- **email** - Sends welcome and invitation emails
+- **analytics** - Tracks signup events and attribution
+
+## Related Workflows
+
+- **waitlist-invitation** - Generate and send beta invitations
+- **referral-reward-distribution** - Award referral bonuses

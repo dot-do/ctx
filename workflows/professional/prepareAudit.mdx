@@ -1,0 +1,550 @@
+---
+$type: Workflow
+$id: workflow/prepareaudit
+title: prepare-audit
+name: prepare-audit
+description: Financial audit preparation workflow with document gathering and reconciliation
+
+trigger:
+  type: scheduled
+  schedule: "0 0 1 1,4,7,10 *"
+  description: Quarterly on the first of Jan, Apr, Jul, Oct
+
+input:
+  companyId: Company being audited (uuid)
+  auditPeriod: Fiscal quarter or year being audited (string)
+  auditType: Type of audit - quarterly, annual, tax, compliance (string)
+  auditorFirm: External auditing firm name (string)
+  dueDate: Audit due date (timestamp)
+
+steps:
+  - name: create-audit-checklist
+    description: Generate audit-specific document checklist
+    function: generate-audit-checklist
+    input:
+      auditType: ${input.auditType}
+      auditPeriod: ${input.auditPeriod}
+      industry: ${workflow.companyIndustry}
+    output:
+      - requiredDocuments
+      - optionalDocuments
+      - complianceRequirements
+
+  - name: gather-financial-statements
+    description: Collect financial statements for period
+    function: export-financial-statements
+    input:
+      companyId: ${input.companyId}
+      period: ${input.auditPeriod}
+      statements: [balance-sheet, income-statement, cash-flow, equity]
+      format: excel
+    output:
+      - balanceSheet
+      - incomeStatement
+      - cashFlowStatement
+      - equityStatement
+
+  - name: extract-general-ledger
+    description: Export general ledger for period
+    function: export-general-ledger
+    input:
+      companyId: ${input.companyId}
+      period: ${input.auditPeriod}
+      includeJournalEntries: true
+    output:
+      - ledgerFile
+      - transactionCount
+      - accountsAffected
+
+  - name: gather-supporting-documents
+    description: Collect supporting documentation
+    function: gather-audit-documents
+    input:
+      companyId: ${input.companyId}
+      period: ${input.auditPeriod}
+      documentTypes: [invoices, receipts, contracts, bank-statements, payroll]
+    output:
+      - documentPackage
+      - documentCount
+      - missingDocuments
+
+  - name: reconcile-accounts
+    description: Perform account reconciliations
+    function: reconcile-accounts
+    input:
+      ledger: ${steps.extract-general-ledger.output.ledgerFile}
+      bankStatements: ${steps.gather-supporting-documents.output.bankStatements}
+      period: ${input.auditPeriod}
+    output:
+      - reconciledAccounts
+      - discrepancies
+      - adjustments
+
+  - name: identify-discrepancies
+    description: Flag discrepancies for review
+    condition: ${steps.reconcile-accounts.output.discrepancies.length > 0}
+    function: analyze-discrepancies
+    input:
+      discrepancies: ${steps.reconcile-accounts.output.discrepancies}
+      threshold: 100
+    output:
+      - materialDiscrepancies
+      - minorDiscrepancies
+      - suggestedAdjustments
+
+  - name: verify-revenue-recognition
+    description: Verify revenue recognition compliance
+    function: verify-revenue-recognition
+    input:
+      revenue: ${steps.gather-financial-statements.output.incomeStatement.revenue}
+      contracts: ${steps.gather-supporting-documents.output.contracts}
+      standard: ASC-606
+    output:
+      - compliant
+      - issues
+      - corrections
+
+  - name: check-internal-controls
+    description: Review internal control effectiveness
+    function: assess-internal-controls
+    input:
+      companyId: ${input.companyId}
+      period: ${input.auditPeriod}
+      areas: [cash, inventory, payroll, purchasing, sales]
+    output:
+      - controlsAssessment
+      - weaknesses
+      - recommendations
+
+  - name: prepare-adjusting-entries
+    description: Generate adjusting journal entries
+    condition: ${steps.identify-discrepancies.output.materialDiscrepancies.length > 0}
+    function: generate-adjusting-entries
+    input:
+      discrepancies: ${steps.identify-discrepancies.output.materialDiscrepancies}
+      reconciledAccounts: ${steps.reconcile-accounts.output.reconciledAccounts}
+    output:
+      - adjustingEntries
+      - impactToStatements
+
+  - name: calculate-ratios
+    description: Calculate key financial ratios
+    function: calculate-financial-ratios
+    input:
+      balanceSheet: ${steps.gather-financial-statements.output.balanceSheet}
+      incomeStatement: ${steps.gather-financial-statements.output.incomeStatement}
+      cashFlow: ${steps.gather-financial-statements.output.cashFlowStatement}
+    output:
+      - liquidityRatios
+      - profitabilityRatios
+      - leverageRatios
+      - efficiencyRatios
+
+  - name: assess-going-concern
+    description: Evaluate going concern status
+    function: assess-going-concern
+    input:
+      financials: ${steps.gather-financial-statements.output}
+      ratios: ${steps.calculate-ratios.output}
+      marketConditions: external
+    output:
+      - goingConcern
+      - riskFactors
+      - mitigation
+
+  - name: prepare-audit-workpapers
+    description: Organize all documentation for auditors
+    function: prepare-workpapers
+    input:
+      financialStatements: ${steps.gather-financial-statements.output}
+      generalLedger: ${steps.extract-general-ledger.output}
+      supportingDocs: ${steps.gather-supporting-documents.output}
+      reconciliations: ${steps.reconcile-accounts.output}
+      adjustingEntries: ${steps.prepare-adjusting-entries.output}
+      controlsAssessment: ${steps.check-internal-controls.output}
+      ratios: ${steps.calculate-ratios.output}
+    output:
+      - workpaperPackage
+      - indexedFiles
+      - crossReferences
+
+  - name: create-management-letter
+    description: Draft management representation letter
+    function: generate-management-letter
+    input:
+      companyId: ${input.companyId}
+      auditPeriod: ${input.auditPeriod}
+      auditorFirm: ${input.auditorFirm}
+      financials: ${steps.gather-financial-statements.output}
+    output:
+      - managementLetter
+      - representations
+
+  - name: schedule-auditor-meeting
+    description: Schedule kickoff meeting with auditors
+    function: schedule-meeting
+    input:
+      participants: [${input.auditorFirm}, cfo@company.com, controller@company.com]
+      subject: Audit Kickoff - ${input.auditPeriod}
+      duration: 90
+      agendaItems:
+        - Scope and timeline
+        - Document review
+        - Key areas of focus
+        - Questions and concerns
+
+  - name: create-audit-summary
+    description: Generate audit preparation summary report
+    function: generate-pdf-report
+    input:
+      template: audit-preparation
+      data:
+        auditPeriod: ${input.auditPeriod}
+        auditType: ${input.auditType}
+        financials: ${steps.gather-financial-statements.output}
+        discrepancies: ${steps.identify-discrepancies.output}
+        controlsAssessment: ${steps.check-internal-controls.output}
+        ratios: ${steps.calculate-ratios.output}
+        goingConcern: ${steps.assess-going-concern.output}
+        readiness: ${workflow.readinessScore}
+    output:
+      - summaryReport
+      - reportUrl
+
+  - name: store-audit-package
+    description: Save audit package to database
+    function: store-audit-package
+    input:
+      companyId: ${input.companyId}
+      auditPeriod: ${input.auditPeriod}
+      auditType: ${input.auditType}
+      preparationDate: ${workflow.startTime}
+      workpapers: ${steps.prepare-audit-workpapers.output.workpaperPackage}
+      summary: ${steps.create-audit-summary.output.summaryReport}
+      readiness: ${workflow.readinessScore}
+
+  - name: notify-stakeholders
+    description: Send audit readiness notification
+    function: send-email
+    input:
+      to: [cfo@company.com, controller@company.com, ${input.auditorFirm}]
+      subject: Audit Preparation Complete - ${input.auditPeriod}
+      template: audit-ready
+      attachments:
+        - ${steps.create-audit-summary.output.summaryReport}
+        - ${steps.create-management-letter.output.managementLetter}
+      data:
+        auditPeriod: ${input.auditPeriod}
+        meetingTime: ${steps.schedule-auditor-meeting.output.scheduledTime}
+        readiness: ${workflow.readinessScore}
+
+output:
+  auditPackageId: ${steps.store-audit-package.output.packageId}
+  workpapersUrl: ${steps.prepare-audit-workpapers.output.workpaperPackage}
+  summaryReportUrl: ${steps.create-audit-summary.output.reportUrl}
+  readinessScore: ${workflow.readinessScore}
+  discrepanciesFound: ${steps.identify-discrepancies.output.materialDiscrepancies.length}
+  controlWeaknesses: ${steps.check-internal-controls.output.weaknesses.length}
+  meetingScheduled: ${steps.schedule-auditor-meeting.output.scheduled}
+
+timeout: 600000
+
+notifications:
+  onSuccess:
+    - channel: email
+      to: cfo@company.com
+      subject: Audit prep complete - ${input.auditPeriod}
+  onError:
+    - channel: slack
+      webhook: ${env.SLACK_WEBHOOK_URL}
+      message: Audit preparation failed for ${input.auditPeriod}
+---
+
+# Financial Audit Preparation Workflow
+
+Automated audit preparation from document gathering through workpaper organization.
+
+## Flow Overview
+
+```
+Create Checklist
+  ↓
+Gather Financial Statements
+  ↓
+Extract General Ledger
+  ↓
+Gather Supporting Docs
+  ↓
+Reconcile Accounts → Identify Discrepancies → Prepare Adjusting Entries
+  ↓
+Verify Revenue Recognition
+  ↓
+Check Internal Controls
+  ↓
+Calculate Financial Ratios
+  ↓
+Assess Going Concern
+  ↓
+Prepare Workpapers → Create Management Letter
+  ↓
+Schedule Auditor Meeting → Create Summary Report
+  ↓
+Store Package → Notify Stakeholders
+```
+
+## Audit Types
+
+### Quarterly Review
+- Limited scope
+- Focus on significant changes
+- Revenue recognition
+- Bank reconciliations
+- ~2-3 days
+
+### Annual Audit
+- Full scope
+- All financial statements
+- Complete internal controls review
+- Going concern assessment
+- ~2-4 weeks
+
+### Tax Audit
+- Tax return preparation
+- Schedule M-1 reconciliation
+- Tax provision analysis
+- Permanent/temporary differences
+
+### Compliance Audit
+- Industry-specific regulations
+- SOX compliance (if applicable)
+- Loan covenant compliance
+- Grant compliance
+
+## Required Documents
+
+### Financial Statements
+- Balance Sheet
+- Income Statement
+- Cash Flow Statement
+- Statement of Shareholders' Equity
+- Notes to Financial Statements
+
+### Supporting Documentation
+- General Ledger (detailed)
+- Journal Entries (all adjusting entries)
+- Trial Balance
+- Bank Statements & Reconciliations
+- Accounts Receivable Aging
+- Accounts Payable Aging
+- Inventory Records
+- Fixed Asset Register
+- Debt Agreements
+- Lease Agreements
+- Legal Contingencies
+
+### Internal Controls Documentation
+- Process flowcharts
+- Control descriptions
+- Testing results
+- Management responses
+
+## Account Reconciliation
+
+**Accounts Reconciled:**
+- Cash & Bank Accounts
+- Accounts Receivable
+- Inventory
+- Fixed Assets
+- Accounts Payable
+- Accrued Liabilities
+- Debt Obligations
+- Equity Accounts
+
+**Reconciliation Process:**
+1. Compare book balance to external records
+2. Identify and explain differences
+3. Prepare reconciling items
+4. Generate adjusting entries if needed
+5. Document sign-offs
+
+**Common Discrepancies:**
+- Unrecorded transactions
+- Timing differences
+- Bank errors
+- Posting errors
+- Missing documentation
+
+## Internal Controls Assessment
+
+**Key Control Areas:**
+
+**Cash Receipts:**
+- Segregation of duties
+- Daily deposits
+- Reconciliation reviews
+
+**Cash Disbursements:**
+- Approval hierarchies
+- Dual signatures for large amounts
+- Three-way match (PO, receipt, invoice)
+
+**Inventory:**
+- Physical counts
+- Perpetual records
+- Cutoff procedures
+
+**Payroll:**
+- Time approval process
+- Rate authorization
+- Tax withholding verification
+
+**Financial Reporting:**
+- Close process documentation
+- Review and approval
+- Account reconciliations
+
+## Financial Ratios Calculated
+
+### Liquidity Ratios
+- **Current Ratio** = Current Assets / Current Liabilities
+- **Quick Ratio** = (Current Assets - Inventory) / Current Liabilities
+- **Cash Ratio** = Cash / Current Liabilities
+
+### Profitability Ratios
+- **Gross Margin** = Gross Profit / Revenue
+- **Operating Margin** = Operating Income / Revenue
+- **Net Margin** = Net Income / Revenue
+- **ROE** = Net Income / Shareholders' Equity
+- **ROA** = Net Income / Total Assets
+
+### Leverage Ratios
+- **Debt-to-Equity** = Total Debt / Total Equity
+- **Debt-to-Assets** = Total Debt / Total Assets
+- **Interest Coverage** = EBIT / Interest Expense
+
+### Efficiency Ratios
+- **Asset Turnover** = Revenue / Average Total Assets
+- **Receivables Turnover** = Revenue / Average AR
+- **Inventory Turnover** = COGS / Average Inventory
+- **Days Sales Outstanding** = 365 / Receivables Turnover
+
+## Going Concern Assessment
+
+**Evaluated Factors:**
+
+**Financial Indicators:**
+- Negative working capital
+- Recurring operating losses
+- Negative cash flows from operations
+- Debt covenant violations
+- Dividend arrearages
+
+**Operating Indicators:**
+- Loss of key customers
+- Uninsured catastrophes
+- Labor difficulties
+- Supply chain disruptions
+
+**Other Indicators:**
+- Legal proceedings
+- Loss of key management
+- Technology obsolescence
+
+**Assessment:**
+- **Low Risk** - Strong indicators, no concerns
+- **Medium Risk** - Some concerns, manageable
+- **High Risk** - Substantial doubt, mitigation required
+
+## Readiness Score
+
+The workflow calculates audit readiness (0-100):
+
+**Document Completeness (40 points):**
+- All required documents gathered
+- Supporting documentation complete
+- No missing items
+
+**Account Reconciliations (30 points):**
+- All accounts reconciled
+- Discrepancies explained
+- Adjusting entries prepared
+
+**Internal Controls (20 points):**
+- Controls documented
+- Testing complete
+- No material weaknesses
+
+**Financial Ratios (10 points):**
+- Ratios calculated
+- Trends analyzed
+- Benchmarked to industry
+
+**Readiness Levels:**
+- **90-100:** Excellent - Ready for audit
+- **75-89:** Good - Minor issues to address
+- **60-74:** Fair - Several items need attention
+- **<60:** Poor - Significant work needed
+
+## Example Output
+
+**Audit Period:** Q3 2024
+**Audit Type:** Quarterly Review
+**Readiness Score:** 87 (Good)
+
+**Document Status:**
+- ✅ Financial statements prepared
+- ✅ General ledger exported (1,247 transactions)
+- ✅ Bank statements gathered
+- ⚠️  2 vendor invoices missing (immaterial)
+
+**Reconciliation Status:**
+- ✅ Cash accounts reconciled (3 accounts, $0 variance)
+- ✅ AR aging reviewed ($2.3M, 5% >90 days)
+- ✅ AP aging reviewed ($890K, all current)
+- ⚠️  Fixed assets - minor variance ($1,200, adjusted)
+
+**Internal Controls:**
+- ✅ Cash controls effective
+- ✅ AR controls effective
+- 🔴 Inventory controls - weakness identified
+  - Issue: No periodic physical counts
+  - Recommendation: Implement quarterly counts
+
+**Financial Ratios:**
+- Current Ratio: 2.1 (healthy)
+- Quick Ratio: 1.4 (adequate)
+- Debt-to-Equity: 0.6 (moderate)
+- Operating Margin: 12% (good)
+
+**Going Concern:** Low Risk - No substantial doubt
+
+## Integration Points
+
+- **Functions:** [[../functions/checkCompliance|Compliance Checker]], [[../functions/assessRisk|Risk Assessor]]
+- **Schemas:** Database with financial data
+- **Agents:** Accountant reviewing output
+
+## Related
+
+- [[../functions/checkCompliance|Check Compliance Function]]
+- [[../functions/calculateROI|Calculate ROI Function]]
+- [[../functions/assessRisk|Assess Risk Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface AuditPrep { id: string; companyId: string; auditDate: Date; documents: string[]; status: 'preparing' | 'ready' }
+
+export const prepareAudit: BusinessModule = $ => {
+  const { db, ai, send, on } = $
+
+  on.audit.scheduled(async (audit: AuditPrep) => {
+    const checklist = await ai.generate({ prompt: `Generate audit preparation checklist for ${audit.companyId}. Include required documents, compliance items.`, maxTokens: 800 })
+
+    await db.audits.update(audit.id, { checklist, status: 'preparing' })
+    await send.email(audit.companyId, 'Audit Preparation Guide', { checklist, auditDate: audit.auditDate })
+  })
+}
+```

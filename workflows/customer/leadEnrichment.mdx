@@ -1,0 +1,617 @@
+---
+$type: Workflow
+$id: workflow/leadenrichment
+id: lead-enrichment
+name: Lead Enrichment
+description: Automated workflow for enriching contact and company data from multiple sources
+category: data-enrichment
+status: active
+trigger: manual
+inputs:
+  - name: contactId
+    type: string
+    required: false
+    description: Specific contact ID to enrich (empty = all contacts in campaign)
+  - name: campaignId
+    type: string
+    required: false
+    description: Campaign ID to enrich all contacts for
+  - name: sources
+    type: array
+    required: false
+    default: [apollo, clearbit]
+    description: Enrichment sources to use (apollo, clearbit, hunter, snov)
+  - name: fields
+    type: array
+    required: false
+    description: Specific fields to enrich (empty = all available)
+  - name: refresh
+    type: boolean
+    required: false
+    default: false
+    description: Force fresh enrichment (skip cache)
+  - name: enrichCompany
+    type: boolean
+    required: false
+    default: true
+    description: Also enrich company data
+outputs:
+  - name: contactsEnriched
+    type: number
+    description: Number of contacts enriched
+  - name: companiesEnriched
+    type: number
+    description: Number of companies enriched
+  - name: fieldsAdded
+    type: number
+    description: Total new fields added
+  - name: cost
+    type: number
+    description: Total enrichment cost in credits
+  - name: cacheHitRate
+    type: number
+    description: Percentage of cached results
+estimatedDuration: 1-5 minutes (depends on volume)
+---
+
+# Lead Enrichment Workflow
+
+Automated workflow for enriching contact and company data from multiple external sources (Apollo.io, Clearbit, Hunter.io, Snov.io).
+
+## Overview
+
+**Purpose:** Enhance contact records with missing data (email, phone, title, company info, social profiles) to improve campaign personalization and targeting.
+
+**What gets enriched:**
+- Contact data: Name, email, phone, title, location, timezone
+- Company data: Industry, size, revenue, technologies, funding
+- Social profiles: LinkedIn, Twitter, GitHub
+- Verification: Email deliverability status
+
+**Use cases:**
+- Enrich campaign contacts before launch
+- Fill in missing data for manual uploads
+- Periodic re-enrichment to keep data fresh
+- Bulk enrichment of large contact lists
+
+## Workflow Steps
+
+### Step 1: Load Contacts
+
+**Service:** `db`
+**Action:** Query contacts to enrich
+
+```typescript
+// If specific contact
+if (input.contactId) {
+  const contacts = await env.DB.execute(
+    `SELECT * FROM email_contacts WHERE id = ?`,
+    [input.contactId]
+  )
+}
+// If campaign
+else if (input.campaignId) {
+  const contacts = await env.DB.execute(
+    `SELECT * FROM email_contacts
+     WHERE campaign_id = ?
+     AND status = 'active'`,
+    [input.campaignId]
+  )
+}
+// All contacts with missing data
+else {
+  const contacts = await env.DB.execute(
+    `SELECT * FROM email_contacts
+     WHERE (company IS NULL OR title IS NULL OR phone IS NULL)
+     AND email IS NOT NULL
+     LIMIT 1000` // Max 1000 per run
+  )
+}
+
+console.log(`Found ${contacts.rows.length} contacts to enrich`)
+```
+
+**Criteria for enrichment:**
+- Has email address
+- Missing one or more key fields
+- Not enriched in last 30 days (unless refresh=true)
+
+### Step 2: Validate Emails
+
+**Service:** `email-validation`
+**Action:** Verify email deliverability before enrichment
+
+```typescript
+// Filter to valid emails only
+const validContacts = []
+
+for (const contact of contacts.rows) {
+  const validation = await env.EMAIL_VALIDATION.validateEmail({
+    email: contact.email,
+    checkDeliverability: true
+  })
+
+  if (validation.deliverable) {
+    validContacts.push(contact)
+  } else {
+    // Mark contact as invalid
+    await env.DB.execute(
+      `UPDATE email_contacts
+       SET status = 'invalid',
+           validation_status = ?
+       WHERE id = ?`,
+      [validation.status, contact.id]
+    )
+  }
+}
+
+console.log(`${validContacts.length} contacts have valid emails`)
+```
+
+**Why validate first:**
+- Saves enrichment credits on invalid emails
+- Prevents wasting time on bounce-prone contacts
+- Ensures data quality
+
+### Step 3: Enrich Contacts
+
+**Service:** `lead-enrichment`
+**Action:** Enrich contact data from sources
+
+```typescript
+const enriched = []
+const errors = []
+let totalCost = 0
+let cacheHits = 0
+
+for (const contact of validContacts) {
+  try {
+    const result = await env.LEAD_ENRICHMENT.enrichContact({
+      email: contact.email,
+      name: contact.name,
+      company: contact.company,
+      sources: input.sources || ['apollo', 'clearbit'],
+      fields: input.fields,
+      refresh: input.refresh
+    })
+
+    // Track cache hits
+    if (result.metadata.cached) {
+      cacheHits++
+    }
+
+    // Update contact record
+    await env.DB.execute(
+      `UPDATE email_contacts
+       SET
+         first_name = COALESCE(?, first_name),
+         last_name = COALESCE(?, last_name),
+         title = COALESCE(?, title),
+         company = COALESCE(?, company),
+         phone = COALESCE(?, phone),
+         linkedin = COALESCE(?, linkedin),
+         twitter = COALESCE(?, twitter),
+         github = COALESCE(?, github),
+         location = COALESCE(?, location),
+         timezone = COALESCE(?, timezone),
+         photo = COALESCE(?, photo),
+         enriched_at = ?,
+         enrichment_sources = ?,
+         enrichment_confidence = ?
+       WHERE id = ?`,
+      [
+        result.enriched.firstName,
+        result.enriched.lastName,
+        result.enriched.title,
+        result.enriched.company,
+        result.enriched.phone,
+        result.enriched.linkedin,
+        result.enriched.twitter,
+        result.enriched.github,
+        result.enriched.location,
+        result.enriched.timezone,
+        result.enriched.photo,
+        new Date().toISOString(),
+        result.metadata.sources.join(','),
+        result.metadata.confidence,
+        contact.id
+      ]
+    )
+
+    enriched.push(contact.id)
+    totalCost += result.metadata.cost
+  } catch (error) {
+    console.error(`Enrichment failed for ${contact.email}:`, error)
+    errors.push({ contactId: contact.id, error: error.message })
+  }
+}
+
+console.log(`Enriched ${enriched.length} contacts`)
+console.log(`Cache hit rate: ${(cacheHits / validContacts.length * 100).toFixed(1)}%`)
+console.log(`Total cost: ${totalCost} credits`)
+```
+
+**Enrichment priority:**
+1. Try Apollo.io first (high priority, B2B focus)
+2. Fall back to Clearbit (high quality, technographics)
+3. Try Hunter.io for email-only enrichment
+4. Try Snov.io as last resort
+
+**Cost optimization:**
+- Cache results for 30 days (~90% cost savings)
+- Skip re-enrichment if data is recent (unless refresh=true)
+- Use COALESCE to only fill missing fields
+
+### Step 4: Enrich Companies (Optional)
+
+**Service:** `lead-enrichment`
+**Action:** Enrich company data
+
+```typescript
+if (input.enrichCompany) {
+  // Get unique domains
+  const domains = [...new Set(
+    validContacts
+      .map(c => c.company_domain)
+      .filter(Boolean)
+  )]
+
+  console.log(`Enriching ${domains.length} unique companies`)
+
+  for (const domain of domains) {
+    try {
+      const companyData = await env.LEAD_ENRICHMENT.enrichCompany({
+        domain,
+        sources: input.sources,
+        refresh: input.refresh
+      })
+
+      // Store company data
+      await env.DB.execute(
+        `INSERT INTO companies (
+          domain, name, website, description,
+          industry, founded, size, revenue,
+          location_city, location_state, location_country,
+          linkedin, twitter, facebook, github,
+          technologies, logo,
+          enriched_at, enrichment_sources
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(domain) DO UPDATE SET
+          name = COALESCE(excluded.name, companies.name),
+          industry = COALESCE(excluded.industry, companies.industry),
+          size = COALESCE(excluded.size, companies.size),
+          enriched_at = excluded.enriched_at`,
+        [
+          domain,
+          companyData.name,
+          companyData.website,
+          companyData.description,
+          companyData.industry,
+          companyData.founded,
+          companyData.size,
+          companyData.revenue,
+          companyData.location?.city,
+          companyData.location?.state,
+          companyData.location?.country,
+          companyData.social?.linkedin,
+          companyData.social?.twitter,
+          companyData.social?.facebook,
+          companyData.social?.github,
+          JSON.stringify(companyData.technologies || []),
+          companyData.logo,
+          new Date().toISOString(),
+          companyData.metadata.sources.join(',')
+        ]
+      )
+
+      // Link contacts to company
+      await env.DB.execute(
+        `UPDATE email_contacts
+         SET company_id = (SELECT id FROM companies WHERE domain = ?)
+         WHERE company_domain = ?`,
+        [domain, domain]
+      )
+
+      totalCost += companyData.metadata.cost
+    } catch (error) {
+      console.error(`Company enrichment failed for ${domain}:`, error)
+    }
+  }
+}
+```
+
+**Company data use cases:**
+- Industry-specific messaging
+- Company size targeting
+- Technographic segmentation
+- Account-based marketing (ABM)
+
+### Step 5: Calculate Enrichment Metrics
+
+**Action:** Analyze enrichment results
+
+```typescript
+// Calculate fields added
+let fieldsAdded = 0
+
+for (const contactId of enriched) {
+  const before = contacts.rows.find(c => c.id === contactId)
+  const after = await env.DB.execute(
+    `SELECT * FROM email_contacts WHERE id = ?`,
+    [contactId]
+  )
+
+  // Count new non-null fields
+  const fields = ['first_name', 'last_name', 'title', 'company', 'phone', 'linkedin', 'twitter', 'github']
+  for (const field of fields) {
+    if (!before[field] && after.rows[0][field]) {
+      fieldsAdded++
+    }
+  }
+}
+
+// Calculate cache hit rate
+const cacheHitRate = (cacheHits / validContacts.length * 100).toFixed(1)
+
+console.log(`Enrichment complete:`)
+console.log(`- Contacts enriched: ${enriched.length}`)
+console.log(`- Fields added: ${fieldsAdded}`)
+console.log(`- Cache hit rate: ${cacheHitRate}%`)
+console.log(`- Total cost: ${totalCost} credits`)
+console.log(`- Errors: ${errors.length}`)
+```
+
+**Success metrics:**
+- **Enrichment rate**: >80% of contacts successfully enriched
+- **Cache hit rate**: >70% (after initial enrichment)
+- **Fields added**: 3-5 per contact on average
+- **Cost per contact**: 0.1-0.3 credits (with caching)
+
+### Step 6: Update Campaign Metadata
+
+**Service:** `db`
+**Action:** Update campaign enrichment status
+
+```typescript
+if (input.campaignId) {
+  await env.DB.execute(
+    `UPDATE email_campaigns
+     SET
+       enriched_contacts = enriched_contacts + ?,
+       enrichment_cost = enrichment_cost + ?,
+       last_enriched_at = ?
+     WHERE id = ?`,
+    [enriched.length, totalCost, new Date().toISOString(), input.campaignId]
+  )
+
+  // Store enrichment log
+  await env.DB.execute(
+    `INSERT INTO enrichment_logs
+     (campaign_id, contacts_enriched, fields_added, cost, cache_hit_rate, errors, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.campaignId,
+      enriched.length,
+      fieldsAdded,
+      totalCost,
+      parseFloat(cacheHitRate),
+      errors.length,
+      new Date().toISOString()
+    ]
+  )
+}
+```
+
+### Step 7: Notify User
+
+**Service:** `email` (optional)
+**Action:** Send enrichment summary
+
+```typescript
+// Send notification email
+await env.EMAIL.send({
+  to: userEmail,
+  subject: `Lead Enrichment Complete: ${enriched.length} contacts enriched`,
+  template: 'enrichment-summary',
+  data: {
+    contactsEnriched: enriched.length,
+    fieldsAdded,
+    cacheHitRate,
+    cost: totalCost,
+    errors: errors.length,
+    campaignName: campaign?.name
+  }
+})
+```
+
+## Enrichment Sources
+
+### Apollo.io
+- **Priority**: High (1st choice)
+- **Best For**: B2B contacts, company data
+- **Cost**: 1 credit per enrichment
+- **Coverage**: 275M+ contacts, 60M+ companies
+- **Fields**: Email (verified), phone, title, company, LinkedIn, social
+
+### Clearbit
+- **Priority**: High (2nd choice)
+- **Best For**: Technographics, detailed profiles
+- **Cost**: 1 credit per enrichment
+- **Coverage**: 20M+ companies
+- **Fields**: Email, company, title, location, tech stack, social
+
+### Hunter.io
+- **Priority**: Medium (3rd choice)
+- **Best For**: Email finding and verification
+- **Cost**: 0.5 credits per enrichment
+- **Coverage**: 100M+ emails
+- **Fields**: Email, verification status
+
+### Snov.io
+- **Priority**: Low (fallback)
+- **Best For**: Email finding
+- **Cost**: 0.5 credits per enrichment
+- **Fields**: Email, company info
+
+## Use Cases
+
+### Pre-Campaign Enrichment
+```bash
+# Enrich all contacts in a campaign before launch
+POST /workflows/lead-enrichment
+{
+  "campaignId": "camp_123",
+  "enrichCompany": true
+}
+```
+
+### Bulk Upload Enrichment
+```bash
+# After CSV import, enrich all contacts
+POST /workflows/lead-enrichment
+{
+  "refresh": false
+}
+```
+
+### Periodic Re-Enrichment
+```bash
+# Re-enrich stale data (cron job)
+POST /workflows/lead-enrichment
+{
+  "refresh": true,
+  "sources": ["apollo"]
+}
+```
+
+### Single Contact Enrichment
+```bash
+# Enrich specific contact
+POST /workflows/lead-enrichment
+{
+  "contactId": "cont_123"
+}
+```
+
+## Cost Optimization
+
+### Caching Strategy
+- **TTL**: 30 days for contact data, 90 days for company data
+- **Savings**: ~90% cost reduction after initial enrichment
+- **Storage**: Cloudflare KV (fast, global)
+
+### Smart Source Selection
+- Try cheaper sources first for basic fields
+- Use premium sources only for missing critical fields
+- Skip sources that don't provide requested fields
+
+### Batch Processing
+- Enrich contacts in batches of 10-50
+- Use queue for large campaigns (>1000 contacts)
+- Avoid rate limits by spreading requests
+
+### Field Filtering
+```typescript
+// Only enrich specific fields
+{
+  "fields": ["email", "title", "company"],
+  "sources": ["apollo"] // Cheapest source with these fields
+}
+```
+
+## Error Handling
+
+### Common Errors
+
+**Contact Not Found (404)**
+- Provider couldn't find the contact
+- Try alternative source
+- Log as "not_found" for analytics
+
+**Rate Limited (429)**
+- Too many requests to provider
+- Queue for retry (exponential backoff)
+- Switch to alternative source
+
+**Invalid API Key (401)**
+- Check provider credentials
+- Alert administrators
+- Pause workflow until fixed
+
+**Insufficient Credits (402)**
+- Provider account out of credits
+- Switch to alternative source
+- Alert for top-up
+
+### Retry Strategy
+```typescript
+// Exponential backoff
+const retries = [1, 2, 5, 10, 30] // seconds
+
+for (const delay of retries) {
+  try {
+    return await enrichContact()
+  } catch (error) {
+    if (error.status === 429) {
+      await sleep(delay * 1000)
+    } else {
+      throw error
+    }
+  }
+}
+```
+
+## Monitoring
+
+### Key Metrics
+- **Enrichment rate**: % of contacts successfully enriched
+- **Cache hit rate**: % of cached results
+- **Cost per contact**: Average credits spent
+- **Provider success rate**: % by provider
+- **Field completion rate**: % for each field
+
+### Alerts
+- **Critical**: Enrichment failing for >50% of contacts
+- **Warning**: Cache hit rate <50% (possible cache issues)
+- **Info**: New provider added or removed
+
+## Best Practices
+
+### When to Enrich
+- **Before campaign launch**: Enrich all contacts
+- **After CSV import**: Fill in missing data
+- **Periodic refresh**: Re-enrich every 3-6 months
+- **On-demand**: Enrich specific segments
+
+### What to Enrich
+- **Always**: Email verification, title, company
+- **B2B**: LinkedIn, company data, technographics
+- **Outreach**: Phone (if doing calls), timezone
+- **ABM**: Company size, industry, funding
+
+### Cost Management
+- Set daily/monthly credit limits
+- Monitor cost per campaign
+- Use caching aggressively
+- Choose cheapest sources that meet needs
+
+## Success Criteria
+
+After successful enrichment:
+- **Enrichment rate**: >80%
+- **Cache hit rate**: >70% (after initial run)
+- **Fields added**: 3-5 per contact
+- **Cost per contact**: <0.5 credits
+- **Error rate**: <10%
+
+## Related Workflows
+
+- **campaign-creation** → triggers enrichment before launch
+- **domain-onboarding** → enriches sample contacts for testing
+- **data-import** → enriches after CSV/API import
+
+## Related Services
+
+- **lead-enrichment** - Multi-source enrichment
+- **email-validation** - Email verification
+- **email-campaigns** - Campaign management

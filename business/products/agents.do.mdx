@@ -1,0 +1,397 @@
+---
+$type: Business
+$id: business/agents.do
+title: Agents.do
+legalName: Agents.do
+type: product
+category: Platform
+industry: Technology
+vertical: AI Agents
+description: AI agent platform with 33 production-ready agents and voice capabilities
+mission: Enable businesses to deploy AI agents that autonomously handle customer interactions
+tagline: "AI Agents for Every Business Need"
+website: https://agents.do
+status: Active
+launched: "2024"
+metadata:
+  ns: business
+  visibility: public
+tags:
+  - ai-agents
+  - voice-ai
+  - automation
+  - customer-service
+---
+
+# Agents.do
+
+**AI agent platform** providing 33 production-ready agents with voice capabilities, ready to deploy for sales, support, operations, and executive functions.
+
+## Overview
+
+Agents.do makes AI agents accessible to businesses of all sizes. Each agent is pre-configured with specific capabilities, tools, and communication styles—ready to integrate into your workflows.
+
+## Agent Portfolio
+
+### Named Agents (7) - Voice-Enabled
+
+Customer-facing agents with distinct personalities and voice integration:
+
+**Sales & Growth:**
+- **Amy** - Sales Development Representative
+  - Voice: rachel (warm, consultative)
+  - Capabilities: Lead qualification, demo scheduling, objection handling
+
+**Technical:**
+- **Alex** - Data Scientist
+  - Voice: adam (analytical, confident)
+  - Capabilities: Data analysis, visualization, reporting
+
+- **Riley** - Technical Support Engineer
+  - Voice: emily (patient, supportive)
+  - Capabilities: Troubleshooting, documentation, escalation
+
+**Creative & Strategy:**
+- **Morgan** - Content Strategist
+  - Voice: charlotte (energetic, creative)
+  - Capabilities: Content planning, SEO, campaign ideation
+
+- **Jordan** - Strategic Business Advisor
+  - Voice: antoni (strategic, executive)
+  - Capabilities: Business analysis, strategic planning
+
+**Operations:**
+- **Taylor** - Operations Coordinator
+  - Voice: sam (efficient, organized)
+  - Capabilities: Workflow coordination, task management
+
+**Finance:**
+- **Sam** - Financial Analyst
+  - Voice: josh (precise, analytical)
+  - Capabilities: Financial modeling, budget analysis
+
+### Role-Based Agents (8) - C-Suite
+
+Executive-level strategic agents:
+
+- **CTO** - Technology strategy and architecture
+- **CFO** - Financial planning and analysis
+- **COO** - Operations optimization
+- **CSO** - Strategic planning
+- **CCO** - Customer experience
+- **CISO** - Security and compliance
+- **CMO** - Marketing strategy
+- **CLO** - Legal and compliance
+
+### Specialized Agents (18) - Task-Specific
+
+Industry and function-specific automation:
+
+**Development:**
+- Code Reviewer
+- Bug Triager
+- Test Generator
+- Documentation Writer
+
+**Business:**
+- Sales Agent
+- Support Agent
+- Content Writer
+- Data Analyst
+
+**Professional Services:**
+- Legal Researcher
+- Contract Reviewer
+- Tax Advisor
+- Financial Advisor
+
+**Operations:**
+- Inventory Clerk
+- Order Processor
+- Shipping Coordinator
+- Quality Inspector
+
+**Other:**
+- Security Auditor
+- Compliance Monitor
+
+## Key Features
+
+### Voice Integration (VAPI)
+
+**Real-Time Voice Calls:**
+```typescript
+import { createClient } from 'amy.do'
+
+const amy = createClient({
+  apiKey: process.env.AMY_API_KEY
+})
+
+// Start voice call
+const call = await amy.startVoiceCall({
+  customer: {
+    name: 'Jane Smith',
+    email: 'jane@example.com'
+  }
+})
+
+// Listen for events
+call.on('transcript', (text) => {
+  console.log('Said:', text)
+})
+```
+
+**Voice Features:**
+- Natural conversation flow
+- Real-time transcription
+- Sentiment analysis
+- Call recording
+- Post-call summaries
+
+### Multi-Channel Communication
+
+**Channels:**
+- Voice calls (VAPI)
+- Text chat (web, mobile)
+- Email
+- Slack/Teams
+- SMS
+
+### Agent Customization
+
+**Personality Tuning:**
+```yaml
+personality:
+  traits: [professional, helpful, patient]
+  tone: formal
+  humor: subtle
+  empathy: high
+```
+
+**Capability Selection:**
+```typescript
+const agent = await agents.configure('sales-agent', {
+  capabilities: [
+    'qualify-lead',
+    'schedule-demo',
+    'send-follow-up'
+  ],
+  tools: ['calendar', 'crm', 'email'],
+  knowledge: ['product-docs', 'pricing', 'case-studies']
+})
+```
+
+### Knowledge Management
+
+**Knowledge Sources:**
+- Product documentation
+- FAQ databases
+- CRM data
+- Past conversations
+- Company policies
+
+**Knowledge Updates:**
+```typescript
+// Add knowledge to agent
+await agent.addKnowledge({
+  source: 'product-docs',
+  content: 'New feature documentation...',
+  type: 'markdown'
+})
+
+// Agent automatically embeds and indexes
+```
+
+### Analytics & Insights
+
+**Agent Performance:**
+- Conversation volume
+- Average handling time
+- Customer satisfaction scores
+- Issue resolution rate
+- Escalation rate
+
+**Business Metrics:**
+- Leads qualified
+- Demos scheduled
+- Tickets resolved
+- Revenue influenced
+- Cost savings
+
+## Pricing
+
+### Free Tier
+- 1 agent deployment
+- 100 conversations/month
+- Text-only channels
+- Community support
+
+### Starter ($99/month)
+- 3 agent deployments
+- 1,000 conversations/month
+- Voice + text channels
+- Email support
+- Basic analytics
+
+### Professional ($299/month)
+- 10 agent deployments
+- 5,000 conversations/month
+- All channels
+- Priority support
+- Advanced analytics
+- Custom branding
+
+### Enterprise (Custom)
+- Unlimited agents
+- Unlimited conversations
+- Custom agent training
+- Dedicated support
+- SLA guarantees
+- On-premise deployment option
+
+## Use Cases
+
+### Sales Development
+**Amy (SDR)** calls inbound leads, qualifies them using BANT framework, schedules demos with qualified prospects.
+
+**Results:**
+- 80% of leads contacted within 5 minutes
+- 40% qualification rate
+- 30% increase in demo bookings
+- $50K cost savings vs human SDR team
+
+### Customer Support
+**Riley (Support)** handles tier-1 support tickets, troubleshoots common issues, escalates complex problems to humans.
+
+**Results:**
+- 70% of tickets resolved automatically
+- <2 minute average response time
+- 4.5+ customer satisfaction score
+- 60% reduction in support costs
+
+### Content Creation
+**Morgan (Content)** plans content calendars, generates blog post outlines, optimizes for SEO, coordinates with team.
+
+**Results:**
+- 3x increase in content output
+- 50% improvement in organic traffic
+- 80% time savings on planning
+- Consistent brand voice
+
+### Financial Analysis
+**Sam (Finance)** analyzes financial data, generates reports, models scenarios, tracks KPIs.
+
+**Results:**
+- Daily automated reports
+- Real-time anomaly detection
+- 10x faster scenario analysis
+- Better decision-making data
+
+## Business Model
+
+### Revenue Streams
+
+**Subscription Revenue:**
+- Target: 1,000 customers
+- Average: $199/month
+- MRR: $199K
+- ARR: $2.4M
+
+**Usage-Based:**
+- $0.10 per voice minute
+- $0.01 per text conversation
+- Average: $50/customer/month
+- Additional MRR: $50K
+
+**Custom Training:**
+- $5K-$50K per custom agent
+- Target: 10 custom agents/year
+- Revenue: $50K-$500K
+
+### Unit Economics
+
+**Cost per Conversation:**
+- AI inference: $0.02
+- Voice (if used): $0.08
+- Infrastructure: $0.01
+- Total: ~$0.11
+
+**Margin:**
+- Revenue: $0.20-$0.50 per conversation
+- Cost: $0.11
+- Margin: 45-78%
+
+## Target Metrics
+
+### 2025
+- 500 active customers
+- 10K+ agent deployments
+- 1M conversations/month
+- $1.2M ARR
+- 4.5+ customer satisfaction
+
+### 2026
+- 5,000 active customers
+- 100K+ agent deployments
+- 10M conversations/month
+- $12M ARR
+- 20+ custom agents
+
+## Technology Stack
+
+- **Voice:** VAPI + ElevenLabs
+- **AI:** OpenAI GPT-4, Anthropic Claude
+- **Platform:** do.industries
+- **Database:** PostgreSQL (Neon) + D1
+- **Analytics:** Mixpanel
+- **Monitoring:** Datadog
+
+## Competitive Positioning
+
+**vs Chatbot Platforms:**
+- ✅ Voice + text (not just text)
+- ✅ Pre-built agents (not blank slate)
+- ✅ Business-specific capabilities
+- ✅ Integration-first architecture
+
+**vs Custom AI Development:**
+- ✅ 10x faster deployment
+- ✅ 90% lower cost
+- ✅ Proven agents
+- ✅ Ongoing improvements
+
+**vs Traditional Outsourcing:**
+- ✅ 24/7 availability
+- ✅ Instant scalability
+- ✅ Consistent quality
+- ✅ 80% cost reduction
+
+## Roadmap
+
+### Q4 2025
+- ✅ 33 production agents
+- ✅ Voice integration complete
+- 🔄 Agent marketplace launch
+- 🔄 Custom agent builder
+
+### Q1 2026
+- Video call support
+- Multi-language agents
+- Advanced analytics dashboard
+- Mobile app
+
+### Q2 2026
+- Agent-to-agent collaboration
+- Workflow automation builder
+- Enterprise SSO
+- White-label option
+
+## Parent Organization
+
+Part of **[Dot Do Holdings](../holding/dot-do.mdx)** portfolio.
+
+## Related Products
+
+- **[do.industries](./do.industries.mdx)** - Platform foundation
+- **[API.Services](./api.services.mdx)** - Functions used by agents
+- **[Services.Delivery](./services.delivery.mdx)** - Agent-powered service delivery

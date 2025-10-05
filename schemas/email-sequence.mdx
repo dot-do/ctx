@@ -1,0 +1,269 @@
+---
+$type: Schema
+$id: schema/email-sequence
+title: Email Sequence
+description: Multi-step email sequence for cold outreach campaigns with timing, templates, and follow-up logic
+type: custom/EmailSequence
+properties:
+  - name: id
+    type: string
+    description: Unique sequence identifier (ULID)
+  - name: name
+    type: string
+    description: Sequence name
+  - name: campaignId
+    type: string
+    description: Parent campaign ID
+  - name: status
+    type: string
+    description: Sequence status (draft, active, paused, completed, archived)
+  - name: steps
+    type: array
+    description: Sequence steps/emails
+    items:
+      type: object
+      properties:
+        - name: step
+          type: number
+          description: Step number (1, 2, 3...)
+        - name: name
+          type: string
+          description: Step name (Initial Outreach, First Follow-up, etc.)
+        - name: delayDays
+          type: number
+          description: Days to wait after previous step (0 for first step)
+        - name: delayHours
+          type: number
+          description: Additional hours to wait (for sub-day precision)
+        - name: subject
+          type: string
+          description: Email subject line (supports variables)
+        - name: body
+          type: string
+          description: Email body HTML (supports variables)
+        - name: plainText
+          type: string
+          description: Plain text version
+        - name: variables
+          type: array
+          description: Template variables used in subject/body
+          items:
+            type: string
+        - name: condition
+          type: object
+          description: Conditional execution rules
+          properties:
+            - name: type
+              type: string
+              description: Condition type (always, if_no_reply, if_no_open, if_no_click, custom)
+            - name: expression
+              type: string
+              description: Custom condition expression
+        - name: attachments
+          type: array
+          description: Email attachments
+          items:
+            type: object
+            properties:
+              - name: name
+                type: string
+              - name: url
+                type: string
+              - name: size
+                type: number
+  - name: tracking
+    type: object
+    description: Tracking configuration
+    properties:
+      - name: trackOpens
+        type: boolean
+        description: Track email opens
+      - name: trackClicks
+        type: boolean
+        description: Track link clicks
+      - name: trackReplies
+        type: boolean
+        description: Track replies
+      - name: trackUnsubscribes
+        type: boolean
+        description: Track unsubscribes
+  - name: timing
+    type: object
+    description: Sending time configuration
+    properties:
+      - name: timezone
+        type: string
+        description: Recipient timezone preference
+      - name: sendWindow
+        type: object
+        description: Time window for sending
+        properties:
+          - name: startHour
+            type: number
+            description: Start hour (0-23)
+          - name: endHour
+            type: number
+            description: End hour (0-23)
+      - name: daysOfWeek
+        type: array
+        description: Days of week to send (1=Mon, 7=Sun)
+        items:
+          type: number
+      - name: respectBusinessHours
+        type: boolean
+        description: Only send during business hours
+  - name: rules
+    type: object
+    description: Sequence execution rules
+    properties:
+      - name: stopOnReply
+        type: boolean
+        description: Stop sequence when contact replies
+      - name: stopOnUnsubscribe
+        type: boolean
+        description: Stop sequence when contact unsubscribes
+      - name: stopOnBounce
+        type: boolean
+        description: Stop sequence on hard bounce
+      - name: skipWeekends
+        type: boolean
+        description: Skip weekend days
+      - name: maxFollowUps
+        type: number
+        description: Maximum number of follow-up emails
+  - name: analytics
+    type: object
+    description: Sequence performance metrics
+    properties:
+      - name: contacts
+        type: number
+        description: Total contacts in sequence
+      - name: completed
+        type: number
+        description: Contacts who completed sequence
+      - name: active
+        type: number
+        description: Contacts currently active
+      - name: paused
+        type: number
+        description: Contacts paused
+      - name: replied
+        type: number
+        description: Contacts who replied
+      - name: unsubscribed
+        type: number
+        description: Contacts who unsubscribed
+  - name: createdAt
+    type: string
+    format: date-time
+    description: Creation timestamp
+  - name: updatedAt
+    type: string
+    format: date-time
+    description: Last update timestamp
+  - name: createdBy
+    type: string
+    description: User ID who created sequence
+required:
+  - name
+  - steps
+  - tracking
+  - rules
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - email
+  - cold-outreach
+  - sequence
+  - automation
+---
+
+# Email Sequence Schema
+
+Defines a multi-step email sequence for cold outreach campaigns.
+
+## Features
+
+- **Multi-Step Sequences**: Chain multiple emails with delays
+- **Conditional Logic**: Send based on recipient behavior (opened, clicked, replied)
+- **Template Variables**: Personalize with {{firstName}}, {{company}}, etc.
+- **Time Optimization**: Send during business hours, respect timezones
+- **Smart Rules**: Stop on reply, skip weekends, max follow-ups
+- **Full Tracking**: Opens, clicks, replies, unsubscribes
+
+## Step Types
+
+1. **Initial Outreach** (Step 1): First contact email
+2. **Follow-ups** (Steps 2+): Conditional based on behavior
+3. **Breakup Email** (Final): Last attempt before giving up
+
+## Conditional Execution
+
+Steps can execute conditionally:
+
+- **always**: Always send (default)
+- **if_no_reply**: Only if no reply to previous emails
+- **if_no_open**: Only if didn't open previous email
+- **if_no_click**: Only if didn't click links
+- **custom**: Custom expression
+
+## Template Variables
+
+Common variables:
+- {{firstName}}, {{lastName}}, {{fullName}}
+- {{company}}, {{industry}}, {{title}}
+- {{unsubscribeUrl}}, {{replyUrl}}
+
+## Timing Best Practices
+
+- Send Tuesday-Thursday for best response rates
+- 9am-4pm in recipient timezone
+- Wait 2-3 days between follow-ups
+- Max 3-4 follow-ups before stopping
+
+## Analytics
+
+Track sequence performance:
+- Response rate by step
+- Time to reply
+- Drop-off points
+- Conversion funnel
+
+## Example Sequence
+
+```json
+{
+  "name": "SaaS Founder Outreach",
+  "steps": [
+    {
+      "step": 1,
+      "name": "Initial Outreach",
+      "delayDays": 0,
+      "subject": "Quick question about {{company}}",
+      "body": "Hi {{firstName}},..."
+    },
+    {
+      "step": 2,
+      "name": "First Follow-up",
+      "delayDays": 3,
+      "subject": "Re: Quick question about {{company}}",
+      "condition": { "type": "if_no_reply" }
+    },
+    {
+      "step": 3,
+      "name": "Value Proposition",
+      "delayDays": 4,
+      "subject": "How {{company}} can save 20 hours/week",
+      "condition": { "type": "if_no_reply" }
+    },
+    {
+      "step": 4,
+      "name": "Breakup Email",
+      "delayDays": 7,
+      "subject": "Should I close your file?",
+      "condition": { "type": "if_no_reply" }
+    }
+  ]
+}
+```

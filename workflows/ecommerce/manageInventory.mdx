@@ -1,0 +1,673 @@
+---
+$type: Workflow
+$id: workflow/manageinventory
+title: manage-inventory
+name: manage-inventory
+description: Automated inventory management with reorder automation and reconciliation
+
+trigger:
+  type: scheduled
+  schedule: 0 */6 * * * # Every 6 hours
+
+input:
+  warehouseId: Warehouse identifier (optional, checks all if not provided)
+  checkType: full | critical | reorder
+  forceReconciliation: Force physical count reconciliation (boolean)
+
+steps:
+  - name: check-stock-levels
+    description: Query current stock levels across warehouses
+    function: check-stock-levels
+    input:
+      warehouseId: ${input.warehouseId}
+      includeReserved: true
+    output:
+      products: Array of products with stock info
+
+  - name: identify-low-stock
+    description: Find products below reorder thresholds
+    function: identify-low-stock
+    input:
+      products: ${steps.check-stock-levels.output.products}
+      thresholds:
+        critical: 7 # days of supply
+        warning: 14
+    output:
+      criticalProducts: Array of SKUs
+      warningProducts: Array of SKUs
+
+  - name: calculate-demand-forecast
+    description: Calculate expected demand using historical data
+    function: calculate-demand
+    input:
+      products: ${steps.identify-low-stock.output.criticalProducts}
+      historicalDays: 90
+      seasonalAdjustment: true
+
+  - name: generate-reorder-list
+    description: Calculate optimal reorder quantities
+    function: generate-reorder-list
+    input:
+      products: ${steps.identify-low-stock.output.criticalProducts}
+      demandForecast: ${steps.calculate-demand-forecast.output}
+      safetyStockFactor: 1.5
+      suppliers: include-lead-times
+    output:
+      reorders: Array of reorder recommendations
+
+  - name: verify-supplier-availability
+    description: Check supplier stock and lead times
+    function: verify-supplier-availability
+    input:
+      reorders: ${steps.generate-reorder-list.output.reorders}
+    output:
+      confirmedReorders: Array with supplier confirmation
+
+  - name: check-budget-approval
+    description: Verify budget available for purchases
+    function: check-budget-approval
+    input:
+      reorders: ${steps.verify-supplier-availability.output.confirmedReorders}
+      budgetCategory: inventory
+      approvalRequired: true
+    condition: ${steps.generate-reorder-list.output.totalCost > 10000}
+
+  - name: create-purchase-orders
+    description: Generate and submit purchase orders
+    function: create-purchase-orders
+    input:
+      reorders: ${steps.verify-supplier-availability.output.confirmedReorders}
+      approvedBy: ${steps.check-budget-approval.output.approver}
+    output:
+      purchaseOrders: Array of created POs
+
+  - name: notify-purchasing-team
+    description: Alert purchasing team of new POs
+    function: send-email
+    input:
+      to: purchasing@company.com
+      template: purchase-orders-created
+      data:
+        purchaseOrders: ${steps.create-purchase-orders.output.purchaseOrders}
+        totalAmount: ${steps.generate-reorder-list.output.totalCost}
+        criticalItems: ${steps.identify-low-stock.output.criticalProducts.length}
+
+  - name: check-discrepancies
+    description: Identify inventory count discrepancies
+    function: check-discrepancies
+    input:
+      warehouseId: ${input.warehouseId}
+      varianceThreshold: 100 # dollars
+      daysBack: 7
+
+  - name: schedule-physical-count
+    description: Schedule physical count for discrepant items
+    condition: ${steps.check-discrepancies.output.discrepancies.length > 0}
+    function: schedule-physical-count
+    input:
+      items: ${steps.check-discrepancies.output.discrepancies}
+      priority: high
+      dueDate: ${workflow.timestamp + 172800000} # 48 hours
+
+  - name: reconcile-counts
+    description: Wait for physical count and reconcile
+    condition: ${input.forceReconciliation === true}
+    type: wait-for-event
+    events:
+      - physical-count.completed
+    timeout: 259200000 # 3 days
+
+  - name: update-inventory-records
+    description: Apply reconciliation adjustments
+    condition: ${steps.reconcile-counts !== null}
+    function: update-inventory-records
+    input:
+      adjustments: ${steps.reconcile-counts.data.adjustments}
+      reason: physical-count-reconciliation
+      approvedBy: ${steps.reconcile-counts.data.approver}
+
+  - name: identify-slow-movers
+    description: Find products with low turnover
+    function: identify-slow-movers
+    input:
+      warehouseId: ${input.warehouseId}
+      turnoverThreshold: 2 # turns per year
+      daysOfSupply: 90
+
+  - name: generate-markdown-recommendations
+    description: Suggest markdowns for slow-moving inventory
+    condition: ${steps.identify-slow-movers.output.slowMovers.length > 0}
+    function: generate-markdown-recommendations
+    input:
+      products: ${steps.identify-slow-movers.output.slowMovers}
+      agingDays: 180
+      targetTurnover: 6
+
+  - name: update-dashboard
+    description: Update inventory management dashboard
+    function: update-dashboard
+    input:
+      metrics:
+        stockLevels: ${steps.check-stock-levels.output.summary}
+        lowStock: ${steps.identify-low-stock.output}
+        purchaseOrders: ${steps.create-purchase-orders.output.purchaseOrders}
+        discrepancies: ${steps.check-discrepancies.output.discrepancies}
+        slowMovers: ${steps.identify-slow-movers.output.slowMovers}
+
+  - name: track-analytics
+    description: Log inventory management metrics
+    function: track-event
+    input:
+      event: inventory_management_completed
+      properties:
+        warehouseId: ${input.warehouseId}
+        lowStockItems: ${steps.identify-low-stock.output.criticalProducts.length}
+        purchaseOrdersCreated: ${steps.create-purchase-orders.output.purchaseOrders.length}
+        totalPOValue: ${steps.generate-reorder-list.output.totalCost}
+        discrepanciesFound: ${steps.check-discrepancies.output.discrepancies.length}
+        slowMoversIdentified: ${steps.identify-slow-movers.output.slowMovers.length}
+
+output:
+  status: completed
+  lowStockItems: ${steps.identify-low-stock.output.criticalProducts.length}
+  purchaseOrdersCreated: ${steps.create-purchase-orders.output.purchaseOrders}
+  discrepanciesFound: ${steps.check-discrepancies.output.discrepancies.length}
+  slowMovers: ${steps.identify-slow-movers.output.slowMovers.length}
+  nextRun: ${workflow.timestamp + 21600000} # 6 hours
+
+timeout: 300000 # 5 minutes
+
+notifications:
+  onSuccess:
+    - channel: slack
+      webhook: ${env.SLACK_WEBHOOK_URL}
+      message: 📦 Inventory check complete - ${steps.create-purchase-orders.output.purchaseOrders.length} POs created
+  onError:
+    - channel: email
+      to: operations@company.com
+      subject: Inventory management workflow failed
+    - channel: slack
+      webhook: ${env.SLACK_ALERTS_URL}
+      message: 🚨 Inventory management failed at step ${error.step}
+---
+
+# Manage Inventory Workflow
+
+Automated inventory management with stock monitoring, reorder automation, discrepancy detection, and slow-mover identification.
+
+## Flow Overview
+
+```
+Scheduled Check (Every 6 hours)
+  ↓
+Check Stock Levels
+  ↓
+Identify Low Stock Items
+  ↓
+Calculate Demand Forecast
+  ↓
+Generate Reorder List
+  ↓
+Verify Supplier Availability
+  ↓
+Check Budget (if >$10K) → If denied → Alert management
+  ↓
+Create Purchase Orders
+  ↓
+Notify Purchasing Team
+  ↓
+Check for Discrepancies
+  ↓
+Schedule Physical Count (if discrepancies found)
+  ↓
+Identify Slow Movers
+  ↓
+Generate Markdown Recommendations
+  ↓
+Update Dashboard
+  ↓
+Complete! 📦
+```
+
+## Stock Level Monitoring
+
+### Critical Thresholds
+
+**Days of Supply Calculation:**
+```yaml
+daysOfSupply:
+  calculation: currentStock / dailyDemandRate
+  critical: <7 days
+  warning: 7-14 days
+  healthy: >14 days
+```
+
+**Example:**
+```yaml
+product: Widget-A
+currentStock: 100 units
+dailyDemand: 12 units/day
+daysOfSupply: 8.3 days
+status: Warning (below 14 days)
+action: Generate reorder
+```
+
+### Multi-Warehouse Tracking
+
+```yaml
+warehouseView:
+  - id: WH-EAST
+    location: New Jersey
+    products:
+      - sku: WIDGET-A
+        quantity: 100
+        status: warning
+  - id: WH-WEST
+    location: California
+    products:
+      - sku: WIDGET-A
+        quantity: 250
+        status: healthy
+```
+
+**Transfer Logic:**
+- If one warehouse critical and another healthy
+- Calculate transfer cost vs new order cost
+- Initiate inter-warehouse transfer if cheaper
+
+## Demand Forecasting
+
+### Historical Analysis
+
+**Data Sources:**
+- Sales history (90 days default)
+- Seasonal patterns
+- Promotional events
+- Market trends
+
+**Calculation:**
+```yaml
+forecast:
+  method: exponentialSmoothing
+  alpha: 0.3 # smoothing factor
+  seasonalAdjustment: true
+  outlierRemoval: true
+
+example:
+  historicalDailyAvg: 10 units/day
+  seasonalFactor: 1.4 (holiday season)
+  forecastedDemand: 14 units/day
+```
+
+### Safety Stock
+
+**Formula:**
+```yaml
+safetyStock:
+  calculation: demandForecast × leadTime × safetyFactor
+  safetyFactor: 1.5 (50% buffer)
+
+example:
+  demandForecast: 14 units/day
+  supplierLeadTime: 10 days
+  safetyStock: 14 × 10 × 1.5 = 210 units
+```
+
+## Reorder Logic
+
+### Optimal Reorder Quantity
+
+**Economic Order Quantity (EOQ):**
+```yaml
+eoq:
+  formula: sqrt((2 × annualDemand × orderCost) / holdingCost)
+
+example:
+  annualDemand: 5000 units
+  orderCost: $100 per order
+  holdingCost: $5 per unit/year
+  eoq: 447 units
+
+adjusted:
+  minimumOrderQuantity: 500 (supplier requirement)
+  finalOrderQuantity: 500 units
+```
+
+### Reorder Point
+
+**When to Order:**
+```yaml
+reorderPoint:
+  calculation: (demandRate × leadTime) + safetyStock
+
+example:
+  demandRate: 14 units/day
+  leadTime: 10 days
+  safetyStock: 210 units
+  reorderPoint: 350 units
+
+trigger:
+  currentStock: 340 units
+  action: Create purchase order immediately
+```
+
+## Supplier Integration
+
+### Availability Check
+
+**API Query:**
+```yaml
+request:
+  supplier: Acme Corp
+  sku: WIDGET-A
+  quantity: 500
+
+response:
+  available: true
+  quantityInStock: 2500
+  leadTime: 7 days
+  unitPrice: $12.50
+  minimumOrder: 500
+  totalCost: $6,250
+```
+
+### Lead Time Tracking
+
+```yaml
+suppliers:
+  - name: Acme Corp
+    averageLeadTime: 7 days
+    onTimeDelivery: 95%
+    qualityScore: 98%
+
+  - name: Beta Supply
+    averageLeadTime: 14 days
+    onTimeDelivery: 85%
+    qualityScore: 92%
+
+selection:
+  prioritize: onTimeDelivery
+  selected: Acme Corp
+```
+
+## Budget Approval
+
+### Approval Thresholds
+
+```yaml
+approvalLimits:
+  - amount: 0-1000
+    approval: automatic
+
+  - amount: 1000-10000
+    approval: manager
+
+  - amount: 10000+
+    approval: director
+
+example:
+  totalPOValue: $15,500
+  requiresApproval: director
+  action: Send approval request
+```
+
+### Approval Request
+
+**Email to Director:**
+```
+Subject: Purchase Order Approval Required - $15,500
+
+Purchase Orders Summary:
+- 5 POs totaling $15,500
+- Critical items: 12 SKUs
+- Days of supply: <7 days
+
+Detailed breakdown attached.
+
+Approve: [Link]
+Deny: [Link]
+```
+
+## Purchase Order Creation
+
+### PO Generation
+
+```yaml
+purchaseOrder:
+  id: PO-2024-10-001
+  supplier: Acme Corp
+  date: 2024-10-04
+  items:
+    - sku: WIDGET-A
+      description: Red Widget
+      quantity: 500
+      unitPrice: $12.50
+      total: $6,250
+  subtotal: $6,250
+  tax: $500
+  shipping: $250
+  total: $7,000
+  expectedDelivery: 2024-10-14
+  paymentTerms: Net 30
+  deliverTo: WH-EAST
+```
+
+### Supplier Notification
+
+**Email to Supplier:**
+```
+Purchase Order #PO-2024-10-001
+
+Order Date: October 4, 2024
+Expected Delivery: October 14, 2024
+
+Items:
+- WIDGET-A: 500 units @ $12.50 = $6,250
+
+Total: $7,000 (includes tax & shipping)
+Payment Terms: Net 30
+
+Ship To:
+WH-EAST
+123 Warehouse Rd
+Newark, NJ 07102
+
+Confirm receipt: po-confirm@company.com
+```
+
+## Discrepancy Detection
+
+### Variance Analysis
+
+**Compare:**
+- System inventory count
+- Physical count (if recent)
+- Transaction log
+
+**Identify Mismatches:**
+```yaml
+discrepancy:
+  sku: WIDGET-B
+  systemCount: 500
+  physicalCount: 475
+  variance: -25 units
+  varianceValue: $312.50
+  possibleCauses:
+    - Theft or loss
+    - Unrecorded damages
+    - Data entry error
+    - Receiving error
+```
+
+### Threshold-Based Alerts
+
+```yaml
+alertThresholds:
+  minor: $0-100 variance
+  moderate: $100-500 variance
+  major: $500+ variance
+
+action:
+  minor: Log and monitor
+  moderate: Schedule physical count within 48 hours
+  major: Immediate investigation and physical count
+```
+
+## Physical Count Reconciliation
+
+### Count Scheduling
+
+**Automated Task Creation:**
+```yaml
+physicalCountTask:
+  priority: high
+  assignee: warehouse-manager
+  dueDate: 2024-10-06 (48 hours)
+  items:
+    - WIDGET-B: Expected 500, variance -25
+    - GADGET-C: Expected 200, variance -12
+  instructions: Full bin count with photo verification
+```
+
+### Reconciliation Process
+
+**When count completed:**
+1. Compare physical count to system
+2. Calculate adjustment amount
+3. Determine cause (if possible)
+4. Update system inventory
+5. Log adjustment for audit
+
+**Adjustment Record:**
+```yaml
+adjustment:
+  sku: WIDGET-B
+  date: 2024-10-06
+  before: 500 units
+  after: 475 units
+  change: -25 units
+  reason: Damaged units not logged
+  approvedBy: warehouse-manager
+  auditTrail: true
+```
+
+## Slow Mover Identification
+
+### Turnover Calculation
+
+**Inventory Turnover:**
+```yaml
+turnover:
+  formula: costOfGoodsSold / averageInventoryValue
+  target: 6+ turns/year
+
+example:
+  cogs: $120,000/year
+  avgInventory: $20,000
+  turnover: 6 turns/year
+  status: Healthy
+
+slowMover:
+  cogs: $30,000/year
+  avgInventory: $25,000
+  turnover: 1.2 turns/year
+  status: Slow mover
+```
+
+### Aging Analysis
+
+```yaml
+aging:
+  - 0-30 days: $50,000 (healthy)
+  - 31-90 days: $30,000 (monitor)
+  - 91-180 days: $15,000 (slow)
+  - 180+ days: $5,000 (obsolete)
+
+action:
+  91-180: 20% markdown
+  180+: 40% markdown or liquidation
+```
+
+## Performance Metrics
+
+**Inventory Health:**
+- **Stockout Rate** - % of SKUs out of stock
+- **Turnover Rate** - Inventory turns per year
+- **Fill Rate** - % of orders filled from stock
+- **Carrying Cost** - Cost to hold inventory
+
+**Operational:**
+- **Forecast Accuracy** - Actual vs predicted demand
+- **Lead Time Variance** - Delivery time consistency
+- **Discrepancy Rate** - % inventory with variances
+- **Slow Mover %** - % inventory aged 90+ days
+
+**Targets:**
+- <2% stockout rate
+- 6+ turns/year
+- 95%+ fill rate
+- 85%+ forecast accuracy
+- <5% discrepancy rate
+
+## Related
+
+- [[inventory-clerk-agent.mdx|Inventory Clerk Agent]]
+- [[order-processor-agent.mdx|Order Processor Agent]]
+- [[processOrder.mdx|Process Order Workflow]]
+- [[validateOrder.mdx|Validate Order Function]]
+- [[ShopifyOrders.mdx|Shopify Integration]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface InventoryItem {
+  sku: string
+  warehouseId: string
+  quantity: number
+  reserved: number
+  available: number
+  reorderPoint: number
+  reorderQuantity: number
+}
+
+export const manageInventory: BusinessModule = $ => {
+  const { db, ai, api, send, on, every, decide } = $
+
+  // Check inventory levels daily
+  every.day(async () => {
+    const lowStock = await db.inventory.findMany({
+      available: { lte: db.inventory.reorderPoint },
+    })
+
+    for (const item of lowStock) {
+      // AI-powered demand forecasting
+      const forecast = await ai.generate({
+        prompt: `Forecast demand for SKU ${item.sku}. Historical sales data suggests 30-day demand. Recommend reorder quantity.`,
+        format: 'number',
+      })
+
+      const reorderQty = Math.max(forecast, item.reorderQuantity)
+
+      // Create purchase order
+      await db.purchaseOrders.create({
+        sku: item.sku,
+        quantity: reorderQty,
+        supplier: 'default-supplier',
+        status: 'pending',
+        createdAt: new Date(),
+      })
+
+      await send.slack('#procurement', `📦 Low stock alert: ${item.sku} - ordered ${reorderQty} units`)
+    }
+  })
+
+  on.inventory.received(async (item: InventoryItem) => {
+    await db.inventory.update({ sku: item.sku }, {
+      quantity: { increment: item.quantity },
+      available: { increment: item.quantity },
+    })
+  })
+}
+```

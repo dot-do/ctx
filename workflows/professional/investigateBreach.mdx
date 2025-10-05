@@ -1,0 +1,215 @@
+---
+$type: Workflow
+$id: workflow/investigatebreach
+title: investigateBreach
+name: investigateBreach
+description: Security incident investigation and response workflow
+
+trigger:
+  type: webhook
+  source: security-monitoring
+
+input:
+  incidentId: Unique incident identifier
+  severity: Incident severity (critical, high, medium, low)
+  type: Incident type (breach, ransomware, phishing, unauthorized-access)
+  detectedAt: Detection timestamp
+  affectedSystems: List of affected systems (array)
+
+steps:
+  - name: contain-incident
+    description: Immediate containment actions
+    function: contain-security-incident
+    input:
+      incidentId: ${input.incidentId}
+      affectedSystems: ${input.affectedSystems}
+      severity: ${input.severity}
+    timeout: 60000
+
+  - name: preserve-evidence
+    description: Preserve forensic evidence
+    function: capture-forensic-data
+    input:
+      systems: ${input.affectedSystems}
+      incidentId: ${input.incidentId}
+
+  - name: analyze-logs
+    description: Analyze security logs for IOCs
+    agent: SecurityAuditor
+    input:
+      systems: ${input.affectedSystems}
+      timeRange:
+        start: ${input.detectedAt - 86400000}
+        end: ${input.detectedAt}
+      indicators: ${steps.preserve-evidence.output.indicators}
+
+  - name: identify-scope
+    description: Determine breach scope and impact
+    agent: SecurityAuditor
+    input:
+      logAnalysis: ${steps.analyze-logs.output}
+      affectedSystems: ${input.affectedSystems}
+      compromisedAccounts: ${steps.analyze-logs.output.accounts}
+
+  - name: assess-damage
+    description: Assess data exposure and damage
+    function: assess-data-exposure
+    input:
+      scope: ${steps.identify-scope.output}
+      systems: ${input.affectedSystems}
+      dataClassification: ${steps.identify-scope.output.dataTypes}
+
+  - name: notify-legal
+    description: Notify legal and compliance team
+    condition: ${steps.assess-damage.output.regulatoryNotificationRequired}
+    function: sendEmail
+    input:
+      to: legal@example.com
+      subject: Security Incident - Legal Review Required
+      body: ${steps.assess-damage.output.legalSummary}
+      priority: urgent
+
+  - name: eradicate-threat
+    description: Remove threat from environment
+    function: eradicate-security-threat
+    input:
+      incidentId: ${input.incidentId}
+      threatActors: ${steps.analyze-logs.output.threatActors}
+      compromisedAccounts: ${steps.identify-scope.output.accounts}
+      malware: ${steps.analyze-logs.output.malware}
+
+  - name: recover-systems
+    description: Restore affected systems
+    function: recover-affected-systems
+    input:
+      systems: ${input.affectedSystems}
+      backupPoint: ${steps.preserve-evidence.output.cleanBackup}
+      verificationRequired: true
+
+  - name: conduct-postmortem
+    description: Conduct incident postmortem
+    agent: SecurityAuditor
+    input:
+      incidentData: ${steps}
+      timeline: ${workflow.timeline}
+      recommendations: required
+
+  - name: update-defenses
+    description: Update security defenses
+    function: update-security-controls
+    input:
+      recommendations: ${steps.conduct-postmortem.output.recommendations}
+      iocs: ${steps.analyze-logs.output.indicators}
+
+  - name: notify-customers
+    description: Notify affected customers if required
+    condition: ${steps.assess-damage.output.customerNotificationRequired}
+    workflow: sendCustomerNotifications
+    input:
+      affectedCustomers: ${steps.assess-damage.output.customers}
+      incidentSummary: ${steps.conduct-postmortem.output.publicSummary}
+
+output:
+  incidentId: ${input.incidentId}
+  severity: ${input.severity}
+  scope: ${steps.identify-scope.output.scope}
+  affectedRecords: ${steps.assess-damage.output.recordCount}
+  containmentTime: ${steps.contain-incident.output.completedAt - input.detectedAt}
+  resolutionTime: ${workflow.timestamp - input.detectedAt}
+  recommendations: ${steps.conduct-postmortem.output.recommendations}
+  reportUrl: ${steps.conduct-postmortem.output.reportUrl}
+
+timeout: 600000
+---
+
+# Investigate Breach Workflow
+
+Security incident investigation following NIST incident response framework.
+
+## Response Phases
+
+```
+Detection & Containment (Immediate)
+  ↓
+Preserve Evidence
+  ↓
+Analysis & Scope Identification
+  ↓
+Damage Assessment
+  ↓
+Legal Notification (if required)
+  ↓
+Threat Eradication
+  ↓
+System Recovery
+  ↓
+Postmortem Analysis
+  ↓
+Defense Updates
+  ↓
+Customer Notification (if required)
+```
+
+## Incident Types
+
+### Data Breach
+- Unauthorized data access
+- Data exfiltration
+- Customer PII exposure
+
+### Ransomware
+- System encryption
+- Ransom demands
+- Backup restoration
+
+### Phishing Attack
+- Credential compromise
+- Account takeover
+- Business email compromise
+
+### Unauthorized Access
+- Privilege escalation
+- Insider threat
+- External intrusion
+
+## Compliance Requirements
+
+**GDPR:**
+- 72-hour notification requirement
+- Data protection authority notification
+- Customer notification for high-risk breaches
+
+**HIPAA:**
+- HHS notification for 500+ records
+- Individual notification within 60 days
+- Media notification for large breaches
+
+**PCI DSS:**
+- Card brand notification
+- Forensic investigation
+- Compliance validation
+
+## Related
+
+- [[../agents/SecurityAuditor|Security Auditor Agent]]
+- [[conductAudit|Conduct Audit Workflow]]
+- [[../functions/assessRisk|Assess Risk Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface SecurityBreach { id: string; type: string; affectedSystems: string[]; severity: 'low' | 'medium' | 'high' | 'critical' }
+
+export const investigateBreach: BusinessModule = $ => {
+  const { db, ai, send, on, decide } = $
+
+  on.breach.detected(async (breach: SecurityBreach) => {
+    const analysis = await ai.generate({ prompt: `Security breach: ${breach.type}, affected: ${breach.affectedSystems.join(', ')}. Analyze attack vector, recommend containment.`, maxTokens: 800 })
+
+    decide.switch(breach.severity)
+      .case('critical', async () => { await send.slack('#security', `🚨 CRITICAL BREACH: ${breach.type}\n${analysis}`) })
+  })
+}
+```

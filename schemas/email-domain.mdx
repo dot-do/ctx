@@ -1,0 +1,598 @@
+---
+$type: Schema
+$id: schema/email-domain
+title: Email Domain
+description: Sending domain configuration with DNS records, warmup status, ESP assignments, and reputation tracking
+type: custom/EmailDomain
+properties:
+  - name: id
+    type: string
+    description: Unique domain identifier
+  - name: domain
+    type: string
+    description: Domain name (e.g., mail.example.com)
+  - name: status
+    type: string
+    description: Domain status (pending, warming, active, paused, suspended)
+  - name: dnsRecords
+    type: object
+    description: DNS configuration and validation
+    properties:
+      - name: spf
+        type: object
+        description: SPF record configuration
+        properties:
+          - name: record
+            type: string
+            description: Full SPF record value
+          - name: valid
+            type: boolean
+            description: Whether SPF is valid
+          - name: issues
+            type: array
+            description: SPF validation issues
+            items:
+              type: string
+          - name: lastChecked
+            type: string
+            format: date-time
+            description: Last validation timestamp
+      - name: dkim
+        type: object
+        description: DKIM configuration
+        properties:
+          - name: selector
+            type: string
+            description: DKIM selector (e.g., default)
+          - name: publicKey
+            type: string
+            description: DKIM public key
+          - name: privateKey
+            type: string
+            description: DKIM private key (encrypted)
+          - name: dnsRecord
+            type: string
+            description: Full DKIM TXT record
+          - name: valid
+            type: boolean
+            description: Whether DKIM is valid
+          - name: issues
+            type: array
+            description: DKIM validation issues
+            items:
+              type: string
+          - name: lastChecked
+            type: string
+            format: date-time
+            description: Last validation timestamp
+      - name: dmarc
+        type: object
+        description: DMARC policy configuration
+        properties:
+          - name: policy
+            type: string
+            description: DMARC policy (none, quarantine, reject)
+          - name: subdomainPolicy
+            type: string
+            description: Subdomain policy
+          - name: percentage
+            type: number
+            description: Enforcement percentage (0-100)
+          - name: rua
+            type: array
+            description: Aggregate report emails
+            items:
+              type: string
+          - name: ruf
+            type: array
+            description: Forensic report emails
+            items:
+              type: string
+          - name: record
+            type: string
+            description: Full DMARC record
+          - name: valid
+            type: boolean
+            description: Whether DMARC is valid
+          - name: issues
+            type: array
+            description: DMARC validation issues
+            items:
+              type: string
+          - name: lastChecked
+            type: string
+            format: date-time
+            description: Last validation timestamp
+      - name: mx
+        type: array
+        description: MX records
+        items:
+          type: object
+          properties:
+            - name: priority
+              type: number
+            - name: hostname
+              type: string
+      - name: cname
+        type: array
+        description: Required CNAME records for ESPs
+        items:
+          type: object
+          properties:
+            - name: name
+              type: string
+            - name: value
+              type: string
+            - name: valid
+              type: boolean
+  - name: warmup
+    type: object
+    description: Domain warmup configuration and status
+    properties:
+      - name: enabled
+        type: boolean
+        description: Whether warmup is enabled
+      - name: status
+        type: string
+        description: Warmup status (not_started, in_progress, completed, paused)
+      - name: startDate
+        type: string
+        format: date-time
+        description: Warmup start date
+      - name: targetDate
+        type: string
+        format: date-time
+        description: Expected completion date
+      - name: currentDay
+        type: number
+        description: Current day in warmup schedule (1-30)
+      - name: dailyLimit
+        type: number
+        description: Current daily sending limit
+      - name: schedule
+        type: array
+        description: Warmup schedule by day
+        items:
+          type: object
+          properties:
+            - name: day
+              type: number
+              description: Day number
+            - name: limit
+              type: number
+              description: Emails allowed this day
+            - name: sent
+              type: number
+              description: Emails sent this day
+            - name: delivered
+              type: number
+              description: Emails delivered
+            - name: opened
+              type: number
+              description: Emails opened
+            - name: replied
+              type: number
+              description: Replies received
+            - name: bounced
+              type: number
+              description: Bounced emails
+      - name: totalSent
+        type: number
+        description: Total emails sent during warmup
+      - name: totalDelivered
+        type: number
+        description: Total emails delivered
+      - name: targetVolume
+        type: number
+        description: Target daily volume after warmup
+  - name: espAssignments
+    type: array
+    description: ESP provider assignments for this domain
+    items:
+      type: object
+      properties:
+        - name: provider
+          type: string
+          description: ESP provider name (mailgun, sendgrid, ses, etc.)
+        - name: enabled
+          type: boolean
+          description: Whether this ESP is enabled
+        - name: priority
+          type: number
+          description: Priority (1-10, higher = preferred)
+        - name: dailyLimit
+          type: number
+          description: Daily sending limit for this ESP
+        - name: config
+          type: object
+          description: ESP-specific configuration
+          properties:
+            - name: apiKey
+              type: string
+              description: ESP API key (encrypted)
+            - name: domain
+              type: string
+              description: ESP domain identifier
+            - name: region
+              type: string
+              description: ESP region (if applicable)
+  - name: reputation
+    type: object
+    description: Domain reputation and deliverability metrics
+    properties:
+      - name: score
+        type: number
+        description: Overall reputation score (0-100)
+      - name: senderScore
+        type: number
+        description: Sender score from monitoring services
+      - name: deliverability
+        type: object
+        description: Deliverability metrics
+        properties:
+          - name: deliveryRate
+            type: number
+            description: Delivery rate percentage
+          - name: openRate
+            type: number
+            description: Open rate percentage
+          - name: clickRate
+            type: number
+            description: Click rate percentage
+          - name: replyRate
+            type: number
+            description: Reply rate percentage
+          - name: bounceRate
+            type: number
+            description: Bounce rate percentage
+          - name: complaintRate
+            type: number
+            description: Complaint rate percentage
+      - name: blacklists
+        type: array
+        description: Blacklist monitoring
+        items:
+          type: object
+          properties:
+            - name: name
+              type: string
+              description: Blacklist name
+            - name: listed
+              type: boolean
+              description: Whether domain is listed
+            - name: listedAt
+              type: string
+              format: date-time
+              description: When listing was detected
+            - name: reason
+              type: string
+              description: Listing reason
+      - name: lastChecked
+        type: string
+        format: date-time
+        description: Last reputation check timestamp
+  - name: limits
+    type: object
+    description: Sending limits and throttling
+    properties:
+      - name: hourly
+        type: number
+        description: Max emails per hour
+      - name: daily
+        type: number
+        description: Max emails per day
+      - name: monthly
+        type: number
+        description: Max emails per month
+      - name: current
+        type: object
+        description: Current usage
+        properties:
+          - name: hour
+            type: number
+            description: Emails sent this hour
+          - name: day
+            type: number
+            description: Emails sent today
+          - name: month
+            type: number
+            description: Emails sent this month
+  - name: analytics
+    type: object
+    description: Domain sending analytics
+    properties:
+      - name: totalSent
+        type: number
+        description: Total emails sent
+      - name: totalDelivered
+        type: number
+        description: Total delivered
+      - name: totalBounced
+        type: number
+        description: Total bounced
+      - name: totalOpened
+        type: number
+        description: Total opened
+      - name: totalClicked
+        type: number
+        description: Total clicked
+      - name: totalReplied
+        type: number
+        description: Total replies
+      - name: totalComplaints
+        type: number
+        description: Total spam complaints
+      - name: lastSent
+        type: string
+        format: date-time
+        description: Last email sent timestamp
+  - name: verifiedAt
+    type: string
+    format: date-time
+    description: Domain ownership verification timestamp
+  - name: verificationToken
+    type: string
+    description: Verification token for DNS TXT record
+  - name: createdAt
+    type: string
+    format: date-time
+    description: Domain creation timestamp
+  - name: updatedAt
+    type: string
+    format: date-time
+    description: Last update timestamp
+  - name: createdBy
+    type: string
+    description: User ID who created domain
+  - name: teamId
+    type: string
+    description: Team/organization ID
+required:
+  - id
+  - domain
+  - status
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - cold-email
+  - domain
+  - sending
+  - dns
+  - deliverability
+---
+
+# Email Domain Schema
+
+Comprehensive sending domain configuration with DNS records, automated warmup, ESP management, and reputation tracking.
+
+## Overview
+
+This schema manages email sending domains with:
+- **DNS Configuration**: SPF, DKIM, DMARC setup and validation
+- **Automated Warmup**: Gradual volume increase over 30 days
+- **ESP Management**: Multi-provider configuration with intelligent routing
+- **Reputation Tracking**: Real-time deliverability and blacklist monitoring
+- **Rate Limiting**: Hourly, daily, and monthly sending controls
+
+## Domain Lifecycle
+
+```
+pending → warming → active → (paused | suspended)
+```
+
+## DNS Configuration
+
+### SPF (Sender Policy Framework)
+Authorizes IP addresses and domains that can send email for your domain.
+
+**Example:**
+```
+v=spf1 include:_spf.google.com include:sendgrid.net ip4:192.0.2.1 ~all
+```
+
+**Validation Checks:**
+- ✓ Single SPF record (multiple is RFC violation)
+- ✓ Mechanism count <10 (DNS lookup limit)
+- ✓ Record length <255 characters
+
+### DKIM (DomainKeys Identified Mail)
+Cryptographically signs emails to prove authenticity.
+
+**DNS Record:**
+```
+default._domainkey.example.com TXT "v=DKIM1; k=rsa; p=MIIBIjAN..."
+```
+
+**Key Generation:**
+- 2048-bit RSA key pair (recommended)
+- Public key in DNS TXT record
+- Private key stored encrypted
+
+### DMARC (Domain-based Message Authentication)
+Defines policy for handling SPF/DKIM failures.
+
+**Example:**
+```
+v=DMARC1; p=quarantine; sp=none; pct=50; rua=mailto:dmarc@example.com
+```
+
+**Policy Options:**
+- **none**: Monitor only, no enforcement (recommended for new domains)
+- **quarantine**: Mark suspicious emails (warmup phase)
+- **reject**: Block failed emails (mature domains only)
+
+**Gradual Rollout:** Use `pct=50` to apply policy to 50% of emails during testing.
+
+## Domain Warmup
+
+### Why Warmup?
+
+New domains have no sending history. ESPs (Gmail, Outlook) are suspicious of new senders. Warmup builds trust by:
+- Starting with low volume
+- Gradually increasing over 30 days
+- Maintaining high engagement rates
+- Avoiding spam complaints
+
+### Warmup Schedule
+
+Standard 30-day warmup schedule:
+
+| Week | Days | Daily Limit | Focus |
+|------|------|-------------|-------|
+| 1 | 1-7 | 5-50 | Foundation - Send to highly engaged list |
+| 2 | 8-14 | 50-200 | Growth - Expand to broader engaged list |
+| 3 | 15-21 | 200-500 | Scale - Include less engaged contacts |
+| 4 | 22-30 | 500-1000+ | Full Volume - Normal operations |
+
+**Day 1:**
+- Limit: 5 emails
+- Target: Your most engaged contacts (warm list)
+- Goal: 80%+ open rate
+
+**Day 7:**
+- Limit: 50 emails
+- Target: Engaged contacts
+- Goal: 60%+ open rate
+
+**Day 14:**
+- Limit: 200 emails
+- Target: Mix of warm and new contacts
+- Goal: 40%+ open rate
+
+**Day 21:**
+- Limit: 500 emails
+- Target: Normal targeting
+- Goal: 30%+ open rate
+
+**Day 30:**
+- Limit: 1000+ emails
+- Target: Full campaigns
+- Goal: Consistent engagement
+
+### Warmup Best Practices
+
+1. **Start Small**: Begin with 5-10 emails/day
+2. **High Engagement**: Send to contacts likely to open/reply
+3. **Consistent Sending**: Don't skip days
+4. **Monitor Closely**: Watch bounce/complaint rates
+5. **Pause if Needed**: Stop if bounce rate >5% or complaints >0.1%
+6. **Never Rush**: Increasing too fast damages reputation
+
+### Automated Warmup
+
+The system automatically:
+- Tracks daily sending limits
+- Prevents exceeding warmup schedule
+- Monitors engagement metrics
+- Pauses if issues detected
+- Notifies when warmup complete
+
+## ESP Assignments
+
+### Multi-ESP Strategy
+
+Use multiple ESPs for:
+- **Redundancy**: Automatic failover if one ESP fails
+- **Cost Optimization**: Route to lowest cost provider
+- **Volume Distribution**: Spread load across providers
+- **Regional Optimization**: Use regional ESPs for better delivery
+
+### Supported ESPs
+
+| Provider | Priority | Cost/1K | Best For |
+|----------|----------|---------|----------|
+| **Resend** | High | $1.00 | Transactional, developer-friendly |
+| **Mailgun** | High | $0.80 | High volume, robust API |
+| **SendGrid** | Medium | $1.20 | Enterprise features, reporting |
+| **Amazon SES** | Medium | $0.10 | Low cost, AWS integration |
+| **Postmark** | Low | $1.25 | Transactional only, high deliverability |
+
+### Intelligent Routing
+
+The esp-gateway service routes based on:
+1. **Health**: Is ESP responsive?
+2. **Priority**: User-defined preference (1-10)
+3. **Rate Limits**: Has ESP hit hourly/daily limits?
+4. **Cost**: Lower cost preferred when tie-breaking
+5. **Fallback**: Automatic retry with next best ESP
+
+## Reputation Tracking
+
+### Reputation Score (0-100)
+
+Calculated from:
+- **Deliverability**: 40 points (delivery rate × 40)
+- **Engagement**: 30 points (open rate × 30)
+- **Complaints**: 20 points (100 - complaint rate × 200)
+- **Bounces**: 10 points (100 - bounce rate × 100)
+
+**Score Ranges:**
+- **90-100**: Excellent reputation
+- **70-89**: Good reputation
+- **50-69**: Fair reputation, monitor closely
+- **0-49**: Poor reputation, pause sending
+
+### Blacklist Monitoring
+
+Automatic monitoring of 20+ blacklists:
+- Spamhaus (ZEN, DBL, PBL)
+- Barracuda
+- SORBS
+- SpamCop
+- SURBL
+- URIBL
+
+**Detection:** Checked every 6 hours
+**Alert:** Immediate notification if listed
+**Action:** Pause sending, initiate delisting
+
+### Sender Score
+
+Third-party reputation from Return Path (0-100):
+- **90-100**: Excellent
+- **80-89**: Good
+- **70-79**: Fair
+- **0-69**: Poor
+
+## Rate Limiting
+
+### Three-Tier Limits
+
+1. **Hourly**: Prevents sudden spikes
+2. **Daily**: Enforces warmup schedule
+3. **Monthly**: Prevents quota overruns
+
+### Dynamic Adjustments
+
+Limits automatically adjust based on:
+- **Warmup Status**: Lower during warmup
+- **Reputation**: Lower if reputation declines
+- **ESP Limits**: Respect ESP daily quotas
+- **Bounce Rate**: Throttle if bounces spike
+
+## Deliverability Metrics
+
+Track critical metrics:
+- **Delivery Rate**: delivered / sent (target: >95%)
+- **Open Rate**: opened / delivered (target: >20%)
+- **Click Rate**: clicked / opened (target: >10%)
+- **Reply Rate**: replied / delivered (target: >5%)
+- **Bounce Rate**: bounced / sent (target: <2%)
+- **Complaint Rate**: complaints / delivered (target: <0.1%)
+
+## Best Practices
+
+1. **Verify Ownership**: Add verification TXT record
+2. **Configure DNS**: Set up SPF, DKIM, DMARC correctly
+3. **Warmup Properly**: Follow 30-day schedule
+4. **Monitor Daily**: Check reputation and metrics
+5. **Respond Quickly**: Address blacklist listings immediately
+6. **Rotate Domains**: Use multiple domains for high volume
+7. **Clean Lists**: Remove bounces and unresponsive contacts
+
+## Related Schemas
+
+- **cold-email-campaign.mdx**: Campaigns sent from this domain
+- **email-contact.mdx**: Contacts receiving emails from this domain
+- **deliverability-report.mdx**: Detailed reputation analysis

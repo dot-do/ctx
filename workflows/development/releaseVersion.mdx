@@ -1,0 +1,702 @@
+---
+$type: Workflow
+$id: workflow/releaseversion
+title: Release Version
+name: Release Version
+description: Version release workflow - update version, generate changelog, create tag, build release, publish
+category: Release Management
+occupation: [[Software Developer]]
+agents:
+  - [[agents/DocumentationWriter]]
+  - [[agents/TestGenerator]]
+functions:
+  - [[functions/generateDocs]]
+sources:
+  - [[sources/GitHubActivity]]
+triggers:
+  - type: manual
+    button: Create Release
+  - type: schedule
+    cron: "0 0 * * 1" # Weekly on Monday
+steps:
+  - id: prepare
+    name: Prepare Release
+    type: action
+  - id: update-version
+    name: Update Version Number
+    type: action
+    dependsOn: [prepare]
+  - id: generate-changelog
+    name: Generate Changelog
+    type: action
+    dependsOn: [update-version]
+  - id: update-docs
+    name: Update Documentation
+    type: agent
+    agent: [[agents/DocumentationWriter]]
+    dependsOn: [update-version]
+  - id: create-tag
+    name: Create Git Tag
+    type: action
+    dependsOn: [generate-changelog, update-docs]
+  - id: build-release
+    name: Build Release Artifacts
+    type: action
+    dependsOn: [create-tag]
+  - id: publish
+    name: Publish Release
+    type: action
+    dependsOn: [build-release]
+  - id: notify
+    name: Notify Stakeholders
+    type: action
+    dependsOn: [publish]
+duration: (number) 30-60 minutes
+sla: (number) 99.5
+---
+
+# Release Version Workflow
+
+Automated version release workflow that handles versioning, changelog generation, documentation updates, and publishing.
+
+## Overview
+
+This workflow manages the complete release process:
+
+1. **Prepare** - Validate readiness for release
+2. **Update Version** - Bump version number (semver)
+3. **Generate Changelog** - Create release notes from commits
+4. **Update Docs** - Refresh documentation with [[agents/DocumentationWriter]]
+5. **Create Tag** - Tag release in git
+6. **Build** - Build release artifacts
+7. **Publish** - Publish to npm, GitHub Releases, etc.
+8. **Notify** - Announce release to stakeholders
+
+## Trigger Conditions
+
+### Manual Triggers
+
+**Create Release Button:**
+```yaml
+trigger:
+  type: manual
+  button: Create Release
+  inputs:
+    - name: releaseType
+      type: select
+      options: [major, minor, patch]
+      required: true
+    - name: prerelease
+      type: boolean
+      default: false
+```
+
+### Automatic Triggers
+
+**Weekly Release Schedule:**
+```yaml
+trigger:
+  type: schedule
+  cron: "0 0 * * 1" # Every Monday at midnight
+  condition: has-unreleased-changes
+```
+
+**Milestone Completion:**
+```yaml
+trigger:
+  type: milestone
+  action: completed
+```
+
+## Workflow Steps
+
+### Step 1: Prepare Release
+
+```typescript
+async function prepareRelease(context: WorkflowContext) {
+  const { releaseType, prerelease } = context.trigger.inputs
+
+  // Validate working directory is clean
+  const status = await git.status()
+  if (!status.isClean()) {
+    throw new Error('Working directory has uncommitted changes')
+  }
+
+  // Ensure on main branch
+  const branch = await git.currentBranch()
+  if (branch !== 'main' && branch !== 'master') {
+    throw new Error(`Must be on main branch, currently on ${branch}`)
+  }
+
+  // Pull latest changes
+  await git.pull()
+
+  // Run full test suite
+  const testResult = await runTests({ coverage: true })
+  if (testResult.failed > 0) {
+    throw new Error(`Tests failing: ${testResult.failed} failures`)
+  }
+
+  // Check for unreleased changes
+  const lastRelease = await getLastRelease()
+  const commits = await getCommitsSince(lastRelease.tag)
+
+  if (commits.length === 0 && !prerelease) {
+    throw new Error('No changes since last release')
+  }
+
+  return {
+    ready: true,
+    releaseType,
+    prerelease,
+    lastRelease,
+    commits: commits.length
+  }
+}
+```
+
+**Validation Checks:**
+- Working directory clean (no uncommitted changes)
+- On main/master branch
+- Up to date with remote
+- All tests passing
+- Has changes since last release
+
+### Step 2: Update Version Number
+
+```typescript
+async function updateVersion(context: WorkflowContext) {
+  const { releaseType, prerelease } = context.steps.prepare
+
+  // Read current version
+  const packageJson = await readPackageJson()
+  const currentVersion = packageJson.version
+
+  // Calculate new version
+  const newVersion = calculateNextVersion(currentVersion, releaseType, prerelease)
+
+  // Update package.json
+  packageJson.version = newVersion
+  await writePackageJson(packageJson)
+
+  // Update other version files
+  await updateVersionInFiles({
+    version: newVersion,
+    files: [
+      'src/version.ts',
+      'README.md',
+      'docs/installation.md'
+    ]
+  })
+
+  // Commit version bump
+  await git.add([
+    'package.json',
+    'package-lock.json',
+    'src/version.ts',
+    'README.md',
+    'docs/installation.md'
+  ])
+
+  await git.commit(`chore: bump version to ${newVersion}`)
+
+  return {
+    oldVersion: currentVersion,
+    newVersion,
+    releaseType,
+    prerelease
+  }
+}
+
+function calculateNextVersion(
+  current: string,
+  type: 'major' | 'minor' | 'patch',
+  prerelease: boolean
+): string {
+  const [major, minor, patch] = current.split('.').map(Number)
+
+  let newMajor = major
+  let newMinor = minor
+  let newPatch = patch
+
+  switch (type) {
+    case 'major':
+      newMajor += 1
+      newMinor = 0
+      newPatch = 0
+      break
+    case 'minor':
+      newMinor += 1
+      newPatch = 0
+      break
+    case 'patch':
+      newPatch += 1
+      break
+  }
+
+  let version = `${newMajor}.${newMinor}.${newPatch}`
+
+  if (prerelease) {
+    const timestamp = Date.now()
+    version += `-beta.${timestamp}`
+  }
+
+  return version
+}
+```
+
+### Step 3: Generate Changelog
+
+```typescript
+async function generateChangelog(context: WorkflowContext) {
+  const { lastRelease } = context.steps.prepare
+  const { newVersion } = context.steps.updateVersion
+
+  // Get commits since last release
+  const commits = await getCommitsSince(lastRelease.tag)
+
+  // Parse commits by type
+  const changelog = {
+    version: newVersion,
+    date: new Date().toISOString().split('T')[0],
+    sections: {
+      breaking: [],
+      features: [],
+      fixes: [],
+      docs: [],
+      chores: []
+    }
+  }
+
+  for (const commit of commits) {
+    const parsed = parseCommitMessage(commit.message)
+
+    // Check for breaking changes
+    if (parsed.breaking) {
+      changelog.sections.breaking.push({
+        message: parsed.description,
+        commit: commit.sha,
+        author: commit.author
+      })
+    }
+
+    // Categorize by type
+    switch (parsed.type) {
+      case 'feat':
+        changelog.sections.features.push({
+          scope: parsed.scope,
+          message: parsed.description,
+          commit: commit.sha
+        })
+        break
+      case 'fix':
+        changelog.sections.fixes.push({
+          scope: parsed.scope,
+          message: parsed.description,
+          commit: commit.sha
+        })
+        break
+      case 'docs':
+        changelog.sections.docs.push({
+          message: parsed.description,
+          commit: commit.sha
+        })
+        break
+      case 'chore':
+      case 'refactor':
+      case 'style':
+        changelog.sections.chores.push({
+          message: parsed.description,
+          commit: commit.sha
+        })
+        break
+    }
+  }
+
+  // Generate CHANGELOG.md entry
+  const changelogEntry = generateChangelogMarkdown(changelog)
+
+  // Update CHANGELOG.md
+  const existingChangelog = await readFile('CHANGELOG.md')
+  const updatedChangelog = insertChangelogEntry(existingChangelog, changelogEntry)
+  await writeFile('CHANGELOG.md', updatedChangelog)
+
+  // Commit changelog
+  await git.add(['CHANGELOG.md'])
+  await git.commit(`docs: update CHANGELOG for ${newVersion}`)
+
+  return changelog
+}
+
+function parseCommitMessage(message: string) {
+  // Parse conventional commit: type(scope): description
+  const pattern = /^(\w+)(?:\(([^)]+)\))?: (.+)$/
+  const match = message.match(pattern)
+
+  if (!match) {
+    return { type: 'chore', scope: null, description: message, breaking: false }
+  }
+
+  const [, type, scope, description] = match
+
+  return {
+    type,
+    scope,
+    description,
+    breaking: message.includes('BREAKING CHANGE')
+  }
+}
+
+function generateChangelogMarkdown(changelog: Changelog): string {
+  let md = `## [${changelog.version}] - ${changelog.date}\n\n`
+
+  if (changelog.sections.breaking.length > 0) {
+    md += `### ⚠️ BREAKING CHANGES\n\n`
+    for (const item of changelog.sections.breaking) {
+      md += `- ${item.message} ([${item.commit.slice(0, 7)}])\n`
+    }
+    md += '\n'
+  }
+
+  if (changelog.sections.features.length > 0) {
+    md += `### ✨ Features\n\n`
+    for (const item of changelog.sections.features) {
+      const scope = item.scope ? `**${item.scope}:** ` : ''
+      md += `- ${scope}${item.message} ([${item.commit.slice(0, 7)}])\n`
+    }
+    md += '\n'
+  }
+
+  if (changelog.sections.fixes.length > 0) {
+    md += `### 🐛 Bug Fixes\n\n`
+    for (const item of changelog.sections.fixes) {
+      const scope = item.scope ? `**${item.scope}:** ` : ''
+      md += `- ${scope}${item.message} ([${item.commit.slice(0, 7)}])\n`
+    }
+    md += '\n'
+  }
+
+  if (changelog.sections.docs.length > 0) {
+    md += `### 📚 Documentation\n\n`
+    for (const item of changelog.sections.docs) {
+      md += `- ${item.message} ([${item.commit.slice(0, 7)}])\n`
+    }
+    md += '\n'
+  }
+
+  return md
+}
+```
+
+### Step 4: Update Documentation
+
+Uses [[agents/DocumentationWriter]] to refresh docs:
+
+```typescript
+async function updateDocumentation(context: WorkflowContext) {
+  const { newVersion } = context.steps.updateVersion
+
+  const writer = new DocumentationWriter()
+
+  // Update API documentation
+  const apiDocs = await writer.generateAPIDocs({
+    version: newVersion,
+    format: 'markdown'
+  })
+
+  await writeFile('docs/api.md', apiDocs)
+
+  // Update README
+  const readme = await writer.updateREADME({
+    version: newVersion,
+    changelog: context.steps.generateChangelog
+  })
+
+  await writeFile('README.md', readme)
+
+  // Commit documentation updates
+  await git.add(['docs/', 'README.md'])
+  await git.commit(`docs: update documentation for ${newVersion}`)
+
+  return { updated: true }
+}
+```
+
+### Step 5: Create Git Tag
+
+```typescript
+async function createTag(context: WorkflowContext) {
+  const { newVersion } = context.steps.updateVersion
+  const changelog = context.steps.generateChangelog
+
+  // Create annotated tag
+  const tagName = `v${newVersion}`
+  const tagMessage = generateTagMessage(newVersion, changelog)
+
+  await git.createTag(tagName, tagMessage)
+
+  // Push commits and tag
+  await git.push({ includeTags: true })
+
+  return { tag: tagName, message: tagMessage }
+}
+
+function generateTagMessage(version: string, changelog: Changelog): string {
+  let message = `Release ${version}\n\n`
+
+  if (changelog.sections.breaking.length > 0) {
+    message += 'BREAKING CHANGES:\n'
+    for (const item of changelog.sections.breaking) {
+      message += `- ${item.message}\n`
+    }
+    message += '\n'
+  }
+
+  if (changelog.sections.features.length > 0) {
+    message += 'Features:\n'
+    for (const item of changelog.sections.features) {
+      message += `- ${item.message}\n`
+    }
+    message += '\n'
+  }
+
+  if (changelog.sections.fixes.length > 0) {
+    message += 'Bug Fixes:\n'
+    for (const item of changelog.sections.fixes) {
+      message += `- ${item.message}\n`
+    }
+  }
+
+  return message
+}
+```
+
+### Step 6: Build Release Artifacts
+
+```typescript
+async function buildRelease(context: WorkflowContext) {
+  const { newVersion } = context.steps.updateVersion
+
+  // Clean build directory
+  await exec('rm -rf dist/')
+
+  // Build for production
+  await exec('npm run build')
+
+  // Create tarball
+  const tarball = await exec('npm pack')
+
+  // Create zip archive
+  await createZipArchive({
+    name: `release-${newVersion}.zip`,
+    files: [
+      'dist/',
+      'README.md',
+      'LICENSE',
+      'package.json'
+    ]
+  })
+
+  // Generate checksums
+  const checksums = await generateChecksums([
+    tarball,
+    `release-${newVersion}.zip`
+  ])
+
+  return {
+    artifacts: [
+      tarball,
+      `release-${newVersion}.zip`,
+      'checksums.txt'
+    ],
+    checksums
+  }
+}
+```
+
+### Step 7: Publish Release
+
+```typescript
+async function publishRelease(context: WorkflowContext) {
+  const { newVersion, prerelease } = context.steps.updateVersion
+  const { tag } = context.steps.createTag
+  const { artifacts } = context.steps.buildRelease
+
+  // Publish to npm
+  const npmPublish = await publishToNPM({
+    tag: prerelease ? 'beta' : 'latest',
+    access: 'public'
+  })
+
+  // Create GitHub release
+  const githubRelease = await createGitHubRelease({
+    tag,
+    name: `Release ${newVersion}`,
+    body: await readFile('CHANGELOG.md'),
+    prerelease,
+    artifacts
+  })
+
+  // Update documentation site
+  await deployDocs({
+    version: newVersion,
+    latest: !prerelease
+  })
+
+  return {
+    npm: npmPublish.url,
+    github: githubRelease.url,
+    docs: `https://docs.example.com/v/${newVersion}`
+  }
+}
+```
+
+### Step 8: Notify Stakeholders
+
+```typescript
+async function notifyStakeholders(context: WorkflowContext) {
+  const { newVersion, oldVersion } = context.steps.updateVersion
+  const changelog = context.steps.generateChangelog
+  const { npm, github, docs } = context.steps.publish
+
+  // Slack announcement
+  await slack.sendMessage({
+    channel: '#releases',
+    text: `🚀 Version ${newVersion} released!`,
+    attachments: [
+      {
+        title: 'Release Details',
+        fields: [
+          { title: 'Previous Version', value: oldVersion, short: true },
+          { title: 'New Version', value: newVersion, short: true },
+          { title: 'Features', value: changelog.sections.features.length.toString(), short: true },
+          { title: 'Bug Fixes', value: changelog.sections.fixes.length.toString(), short: true }
+        ],
+        actions: [
+          { type: 'button', text: 'View on npm', url: npm },
+          { type: 'button', text: 'GitHub Release', url: github },
+          { type: 'button', text: 'Documentation', url: docs }
+        ]
+      }
+    ]
+  })
+
+  // Email to mailing list
+  await email.send({
+    to: 'releases@example.com',
+    subject: `${newVersion} Released`,
+    template: 'release-announcement',
+    data: {
+      version: newVersion,
+      changelog,
+      links: { npm, github, docs }
+    }
+  })
+
+  // Twitter announcement
+  await twitter.post({
+    text: `🚀 Just released v${newVersion}!
+
+${changelog.sections.features.slice(0, 3).map(f => `✨ ${f.message}`).join('\n')}
+
+📖 ${docs}`
+  })
+
+  return { notified: true }
+}
+```
+
+## Configuration
+
+```yaml
+release-version:
+  versioning:
+    scheme: semver
+    prereleaseTags: [alpha, beta, rc]
+
+  changelog:
+    format: conventional-commits
+    includeSections:
+      - breaking
+      - features
+      - fixes
+      - docs
+
+  publishing:
+    npm:
+      enabled: true
+      access: public
+      registry: https://registry.npmjs.org
+
+    github:
+      enabled: true
+      draft: false
+      prerelease: auto
+
+    docs:
+      enabled: true
+      deployOnRelease: true
+
+  notifications:
+    slack:
+      channel: '#releases'
+    email:
+      list: releases@example.com
+    twitter:
+      enabled: true
+```
+
+## Metrics
+
+Tracks release metrics:
+
+- **Release Frequency**: Releases per week/month
+- **Time Between Releases**: Days between releases
+- **Release Size**: Commits, features, fixes per release
+- **Release Duration**: Time to complete release
+- **Post-Release Issues**: Bugs found after release
+
+## Related Examples
+
+- [[agents/DocumentationWriter]] - Generate release docs
+- [[workflows/deployApplication]] - Deploy released version
+- [[sources/GitHubActivity]] - Track release activity
+- [[functions/generateDocs]] - Documentation generation
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Release {
+  id: string
+  version: string
+  changelog: string
+  status: 'draft' | 'published'
+  createdAt: Date
+}
+
+export const releaseVersion: BusinessModule = $ => {
+  const { db, ai, api, send, on } = $
+
+  on.release.requested(async (release: Release) => {
+    // Generate changelog with AI
+    const commits = await api.get('https://api.github.com/repos/owner/repo/commits?since=' + release.createdAt)
+
+    const changelog = await ai.generate({
+      prompt: `Generate release notes for version ${release.version}:\n${commits.map((c: any) => c.message).join('\n')}`,
+      maxTokens: 1000,
+    })
+
+    await db.releases.update(release.id, { changelog, status: 'published' })
+
+    await api.post('https://api.github.com/repos/owner/repo/releases', {
+      tag_name: `v${release.version}`,
+      name: `Version ${release.version}`,
+      body: changelog,
+    })
+
+    await send.slack('#announcements', `🎉 Released v${release.version}!\n\n${changelog}`)
+  })
+}
+```

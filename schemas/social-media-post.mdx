@@ -1,0 +1,113 @@
+---
+$type: Schema
+$id: schema/social-media-post
+title: Social Media Post
+description: Multi-platform social media post with scheduling and analytics
+category: growth
+tags: [social-media, content, automation, analytics]
+version: 1.0.0
+status: active
+created: 2025-10-04
+updated: 2025-10-04
+---
+
+# Social Media Post Schema
+
+## Overview
+
+Social media posts support 6 platforms (Twitter, LinkedIn, Facebook, Instagram, TikTok, YouTube) with flexible scheduling (immediate, scheduled, queue, optimal) and comprehensive analytics tracking.
+
+## Data Model
+
+```typescript
+interface SocialMediaPost {
+  // Identity
+  id: string                      // ULID
+  userId: string
+  platform: 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'tiktok' | 'youtube'
+  type: 'text' | 'image' | 'video' | 'carousel' | 'story' | 'reel' | 'short'
+  status: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed' | 'deleted'
+
+  // Content
+  content: string
+  hashtags?: string[]
+  mentions?: string[]
+  mediaUrls?: string[]
+  linkUrl?: string
+
+  // Scheduling
+  schedulingType: 'immediate' | 'scheduled' | 'queue' | 'optimal'
+  scheduledAt?: string            // ISO 8601
+  publishedAt?: string
+  optimalTimeScore?: number       // 0-100
+
+  // Platform IDs
+  platformPostId?: string         // ID from platform
+  platformUrl?: string            // Public URL
+
+  // Analytics
+  likes?: number
+  comments?: number
+  shares?: number
+  views?: number
+  clicks?: number
+  lastSyncedAt?: string
+
+  // Timestamps
+  createdAt: string
+  updatedAt: string
+}
+```
+
+## Platform Limits
+
+| Platform | Text Max | Media Max | Hashtags Max |
+|----------|----------|-----------|--------------|
+| Twitter | 280 | 4 | 10 |
+| LinkedIn | 3000 | 9 | - |
+| Facebook | 63206 | 10 | - |
+| Instagram | 2200 | 10 | 30 |
+| TikTok | 2200 | 1 | 10 |
+| YouTube | 5000 | 1 | - |
+
+## Scheduling Types
+
+**Immediate**: Publish now
+**Scheduled**: Publish at specific time
+**Queue**: Add to content queue for batch processing
+**Optimal**: AI-selected best posting time
+
+## Validation
+
+```typescript
+import { z } from 'zod'
+
+const socialMediaPostSchema = z.object({
+  userId: z.string().min(1),
+  platform: z.enum(['twitter', 'linkedin', 'facebook', 'instagram', 'tiktok', 'youtube']),
+  type: z.enum(['text', 'image', 'video', 'carousel', 'story', 'reel', 'short']),
+  content: z.string().min(1),
+  schedulingType: z.enum(['immediate', 'scheduled', 'queue', 'optimal']),
+  scheduledAt: z.string().datetime().optional(),
+}).refine((data) => {
+  if (data.schedulingType === 'scheduled') {
+    return !!data.scheduledAt
+  }
+  return true
+}, { message: 'scheduledAt required for scheduled posts' })
+```
+
+## Service Implementation
+
+- **Service**: `workers/social-media-automation`
+- **RPC**: `env.SOCIAL_SERVICE.createPost()`
+- **HTTP**: `POST /api/social/posts`
+
+## Related Schemas
+
+- [Social Media Platform](./social-media-platform.mdx) - Platform connection
+- [Post Analytics](./post-analytics.mdx) - Engagement metrics
+
+## Version History
+
+- **1.0.0** (2025-10-04) - Initial schema with 6 platforms

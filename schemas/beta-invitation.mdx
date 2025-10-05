@@ -1,0 +1,538 @@
+---
+$type: Schema
+$id: schema/beta-invitation
+title: Beta Invitation
+description: Beta access invitation with unique redemption code and expiration
+type: custom/BetaInvitation
+properties:
+  - name: id
+    type: string
+    description: Unique invitation identifier (ULID)
+  - name: waitlistEntryId
+    type: string
+    description: Reference to waitlist entry
+  - name: inviteCode
+    type: string
+    description: Unique redemption code (12 chars, alphanumeric)
+  - name: email
+    type: string
+    format: email
+    description: Recipient email address
+  - name: name
+    type: string
+    description: Recipient name (from waitlist)
+  - name: status
+    type: string
+    enum: [pending, sent, accepted, rejected, expired]
+    description: Invitation status
+  - name: sentAt
+    type: string
+    format: date-time
+    description: When invitation email was sent
+  - name: expiresAt
+    type: string
+    format: date-time
+    description: Expiration timestamp (typically 7 days)
+  - name: acceptedAt
+    type: string
+    format: date-time
+    description: When invitation was accepted
+  - name: rejectedAt
+    type: string
+    format: date-time
+    description: When invitation was rejected
+  - name: reminderSentAt
+    type: string
+    format: date-time
+    description: When reminder email was sent
+  - name: createdAt
+    type: string
+    format: date-time
+    description: Creation timestamp
+  - name: updatedAt
+    type: string
+    format: date-time
+    description: Last update timestamp
+required:
+  - waitlistEntryId
+  - inviteCode
+  - email
+  - status
+  - expiresAt
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - beta
+  - invitation
+  - access-control
+  - launch
+---
+
+# Beta Invitation Schema
+
+Defines beta access invitations with unique redemption codes and expiration tracking.
+
+## Overview
+
+**Purpose**: Manage beta access invitations, track redemption, and enforce expiration policies.
+
+**Use Cases:**
+- Beta program launches
+- Phased rollout (top N priority users first)
+- Invitation tracking and analytics
+- Access control and redemption
+- Expiration and reminder management
+
+## Status Lifecycle
+
+```
+pending → sent → accepted
+   ↓        ↓
+expired  rejected
+```
+
+**Status Descriptions:**
+- **pending**: Created but not yet sent (queued)
+- **sent**: Email delivered to recipient
+- **accepted**: Code redeemed, access granted
+- **rejected**: Manually declined by recipient
+- **expired**: Passed expiration date without acceptance
+
+## Invitation Code Format
+
+**Format**: 12-character alphanumeric (uppercase, no ambiguous characters)
+
+**Character Set**: `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`
+- Excludes: I, O, 0, 1 (easily confused)
+- Uppercase only for consistency
+- Easy to type and communicate
+
+**Example Codes**:
+- `ABC123XYZ789`
+- `9ZK4MN7P2QRS`
+- `BETA8LAUNCH3`
+
+**Uniqueness**: Guaranteed unique across all invitations
+
+## Expiration Policy
+
+**Default Expiration**: 7 days from sent date
+
+**Reminder Schedule**:
+- 2 days before expiration: Send reminder email
+- After expiration: Automatically mark as expired
+
+**Grace Period**: No grace period - strict 7-day limit
+
+**Rationale**:
+- Creates urgency (scarcity increases perceived value)
+- Allows re-invitation if expired
+- Keeps beta program moving forward
+- Prevents code sharing/hoarding
+
+## Example Invitation
+
+```json
+{
+  "id": "01J5678XYZ1234ABC",
+  "waitlistEntryId": "01J1234ABC5678XYZ",
+  "inviteCode": "ABC123XYZ789",
+  "email": "jane@startup.com",
+  "name": "Jane Doe",
+  "status": "sent",
+  "sentAt": "2025-10-01T10:00:00Z",
+  "expiresAt": "2025-10-08T10:00:00Z",
+  "createdAt": "2025-10-01T10:00:00Z",
+  "updatedAt": "2025-10-01T10:00:00Z"
+}
+```
+
+## Database Schema
+
+```sql
+CREATE TABLE beta_invitations (
+  id TEXT PRIMARY KEY,
+  waitlist_entry_id TEXT NOT NULL,
+  invite_code TEXT UNIQUE NOT NULL,
+  email TEXT NOT NULL,
+  name TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  sent_at TEXT,
+  expires_at TEXT NOT NULL,
+  accepted_at TEXT,
+  rejected_at TEXT,
+  reminder_sent_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (waitlist_entry_id) REFERENCES waitlist_entries(id)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_invitation_code ON beta_invitations(invite_code);
+CREATE INDEX idx_invitation_email ON beta_invitations(email);
+CREATE INDEX idx_invitation_status ON beta_invitations(status);
+CREATE INDEX idx_invitation_expires ON beta_invitations(expires_at);
+CREATE INDEX idx_invitation_waitlist ON beta_invitations(waitlist_entry_id);
+```
+
+## Validation Rules
+
+### Invite Code
+- **Required**: Yes
+- **Format**: 12 uppercase alphanumeric (no I, O, 0, 1)
+- **Unique**: Must be unique across all invitations
+- **Auto-generated**: Never set manually
+- **Example**: `ABC123XYZ789`
+
+### Email
+- **Required**: Yes
+- **Format**: Valid email address
+- **Matches Waitlist**: Must match waitlist entry email
+- **Example**: `jane@startup.com`
+
+### Expiration Date
+- **Required**: Yes
+- **Default**: 7 days from creation
+- **Format**: ISO 8601 timestamp
+- **Example**: `2025-10-08T10:00:00Z`
+
+### Status
+- **Required**: Yes
+- **Values**: `pending`, `sent`, `accepted`, `rejected`, `expired`
+- **Default**: `pending`
+- **Transitions**: See lifecycle diagram above
+
+## API Integration
+
+### Generate Invitations
+
+```typescript
+POST /invitations/generate
+
+{
+  "count": 50,
+  "priorityThreshold": 70,
+  "dryRun": false
+}
+
+// Response
+{
+  "success": true,
+  "data": {
+    "invitations": [...],
+    "dryRun": false,
+    "summary": {
+      "generated": 50,
+      "sent": 50,
+      "failed": 0
+    }
+  }
+}
+```
+
+### Check Invite Code
+
+```typescript
+GET /invitations/check/ABC123XYZ789
+
+// Response (Valid)
+{
+  "success": true,
+  "data": {
+    "valid": true,
+    "invitation": {
+      "id": "01J5678XYZ1234ABC",
+      "email": "jane@startup.com",
+      "expiresAt": "2025-10-08T10:00:00Z",
+      "status": "sent"
+    }
+  }
+}
+
+// Response (Expired)
+{
+  "success": false,
+  "data": {
+    "valid": false,
+    "error": "Invitation expired",
+    "invitation": { ... }
+  }
+}
+```
+
+### Accept Invitation
+
+```typescript
+POST /invitations/accept
+
+{
+  "inviteCode": "ABC123XYZ789",
+  "userId": "user_abc123" // Optional: link to user account
+}
+
+// Response
+{
+  "success": true,
+  "data": {
+    "id": "01J5678XYZ1234ABC",
+    "status": "accepted",
+    "acceptedAt": "2025-10-03T14:30:00Z"
+  }
+}
+```
+
+## Email Templates
+
+### Invitation Email
+
+**Subject**: `You're invited to the .do beta!`
+
+**Body**:
+```text
+Hi {{name}},
+
+Congratulations! You've been selected for early access to the .do platform beta.
+
+Your invitation code: {{inviteCode}}
+
+Redeem your code: {{inviteUrl}}
+
+This invitation expires on {{expiresAt}} ({{expiresIn}}).
+
+Looking forward to seeing what you build!
+
+Best,
+The .do Team
+```
+
+**Template Data**:
+```typescript
+{
+  name: 'Jane Doe',
+  inviteCode: 'ABC123XYZ789',
+  inviteUrl: 'https://app.do/invite/ABC123XYZ789',
+  expiresAt: 'October 8, 2025',
+  expiresIn: '7 days'
+}
+```
+
+### Reminder Email
+
+**Subject**: `Your .do beta invitation expires in 2 days`
+
+**Body**:
+```text
+Hi {{name}},
+
+Just a reminder: your .do beta invitation expires in 2 days!
+
+Your invitation code: {{inviteCode}}
+
+Redeem now: {{inviteUrl}}
+
+Expires: {{expiresAt}}
+
+Don't miss out on early access!
+
+Best,
+The .do Team
+```
+
+**Template Data**:
+```typescript
+{
+  name: 'Jane Doe',
+  inviteCode: 'ABC123XYZ789',
+  inviteUrl: 'https://app.do/invite/ABC123XYZ789',
+  expiresAt: 'October 8, 2025',
+  expiresIn: '2 days'
+}
+```
+
+## Queue Processing
+
+### Send Invitation
+
+```typescript
+{
+  type: 'send_invitation',
+  invitationId: '01J5678XYZ1234ABC'
+}
+```
+
+**Actions**:
+1. Fetch invitation from database
+2. Render email template
+3. Send email via email service
+4. Update status to `sent`
+5. Update `sentAt` timestamp
+
+### Send Reminder
+
+```typescript
+{
+  type: 'send_reminder',
+  invitationId: '01J5678XYZ1234ABC'
+}
+```
+
+**Actions**:
+1. Fetch invitation from database
+2. Check if still pending/sent (not accepted/expired)
+3. Render reminder template
+4. Send reminder email
+5. Update `reminderSentAt` timestamp
+
+**Schedule**: Cron job daily at 9 AM UTC, finds invitations expiring in 2 days
+
+### Expire Old Invitations
+
+```typescript
+{
+  type: 'expire_invitations'
+}
+```
+
+**Actions**:
+1. Find invitations where `expiresAt < NOW()` AND status IN ('pending', 'sent')
+2. Update status to `expired`
+3. Update waitlist entry status to `expired`
+4. Track expiration analytics
+
+**Schedule**: Cron job hourly
+
+## Workflows
+
+### waitlist-invitation Workflow
+
+**Trigger**: Manual (admin action) or scheduled (weekly beta batch)
+
+**Steps**:
+1. Select top N waitlist entries by priority (status = `pending`)
+2. Generate invitation codes
+3. Create invitation records (status = `pending`)
+4. Queue invitation emails
+5. Update waitlist entries (status = `invited`)
+6. Track batch analytics
+
+**Configuration**:
+```typescript
+{
+  count: 100,              // Invite top 100
+  priorityThreshold: 70,   // Min score
+  expirationDays: 7,       // Code valid for 7 days
+  sendReminder: true,      // Send reminder at 2 days
+  dryRun: false            // Actually send emails
+}
+```
+
+## Analytics
+
+### Key Metrics
+
+**Invitation Metrics:**
+- Total invitations sent
+- Invitations by status
+- Acceptance rate (accepted / sent)
+- Expiration rate (expired / sent)
+- Average time to acceptance
+- Reminder effectiveness
+
+**Performance Metrics:**
+- Invitations sent per week
+- Queue processing time
+- Email delivery rate
+- Code redemption rate by batch
+
+### Example Analytics Queries
+
+```sql
+-- Acceptance rate overall
+SELECT
+  COUNT(*) as total_sent,
+  SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted,
+  SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as expired,
+  ROUND(SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as acceptance_rate
+FROM beta_invitations
+WHERE status != 'pending';
+
+-- Time to acceptance (in hours)
+SELECT
+  AVG((julianday(accepted_at) - julianday(sent_at)) * 24) as avg_hours_to_accept,
+  MIN((julianday(accepted_at) - julianday(sent_at)) * 24) as min_hours,
+  MAX((julianday(accepted_at) - julianday(sent_at)) * 24) as max_hours
+FROM beta_invitations
+WHERE status = 'accepted' AND sent_at IS NOT NULL;
+
+-- Invitations expiring today
+SELECT COUNT(*) as expiring_today
+FROM beta_invitations
+WHERE DATE(expires_at) = DATE('now')
+AND status IN ('pending', 'sent');
+```
+
+## Best Practices
+
+### Invitation Batching
+- **Weekly batches**: Consistent cadence, manageable volume
+- **Top N users**: Prioritize by score, not random
+- **Phased rollout**: Start small (50), scale up (100, 200, 500)
+- **Monitor acceptance**: Pause if rate drops below 30%
+
+### Code Management
+- **Never reuse codes**: Each invitation gets unique code
+- **No manual codes**: Always auto-generate
+- **Simple format**: Easy to type, no ambiguous characters
+- **Track redemptions**: Prevent fraud/abuse
+
+### Communication
+- **Clear expiration**: State exact date and time
+- **Single reminder**: 2 days before expiration
+- **Emphasize scarcity**: "Limited beta access"
+- **Show value**: Highlight what they'll get
+
+### Expiration Handling
+- **Strict enforcement**: No grace period
+- **Allow re-invitation**: Expired users can get new codes
+- **Track patterns**: Analyze why invitations expire
+- **Optimize timing**: Test different expiration windows
+
+## Success Metrics
+
+**Week 1 (Beta Launch):**
+- 50 invitations sent
+- >30% acceptance rate
+- <24 hours average time to acceptance
+- <20% expiration rate
+
+**Month 1:**
+- 500 invitations sent
+- >40% acceptance rate
+- <48 hours average time to acceptance
+- <15% expiration rate
+
+**Month 3 (Public Launch):**
+- 2,000+ invitations sent
+- >50% acceptance rate
+- >80% of waitlist invited
+- Ready for public launch
+
+## Related Schemas
+
+- **waitlist-entry** - Source of invitation recipients
+- **user-account** - Created when invitation accepted
+- **referral-code** - Bonus for referring successful signups
+
+## Related Services
+
+- **waitlist-beta-management** - Manages invitation lifecycle
+- **email** - Sends invitation and reminder emails
+- **auth** - Creates user accounts from accepted invitations
+- **analytics** - Tracks invitation metrics
+
+## Related Workflows
+
+- **waitlist-invitation** - Generate and send invitations
+- **reminder-scheduling** - Send reminders before expiration
+- **invitation-expiration** - Mark expired invitations

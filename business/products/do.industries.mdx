@@ -1,0 +1,216 @@
+---
+$type: Business
+$id: business/do.industries
+title: do.industries
+legalName: do.industries
+type: product
+category: Platform
+industry: Technology
+vertical: AI Infrastructure
+description: Business-as-Code platform for AI-native application development
+mission: Enable developers to build businesses programmatically using TypeScript and AI
+tagline: "Business-as-Code for Builders"
+website: https://do.industries
+status: Active
+launched: "2024"
+metadata:
+  ns: business
+  visibility: public
+tags:
+  - platform
+  - business-as-code
+  - ai-infrastructure
+  - developer-tools
+---
+
+# do.industries
+
+**Business-as-Code platform** enabling developers to define and operate entire businesses using TypeScript primitives and AI orchestration.
+
+## Overview
+
+do.industries provides the foundational infrastructure for defining businesses as code. Every business entity—from organizations and products to services and workflows—is a TypeScript object with full type safety and AI-native capabilities.
+
+## Core Value Proposition
+
+**For Developers:**
+- Write businesses in TypeScript with full IntelliSense
+- Zero-config development with `mdxe`
+- Deploy to Cloudflare edge in seconds
+- 121 domain-specific SDK packages
+
+**For AI Agents:**
+- Structured business definitions for autonomous operation
+- Type-safe primitives: `db`, `ai`, `send`, `on`, `decide`, `every`
+- Real-time knowledge graph of all business entities
+- MCP tools for business orchestration
+
+## Runtime Primitives
+
+```typescript
+// $ - The fundamental runtime primitives
+import { $, db, ai, send, on, decide, every } from 'do.industries'
+
+// Database operations
+await db.things.create({ type: 'Product', data: {...} })
+
+// AI generation
+const text = await ai.generate({ prompt: '...', model: 'claude-3.5' })
+
+// Send notifications
+await send.email({ to: 'user@example.com', template: 'welcome' })
+
+// Event handlers
+on('order.created', async (order) => { /* ... */ })
+
+// Decision logic
+const action = await decide('approve-order', { order, rules })
+
+// Scheduled tasks
+every('1 hour', async () => { /* ... */ })
+```
+
+## Architecture
+
+### 5-Layer SDK Stack
+
+**Layer 1: Foundation** (Zero Dependencies)
+- `do.industries` - Core business primitives
+- `schema.org.ai` - 800+ Schema.org types + AI
+- `gs1.org.ai` - Global standards + AI
+- `mdx.org.ai` - AI-native MDX
+
+**Layer 2: Platform**
+- `apis.do` - Universal RPC + AI adapters
+
+**Layer 3: Managed Services**
+- `llm.do`, `embeddings.do`, `models.do`, `sdk.do`
+
+**Layer 4: Special Purpose**
+- `402.do`, `do.com.ai`, `graphdl`
+
+**Layer 5: Domain Packages**
+- 105 auto-generated `.do` packages for all industries
+
+## Key Features
+
+### TypeScript-First
+- Full type safety across all business entities
+- IntelliSense for every business primitive
+- Compile-time validation with Zod schemas
+
+### AI-Native
+- Every entity has AI-generated descriptions
+- Semantic embeddings for discovery
+- Natural language queries via MCP tools
+
+### Content as Code
+- MDX files sync bidirectionally with PostgreSQL
+- Version control for all business entities
+- Git-based workflows for business changes
+
+### Edge-Native
+- Deploy to Cloudflare Workers globally
+- Sub-50ms response times worldwide
+- Unlimited scale with zero ops
+
+## Target Audience
+
+**Primary:**
+- Full-stack developers
+- Technical founders
+- AI engineers
+- Systems builders
+
+**Secondary:**
+- Product managers with technical background
+- Technical consultants
+- Indie hackers
+
+## Business Model
+
+### Freemium Platform
+
+**Free Tier:**
+- Unlimited MDX files
+- 10 free `.do` subdomains
+- 100K function calls/month
+- Community support
+
+**Pro Tier ($49/month):**
+- Custom domains
+- 1M function calls/month
+- Priority support
+- Advanced analytics
+
+**Enterprise (Custom):**
+- Private deployments
+- SLA guarantees
+- Dedicated support
+- Custom integrations
+
+## Metrics
+
+### Developer Adoption
+- Target: 10K registered developers by Q4 2025
+- GitHub stars: 1K+ (target)
+- npm downloads: 100K+/month
+- Active projects: 1K+
+
+### Platform Usage
+- Function executions: 1M+/month
+- API calls: 10M+/month
+- Uptime: 99.9%+
+
+## Technology Stack
+
+- **Runtime:** Cloudflare Workers
+- **Database:** PostgreSQL (Neon), D1 (SQLite)
+- **Framework:** Hono (API), Next.js (docs)
+- **Language:** TypeScript
+- **AI:** OpenAI, Anthropic, Workers AI
+- **CDN:** Cloudflare global network
+
+## Competitive Positioning
+
+**vs Traditional Platforms:**
+- ✅ No servers, no ops, no infrastructure
+- ✅ TypeScript-native, not YAML or JSON
+- ✅ AI-first architecture
+- ✅ Edge-native for global performance
+
+**vs Low-Code Platforms:**
+- ✅ Code, not clicks
+- ✅ Version control included
+- ✅ Unlimited extensibility
+- ✅ Full developer control
+
+**vs Framework-as-a-Service:**
+- ✅ Business primitives, not just infra
+- ✅ Cross-cutting concerns built-in
+- ✅ AI orchestration included
+- ✅ Ecosystem of domain packages
+
+## Roadmap
+
+### Q4 2025
+- ✅ 121 SDK packages published
+- ✅ Core runtime primitives stable
+- 🔄 Launch documentation site
+- 🔄 Developer onboarding program
+
+### 2026
+- Domain marketplace
+- Visual business designer
+- AI agent marketplace
+- International expansion
+
+## Parent Organization
+
+Part of **[Dot Do Holdings](../holding/dot-do.mdx)** portfolio, providing the foundational platform for all other products.
+
+## Related Products
+
+- **[Services.Studio](./services.studio.mdx)** - Build on do.industries
+- **[API.Services](./api.services.mdx)** - Function catalog
+- **[Agents.do](./agents.do.mdx)** - AI agents

@@ -1,0 +1,352 @@
+---
+$type: Business
+$id: business/services.delivery
+title: Services.Delivery
+legalName: Services.Delivery
+type: product
+category: Marketplace
+industry: Technology
+vertical: Service Marketplace
+description: Marketplace for AI-delivered professional services
+mission: Connect businesses with vetted service providers delivering high-quality work
+tagline: "Professional Services, Delivered by AI"
+website: https://services.delivery
+status: Development
+launched: "2025-11"
+metadata:
+  ns: business
+  visibility: public
+tags:
+  - marketplace
+  - services
+  - ai-delivery
+  - b2b
+---
+
+# Services.Delivery
+
+**Professional services marketplace** where businesses purchase services that are delivered efficiently through AI-powered automation and human expertise.
+
+## Overview
+
+Services.Delivery is a two-sided marketplace connecting businesses seeking professional services with verified providers who deliver consistent, high-quality work. The platform handles discovery, transactions, delivery, and quality assurance.
+
+## Core Value Proposition
+
+**For Buyers:**
+- Browse 200+ professional services
+- Fixed pricing, clear deliverables
+- Guaranteed delivery timeframes
+- Quality assurance and dispute resolution
+- Secure payments with escrow
+
+**For Providers:**
+- Access to qualified leads
+- Automated order management
+- Built-in payment processing
+- 80-85% revenue share
+- Growth analytics and insights
+
+## How It Works
+
+### For Buyers
+
+**1. Discover Services**
+```typescript
+// Browse by category, search, or AI recommendation
+GET /services?category=marketing&budget=500-1000
+```
+
+**2. Review Details**
+- Service description and deliverables
+- Provider rating and reviews
+- Delivery timeframe
+- Pricing and packages
+
+**3. Place Order**
+- Select service package
+- Provide requirements
+- Pay securely (funds held in escrow)
+
+**4. Receive Delivery**
+- Track progress in dashboard
+- Communicate with provider
+- Review deliverables
+- Request revisions (if needed)
+- Approve and release payment
+
+### For Providers
+
+**1. Create Service Listing**
+- Use Services.Studio or manual creation
+- Define packages and pricing
+- Set delivery timeframes
+- Upload portfolio samples
+
+**2. Receive Orders**
+- Automated order notifications
+- Requirements clearly specified
+- Payment guaranteed via escrow
+
+**3. Deliver Work**
+- Follow automated workflow
+- Upload deliverables
+- Request buyer approval
+
+**4. Get Paid**
+- Funds released upon approval
+- Instant payout to bank account
+- 80-85% of service price
+
+## Service Categories
+
+### Marketing Services
+- Content writing (blog posts, case studies)
+- SEO optimization
+- Social media management
+- Email campaign creation
+- Ad copy writing
+
+### Design Services
+- Logo design
+- Brand identity
+- Website mockups
+- Presentation design
+- Infographic creation
+
+### Development Services
+- Website audits
+- Code reviews
+- API integration
+- Database optimization
+- Security assessments
+
+### Business Services
+- Market research
+- Competitive analysis
+- Business plan writing
+- Financial modeling
+- Pitch deck creation
+
+### Professional Services
+- Resume writing
+- LinkedIn optimization
+- Cover letter creation
+- Interview coaching
+- Career planning
+
+## Key Features
+
+### Service Discovery
+- Smart search with AI recommendations
+- Filter by category, price, delivery time
+- Provider ratings and reviews
+- Portfolio samples
+- Verified badges
+
+### Transaction Management
+- Secure escrow payments
+- Automated order workflow
+- Milestone tracking
+- Delivery confirmations
+- Revision requests
+
+### Quality Assurance
+- Provider verification
+- Service quality monitoring
+- Customer satisfaction tracking
+- Dispute resolution process
+- Money-back guarantee
+
+### Communication
+- In-platform messaging
+- File sharing
+- Progress updates
+- Delivery notifications
+- Review reminders
+
+### Analytics
+**For Buyers:**
+- Spending by category
+- Provider performance
+- Project ROI
+- Service recommendations
+
+**For Providers:**
+- Revenue analytics
+- Order volume trends
+- Customer satisfaction
+- Competitive positioning
+- Growth opportunities
+
+## Business Model
+
+### Revenue Streams
+
+**Transaction Fees (Primary):**
+- 15-20% of service price
+- Target: $500K GMV → $75K-$100K revenue
+- Sliding scale based on order value
+
+**Premium Listings:**
+- Featured placement: $49/month
+- Category sponsorship: $99/month
+- Homepage banner: $199/month
+
+**Subscription Plans:**
+**For Buyers:**
+- Free: 0 perks, standard processing
+- Plus ($29/month): 5% discount on orders, priority support
+- Enterprise (custom): Volume discounts, dedicated account manager
+
+**For Providers:**
+- Free: 20% platform fee, basic analytics
+- Pro ($49/month): 15% platform fee, advanced analytics, featured badge
+- Elite ($99/month): 15% platform fee, priority placement, growth coaching
+
+### Unit Economics
+
+**Average Order:**
+- Service price: $300
+- Platform fee (18%): $54
+- Stripe fee (3%): $9
+- Provider payout: $246
+- Net revenue: $45 (83% margin)
+
+**Target Metrics:**
+- 1,000 orders/month by Q4 2025
+- $300K GMV/month
+- $54K platform revenue/month
+- $650K annual run rate
+
+## Trust & Safety
+
+### Provider Verification
+- Identity verification
+- Portfolio review
+- Skill assessment
+- Background check (for certain categories)
+- Performance monitoring
+
+### Quality Standards
+- 4.5+ average rating required
+- <10% dispute rate threshold
+- 90%+ on-time delivery
+- Minimum 85% approval rate
+
+### Dispute Resolution
+1. Buyer raises concern
+2. Provider has 24 hours to respond
+3. Platform mediates if needed
+4. Partial/full refund if warranted
+5. Provider status reviewed
+
+### Fraud Prevention
+- Payment verification
+- Delivery confirmation required
+- Activity pattern monitoring
+- User reputation system
+- Automated risk scoring
+
+## Target Metrics (2025-2026)
+
+### Q4 2025
+- 200+ services listed
+- 100+ active providers
+- $500K cumulative GMV
+- 4.5+ average rating
+- <5% dispute rate
+
+### 2026
+- 1,000+ services
+- 500+ active providers
+- $10M annual GMV
+- 90%+ on-time delivery
+- 80%+ repeat purchase rate
+
+## Technology Stack
+
+- **Platform:** do.industries
+- **Payments:** Stripe Connect
+- **Search:** Algolia + embeddings
+- **Storage:** Cloudflare R2
+- **Database:** PostgreSQL (Neon) + D1
+- **Email:** Resend
+- **Analytics:** Mixpanel
+
+## Competitive Positioning
+
+**vs Fiverr:**
+- ✅ Curated providers (not marketplace of thousands)
+- ✅ Fixed pricing (no bidding wars)
+- ✅ AI-assisted delivery
+- ✅ Higher quality standards
+
+**vs Upwork:**
+- ✅ Services, not freelancers
+- ✅ Clear deliverables upfront
+- ✅ Fixed timeline and pricing
+- ✅ No hourly billing complexity
+
+**vs Traditional Agencies:**
+- ✅ 50-70% lower prices
+- ✅ Faster delivery (days, not weeks)
+- ✅ Self-service platform
+- ✅ Transparent pricing
+
+## Growth Strategy
+
+### Provider Acquisition
+- Services.Studio onboarding
+- Freelancer platform outreach
+- Agency partnerships
+- Referral program (10% of first order)
+
+### Buyer Acquisition
+- Content marketing (SEO)
+- Paid advertising (Google, LinkedIn)
+- Partnerships with business tools
+- Referral incentives
+
+### Retention
+- Quality service recommendations
+- Loyalty discounts
+- Bundle deals
+- Priority support for active users
+
+## Roadmap
+
+### Q4 2025 (MVP Launch)
+- 🔄 Core marketplace functionality
+- 🔄 First 20 services live
+- 🔄 Payment processing
+- 🔄 Basic analytics
+
+### Q1 2026
+- Subscription plans
+- Advanced search/filters
+- Mobile app
+- API access
+
+### Q2 2026
+- Team collaboration features
+- Project management tools
+- Integration marketplace
+- White-label option
+
+## Parent Organization
+
+Part of **[Dot Do Holdings](../holding/dot-do.mdx)** portfolio.
+
+**OKR Contribution:** O2 - Launch Services.Delivery marketplace generating revenue
+
+**Key Results:**
+- $500K+ GMV with 15-20% take rate
+- 200+ services listed, 100+ active providers
+- 4.5+ average rating, <5% dispute rate
+
+## Related Products
+
+- **[Services.Studio](./services.studio.mdx)** - Service creation platform
+- **[API.Services](./api.services.mdx)** - Function catalog powering services
+- **[do.industries](./do.industries.mdx)** - Platform foundation

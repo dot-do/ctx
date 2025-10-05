@@ -1,0 +1,372 @@
+---
+$type: Workflow
+$id: workflow/onboardcustomer
+title: onboardCustomer
+name: onboardCustomer
+description: Complete customer onboarding from signup to first use
+
+trigger:
+  type: webhook
+  source: signup-form
+  event: user.signed_up
+
+input:
+  email: User email address
+  name: User full name
+  password: User password (will be hashed)
+  companyName: Company or workspace name
+  plan: Subscription plan (free, pro, enterprise)
+  referralSource: How user found the product
+
+steps:
+  - name: create-account
+    description: Create user account in database
+    function: create-user
+    input:
+      email: ${input.email}
+      name: ${input.name}
+      password: ${input.password}
+    onError:
+      action: return
+      status: 400
+      message: Failed to create account
+
+  - name: track-signup
+    description: Track signup event in analytics
+    function: track-event
+    input:
+      userId: ${steps.create-account.output.userId}
+      event: user_signed_up
+      properties:
+        plan: ${input.plan}
+        source: ${input.referralSource}
+
+  - name: send-welcome
+    description: Send welcome email
+    function: send-email
+    input:
+      to: ${input.email}
+      template: welcome
+      data:
+        name: ${input.name}
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+
+  - name: create-workspace
+    description: Create default workspace
+    function: create-workspace
+    input:
+      userId: ${steps.create-account.output.userId}
+      name: ${input.companyName}
+
+  - name: provision-api-key
+    description: Generate API key for workspace
+    function: provision-api-key
+    input:
+      userId: ${steps.create-account.output.userId}
+      workspaceId: ${steps.create-workspace.output.workspaceId}
+
+  - name: schedule-call
+    description: Schedule onboarding call for enterprise customers
+    condition: ${input.plan === 'enterprise'}
+    function: schedule-onboarding-call
+    input:
+      userId: ${steps.create-account.output.userId}
+      email: ${input.email}
+      plan: ${input.plan}
+
+  - name: track-complete
+    description: Track onboarding completion
+    function: track-event
+    input:
+      userId: ${steps.create-account.output.userId}
+      event: onboarding_completed
+      properties:
+        duration: ${workflow.duration}
+        plan: ${input.plan}
+
+output:
+  userId: ${steps.create-account.output.userId}
+  workspaceId: ${steps.create-workspace.output.workspaceId}
+  workspaceUrl: ${steps.create-workspace.output.url}
+  apiKey: ${steps.provision-api-key.output.apiKey}
+  onboardingCallScheduled: ${steps.schedule-call.output.scheduled}
+
+timeout: 60000
+
+notifications:
+  onSuccess:
+    - channel: slack
+      webhook: ${env.SLACK_WEBHOOK_URL}
+      message: 🎉 New customer ${input.name} (${input.plan})
+  onError:
+    - channel: email
+      to: support@company.com
+      subject: Onboarding failed for ${input.email}
+---
+
+# Customer Onboarding Workflow
+
+Complete automated onboarding from signup through first use.
+
+## Flow Overview
+
+```
+Signup Form
+  ↓
+Create Account
+  ↓
+Track Event → Analytics
+  ↓
+Send Welcome Email
+  ↓
+Create Workspace
+  ↓
+Provision API Key
+  ↓
+Schedule Call (Enterprise only)
+  ↓
+Complete! 🎉
+```
+
+## Steps
+
+### 1. Create Account
+- Store user in database
+- Hash password securely
+- Return user ID
+
+### 2. Track Signup
+- Send event to analytics (Segment, Amplitude)
+- Include plan and referral source
+
+### 3. Send Welcome Email
+- Personalized welcome message
+- Getting started guide
+- Support contact info
+- Retries on failure
+
+### 4. Create Workspace
+- Default workspace with company name
+- Set up basic settings
+- Return workspace URL
+
+### 5. Provision API Key
+- Generate secure API key
+- Associate with workspace
+- Store in secure vault
+
+### 6. Schedule Call (Conditional)
+- Only for Enterprise plan
+- Send calendar invite
+- Assign to account executive
+
+### 7. Track Completion
+- Mark onboarding complete
+- Track duration
+- Trigger follow-up sequences
+
+## Customization by Plan
+
+### Free Plan
+- Basic onboarding
+- Self-service only
+- Community support
+
+### Pro Plan
+- Priority email support
+- Advanced features enabled
+- Usage alerts
+
+### Enterprise Plan
+- Dedicated onboarding call
+- Custom workspace setup
+- Account manager assigned
+- Slack Connect channel
+
+## Error Handling
+
+**Account Creation Fails:**
+- Return 400 error
+- Stop workflow
+- Log error for investigation
+
+**Email Fails:**
+- Retry 3 times with exponential backoff
+- Continue workflow (non-critical)
+- Alert support team
+
+**API Key Provisioning Fails:**
+- Stop workflow
+- Alert engineering team
+- Manual intervention required
+
+## Notifications
+
+**On Success:**
+- Slack notification to #sales
+- Internal tracking event
+- Update CRM
+
+**On Error:**
+- Email to support team
+- Include full error details
+- Create incident ticket
+
+## Metrics
+
+Tracks:
+- **Completion Rate** - % of signups that complete
+- **Time to Complete** - Average duration
+- **Step Failures** - Which steps fail most
+- **Plan Distribution** - Free vs Pro vs Enterprise
+
+## Example Output
+
+```yaml
+userId: usr_abc123
+workspaceId: ws_xyz789
+workspaceUrl: https://app.company.com/ws_xyz789
+apiKey: sk_live_***
+onboardingCallScheduled: true
+```
+
+## Related
+
+- [[../functions/sendEmail|Email Function]]
+- [[../agents/SupportAgent|Support Agent]]
+- [[../schemas/CustomerDatabase|Customer Database]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface SignupData {
+  email: string
+  name: string
+  password: string
+  companyName: string
+  plan: 'free' | 'pro' | 'enterprise'
+  referralSource: string
+}
+
+interface User {
+  id: string
+  email: string
+  name: string
+  passwordHash: string
+  createdAt: Date
+}
+
+interface Workspace {
+  id: string
+  name: string
+  userId: string
+  url: string
+  createdAt: Date
+}
+
+/**
+ * Customer Onboarding Workflow - Complete signup to first use
+ *
+ * Relationships:
+ * - SignupData creates User
+ * - User creates Workspace
+ * - User provisions APIKey
+ * - Enterprise User schedules OnboardingCall
+ */
+export const onboardCustomer: BusinessModule = $ => {
+  const { db, ai, api, send, on, decide } = $
+
+  on.user.signedUp(async (signup: SignupData) => {
+    // Create user account
+    const user = await db.users.create({
+      email: signup.email,
+      name: signup.name,
+      passwordHash: await api.post('https://api.bcrypt.com/hash', { password: signup.password }),
+      plan: signup.plan,
+      createdAt: new Date(),
+    })
+
+    // Track signup event
+    await db.analytics.track({
+      event: 'user_signed_up',
+      userId: user.id,
+      properties: {
+        plan: signup.plan,
+        source: signup.referralSource,
+      },
+    })
+
+    // AI-powered personalized welcome email
+    const welcomeMessage = await ai.generate({
+      prompt: `Generate a personalized welcome email for ${user.name} who signed up for ${signup.plan} plan.
+        Make it warm, helpful, and mention key features relevant to their plan.`,
+      maxTokens: 500,
+    })
+
+    await send.email(user.email, 'Welcome!', {
+      personalizedMessage: welcomeMessage,
+    })
+
+    // Create workspace
+    const workspace = await db.workspaces.create({
+      name: signup.companyName,
+      userId: user.id,
+      url: `https://app.example.com/${signup.companyName.toLowerCase().replace(/\s+/g, '-')}`,
+      createdAt: new Date(),
+    })
+
+    // Provision API key
+    const apiKey = await db.apiKeys.create({
+      userId: user.id,
+      workspaceId: workspace.id,
+      key: `sk_live_${Math.random().toString(36).substring(7)}`,
+      createdAt: new Date(),
+    })
+
+    // Enterprise-specific onboarding
+    decide.if(signup.plan === 'enterprise').then(async () => {
+      // Schedule onboarding call
+      const call = await api.post('https://api.calendly.com/scheduled_events', {
+        invitee_email: user.email,
+        event_type: 'enterprise-onboarding',
+      })
+
+      // Assign account executive
+      const ae = await db.users.findOne({ role: 'account_executive', available: true })
+      await db.users.update(user.id, { assignedAE: ae.id })
+
+      // Send calendar invite
+      await send.email(user.email, 'Your Onboarding Call is Scheduled', {
+        calendarUrl: call.url,
+        aeName: ae.name,
+      })
+
+      // Notify Slack
+      await send.slack('#sales', `🎉 New enterprise customer: ${user.name} at ${signup.companyName}`)
+    })
+
+    // Track completion
+    await db.analytics.track({
+      event: 'onboarding_completed',
+      userId: user.id,
+      properties: {
+        duration: Date.now() - user.createdAt.getTime(),
+        plan: signup.plan,
+      },
+    })
+  })
+
+  on.workspace.created(async (workspace: Workspace) => {
+    // Set up default settings
+    await db.workspaceSettings.create({
+      workspaceId: workspace.id,
+      timezone: 'America/New_York',
+      notificationsEnabled: true,
+    })
+  })
+}
+```

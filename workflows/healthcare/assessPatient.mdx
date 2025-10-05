@@ -1,0 +1,546 @@
+---
+$type: Workflow
+$id: workflow/assesspatient
+title: assess-patient
+name: assess-patient
+description: Complete patient assessment from triage through care plan creation
+
+trigger:
+  type: webhook
+  source: patient-intake
+  event: patient.checked_in
+
+input:
+  patientId: Patient unique identifier (uuid)
+  visitType: Type of visit - routine, urgent, emergency (string)
+  chiefComplaint: Primary reason for visit (string)
+  vitalSigns: Patient vital signs object (object)
+  symptoms: List of reported symptoms (array)
+
+steps:
+  - name: retrieve-patient-history
+    description: Get complete patient medical history
+    function: get-patient-record
+    input:
+      patientId: ${input.patientId}
+    output:
+      - demographics
+      - medicalHistory
+      - medications
+      - allergies
+      - recentVisits
+      - labResults
+
+  - name: perform-triage
+    description: Determine urgency level and routing
+    agent: medical-triager
+    input:
+      chiefComplaint: ${input.chiefComplaint}
+      vitalSigns: ${input.vitalSigns}
+      symptoms: ${input.symptoms}
+      medicalHistory: ${steps.retrieve-patient-history.output.medicalHistory}
+      currentMedications: ${steps.retrieve-patient-history.output.medications}
+    output:
+      - acuityLevel
+      - triageNotes
+      - redFlags
+      - recommendedCareLevel
+
+  - name: check-emergency
+    description: Escalate if emergency condition detected
+    condition: ${steps.perform-triage.output.acuityLevel === 'level-1' || steps.perform-triage.output.acuityLevel === 'level-2'}
+    function: initiate-emergency-protocol
+    input:
+      patientId: ${input.patientId}
+      acuityLevel: ${steps.perform-triage.output.acuityLevel}
+      redFlags: ${steps.perform-triage.output.redFlags}
+    onError:
+      action: escalate
+      notification: immediate
+
+  - name: assign-provider
+    description: Assign appropriate healthcare provider
+    function: assign-provider
+    input:
+      patientId: ${input.patientId}
+      specialty: ${steps.perform-triage.output.recommendedSpecialty}
+      urgency: ${steps.perform-triage.output.acuityLevel}
+      locationId: ${input.locationId}
+    output:
+      - providerId
+      - providerName
+      - estimatedWaitTime
+
+  - name: prepare-exam-room
+    description: Set up exam room with necessary equipment
+    function: prepare-room
+    input:
+      patientAge: ${steps.retrieve-patient-history.output.demographics.age}
+      chiefComplaint: ${input.chiefComplaint}
+      specialNeeds: ${steps.retrieve-patient-history.output.specialNeeds}
+    output:
+      - roomNumber
+      - equipment
+
+  - name: review-medications
+    description: Check for drug interactions and contraindications
+    agent: pharmacy-checker
+    input:
+      currentMedications: ${steps.retrieve-patient-history.output.medications}
+      allergies: ${steps.retrieve-patient-history.output.allergies}
+      symptoms: ${input.symptoms}
+      vitalSigns: ${input.vitalSigns}
+    output:
+      - interactions
+      - contraindications
+      - warnings
+
+  - name: order-preliminary-tests
+    description: Order diagnostic tests based on symptoms
+    condition: ${steps.perform-triage.output.acuityLevel >= 'level-3'}
+    function: order-diagnostic-tests
+    input:
+      patientId: ${input.patientId}
+      chiefComplaint: ${input.chiefComplaint}
+      symptoms: ${input.symptoms}
+      providerPreferences: ${steps.assign-provider.output.providerPreferences}
+    output:
+      - orderedTests
+      - priority
+      - estimatedTime
+
+  - name: calculate-risk-scores
+    description: Calculate clinical risk scores
+    function: assess-risk
+    input:
+      vitalSigns: ${input.vitalSigns}
+      medicalHistory: ${steps.retrieve-patient-history.output.medicalHistory}
+      symptoms: ${input.symptoms}
+      demographics: ${steps.retrieve-patient-history.output.demographics}
+    output:
+      - cardiovascularRisk
+      - strokeRisk
+      - sepsisRisk
+      - fallRisk
+      - readmissionRisk
+
+  - name: check-preventive-care
+    description: Identify due preventive care screenings
+    function: check-preventive-care
+    input:
+      patientId: ${input.patientId}
+      demographics: ${steps.retrieve-patient-history.output.demographics}
+      lastVisitDate: ${steps.retrieve-patient-history.output.recentVisits[0].date}
+      medicalHistory: ${steps.retrieve-patient-history.output.medicalHistory}
+    output:
+      - dueScreenings
+      - immunizationsDue
+      - wellnessRecommendations
+
+  - name: generate-assessment-summary
+    description: Create comprehensive patient assessment
+    function: generate-assessment-summary
+    input:
+      patientId: ${input.patientId}
+      chiefComplaint: ${input.chiefComplaint}
+      vitalSigns: ${input.vitalSigns}
+      triage: ${steps.perform-triage.output}
+      history: ${steps.retrieve-patient-history.output}
+      medicationReview: ${steps.review-medications.output}
+      riskScores: ${steps.calculate-risk-scores.output}
+      preventiveCare: ${steps.check-preventive-care.output}
+    output:
+      - assessmentSummary
+      - workingDiagnosis
+      - differentialDiagnosis
+
+  - name: create-care-plan
+    description: Generate initial care plan
+    function: create-care-plan
+    input:
+      patientId: ${input.patientId}
+      assessment: ${steps.generate-assessment-summary.output}
+      riskFactors: ${steps.calculate-risk-scores.output}
+      currentMedications: ${steps.retrieve-patient-history.output.medications}
+      allergies: ${steps.retrieve-patient-history.output.allergies}
+    output:
+      - carePlan
+      - treatmentGoals
+      - interventions
+      - patientEducation
+
+  - name: schedule-follow-up
+    description: Schedule follow-up appointment if needed
+    condition: ${steps.create-care-plan.output.followUpRequired}
+    function: schedule-appointment
+    input:
+      patientId: ${input.patientId}
+      providerId: ${steps.assign-provider.output.providerId}
+      appointmentType: follow-up
+      recommendedTimeframe: ${steps.create-care-plan.output.followUpTimeframe}
+    output:
+      - appointmentId
+      - appointmentDate
+      - confirmationSent
+
+  - name: prepare-patient-instructions
+    description: Generate patient education materials
+    function: generate-patient-instructions
+    input:
+      patientId: ${input.patientId}
+      carePlan: ${steps.create-care-plan.output}
+      literacyLevel: ${steps.retrieve-patient-history.output.demographics.healthLiteracy}
+      preferredLanguage: ${steps.retrieve-patient-history.output.demographics.language}
+    output:
+      - instructions
+      - educationMaterials
+      - warningSigns
+
+  - name: notify-provider
+    description: Alert provider that patient is ready
+    function: send-notification
+    input:
+      providerId: ${steps.assign-provider.output.providerId}
+      channel: ehr-notification
+      message: Patient ready in Room ${steps.prepare-exam-room.output.roomNumber}
+      priority: ${steps.perform-triage.output.acuityLevel}
+      data:
+        patientId: ${input.patientId}
+        patientName: ${steps.retrieve-patient-history.output.demographics.name}
+        chiefComplaint: ${input.chiefComplaint}
+        assessmentUrl: ${steps.generate-assessment-summary.output.reportUrl}
+
+  - name: update-ehr
+    description: Document assessment in electronic health record
+    function: update-patient-record
+    input:
+      patientId: ${input.patientId}
+      visitId: ${workflow.visitId}
+      assessmentDate: ${workflow.startTime}
+      chiefComplaint: ${input.chiefComplaint}
+      triage: ${steps.perform-triage.output}
+      vitalSigns: ${input.vitalSigns}
+      assessment: ${steps.generate-assessment-summary.output}
+      carePlan: ${steps.create-care-plan.output}
+      assignedProvider: ${steps.assign-provider.output.providerId}
+
+output:
+  visitId: ${workflow.visitId}
+  patientId: ${input.patientId}
+  acuityLevel: ${steps.perform-triage.output.acuityLevel}
+  assignedProvider: ${steps.assign-provider.output.providerName}
+  roomNumber: ${steps.prepare-exam-room.output.roomNumber}
+  assessmentSummary: ${steps.generate-assessment-summary.output.assessmentSummary}
+  carePlan: ${steps.create-care-plan.output.carePlan}
+  estimatedWaitTime: ${steps.assign-provider.output.estimatedWaitTime}
+  emergencyEscalated: ${steps.check-emergency.completed}
+
+timeout: 300000
+
+notifications:
+  onSuccess:
+    - channel: ehr
+      providerId: ${steps.assign-provider.output.providerId}
+      message: Patient assessment complete
+  onError:
+    - channel: page
+      to: charge-nurse
+      message: Patient assessment failed for ${input.patientId}
+---
+
+# Patient Assessment Workflow
+
+Complete patient assessment from check-in through provider handoff.
+
+## Flow Overview
+
+```
+Patient Check-In
+  ↓
+Retrieve Medical History
+  ↓
+Perform Triage → Check Emergency (if critical)
+  ↓
+Assign Provider
+  ↓
+Prepare Exam Room
+  ↓
+Review Medications
+  ↓
+Order Preliminary Tests (if needed)
+  ↓
+Calculate Risk Scores
+  ↓
+Check Preventive Care
+  ↓
+Generate Assessment Summary
+  ↓
+Create Care Plan → Schedule Follow-Up
+  ↓
+Prepare Patient Instructions
+  ↓
+Notify Provider → Update EHR
+```
+
+## Visit Types
+
+### Routine Visit
+- Scheduled appointment
+- Non-urgent concern
+- Annual physical
+- Standard processing time
+
+### Urgent Visit
+- Same-day appointment
+- Concerning symptoms
+- Expedited processing
+- Provider availability prioritized
+
+### Emergency Visit
+- Immediate threat to life
+- Trauma or severe symptoms
+- Emergency protocols activated
+- Immediate provider notification
+
+## Acuity Levels (Emergency Severity Index)
+
+### Level 1 - Resuscitation
+- **Status:** Life-threatening
+- **Response:** Immediate (≤0 minutes)
+- **Examples:** Cardiac arrest, severe trauma, respiratory failure
+- **Action:** Emergency protocol, ICU alert
+
+### Level 2 - Emergent
+- **Status:** High risk, confused/lethargic/severe pain
+- **Response:** Immediate (≤10 minutes)
+- **Examples:** Chest pain, stroke symptoms, severe bleeding
+- **Action:** Fast-track to provider, continuous monitoring
+
+### Level 3 - Urgent
+- **Status:** Stable but may deteriorate
+- **Response:** Quick (≤30 minutes)
+- **Examples:** Moderate pain, mild shortness of breath
+- **Action:** Standard triage, diagnostic tests
+
+### Level 4 - Less Urgent
+- **Status:** Stable condition
+- **Response:** Standard (≤60 minutes)
+- **Examples:** Minor injuries, mild symptoms
+- **Action:** Regular queue
+
+### Level 5 - Non-Urgent
+- **Status:** Very stable
+- **Response:** Flexible (≤120 minutes)
+- **Examples:** Prescription refills, chronic stable conditions
+- **Action:** May be redirected to lower acuity setting
+
+## Clinical Risk Scores
+
+### Cardiovascular Risk (ASCVD Score)
+Factors:
+- Age, sex, race
+- Total cholesterol, HDL
+- Systolic blood pressure
+- Smoking status
+- Diabetes
+
+**10-Year Risk:**
+- <5% - Low risk
+- 5-7.5% - Borderline
+- 7.5-20% - Intermediate
+- >20% - High risk
+
+### Stroke Risk (CHA₂DS₂-VASc)
+For atrial fibrillation patients:
+- Congestive heart failure (1 point)
+- Hypertension (1 point)
+- Age ≥75 (2 points)
+- Diabetes (1 point)
+- Stroke/TIA history (2 points)
+- Vascular disease (1 point)
+- Age 65-74 (1 point)
+- Sex (female) (1 point)
+
+**Score Interpretation:**
+- 0 - Low risk
+- 1 - Moderate risk
+- ≥2 - High risk (anticoagulation recommended)
+
+### Sepsis Risk (qSOFA)
+Quick assessment:
+- Respiratory rate ≥22/min (1 point)
+- Altered mentation (1 point)
+- Systolic BP ≤100 mmHg (1 point)
+
+**Score ≥2:** High risk, initiate sepsis protocol
+
+### Fall Risk (Morse Fall Scale)
+- History of falling (25 points)
+- Secondary diagnosis (15 points)
+- Ambulatory aid (0-30 points)
+- IV therapy (20 points)
+- Gait (0-30 points)
+- Mental status (0-15 points)
+
+**Risk Levels:**
+- 0-24: Low risk
+- 25-50: Moderate risk
+- ≥51: High risk
+
+## Preventive Care Guidelines
+
+### Adult Preventive Services
+
+**Age 18-39:**
+- Blood pressure screening (annually)
+- Cholesterol screening (every 5 years if risk factors)
+- Depression screening (annually)
+- STI screening (if sexually active)
+
+**Age 40-49:**
+- All of above, plus:
+- Diabetes screening (every 3 years if overweight)
+- Mammogram (age 40-49, discuss with provider)
+
+**Age 50-64:**
+- All of above, plus:
+- Colorectal cancer screening (every 10 years)
+- Mammogram (every 1-2 years)
+- Lung cancer screening (if smoking history)
+
+**Age 65+:**
+- All appropriate from above, plus:
+- Annual wellness visit
+- Fall risk assessment
+- Bone density scan (women)
+- Shingles vaccine
+- Pneumonia vaccine
+
+## Care Plan Components
+
+### Assessment
+- Chief complaint
+- History of present illness
+- Review of systems
+- Physical examination findings
+- Diagnostic test results
+
+### Diagnosis
+- Working diagnosis
+- Differential diagnoses
+- ICD-10 codes
+
+### Treatment Goals
+- Short-term objectives
+- Long-term goals
+- Patient-centered outcomes
+
+### Interventions
+- Medications prescribed
+- Procedures ordered
+- Lifestyle modifications
+- Referrals to specialists
+
+### Patient Education
+- Condition explanation
+- Medication instructions
+- Warning signs
+- Self-care instructions
+- When to seek urgent care
+
+### Follow-Up
+- Return visit timing
+- Scheduled appointments
+- Test monitoring
+- Care coordination
+
+## Example Assessment
+
+**Patient:** Sarah Johnson, 58yo female
+**Visit Type:** Urgent
+**Chief Complaint:** "Chest discomfort and shortness of breath for 2 hours"
+
+**Vital Signs:**
+- BP: 165/95 (elevated)
+- HR: 102 (elevated)
+- RR: 22 (elevated)
+- SpO2: 95% (slightly low)
+- Temp: 98.6°F (normal)
+
+**Triage Assessment:**
+- **Acuity:** Level 2 (Emergent)
+- **Red Flags:** Chest pain, elevated vitals, dyspnea
+- **Recommended:** Emergency Department
+
+**Medical History:**
+- Hypertension (controlled with medication)
+- Type 2 Diabetes
+- Former smoker (quit 5 years ago)
+
+**Risk Scores:**
+- Cardiovascular Risk: 22% (high)
+- qSOFA: 1 (low sepsis risk)
+- Fall Risk: 15 (low)
+
+**Assessment Summary:**
+```
+58yo female with cardiac risk factors presenting with chest discomfort
+and dyspnea. Elevated BP and HR. Concerning for acute coronary syndrome.
+
+Differential Diagnosis:
+1. Acute Coronary Syndrome (most likely)
+2. Hypertensive urgency
+3. Anxiety/panic attack (less likely given risk factors)
+
+Immediate Actions:
+- Activate chest pain protocol
+- EKG (stat)
+- Cardiac enzymes (stat)
+- Aspirin 325mg PO
+- Continuous cardiac monitoring
+- IV access
+- Cardiology consult
+```
+
+**Care Plan:**
+- Transfer to ED chest pain unit
+- Serial cardiac enzymes q6h
+- Admit for observation if troponin elevated
+- Cardiology to evaluate for cath lab
+- Patient education: medication compliance, diet, exercise
+
+## Integration Points
+
+- **Agents:** [[../agents/MedicalTriager|Medical Triage Agent]], [[../agents/PharmacyChecker|Pharmacy Checker]]
+- **Schemas:** [[../schemas/PatientRecord|Patient Records]]
+- **Workflows:** [[dispenseMedication|Medication Dispensing]]
+- **Functions:** [[../functions/assessRisk|Risk Assessment]]
+
+## Related
+
+- [[../agents/MedicalTriager|Medical Triage Agent]]
+- [[../agents/PharmacyChecker|Pharmacy Checker Agent]]
+- [[dispenseMedication|Dispense Medication Workflow]]
+- [[../schemas/PatientRecord|Patient Records Schema]]
+- [[../functions/assessRisk|Assess Risk Function]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Patient { id: string; name: string; symptoms: string[]; vitalSigns: any }
+interface Assessment { patientId: string; severity: 'low' | 'medium' | 'high' | 'critical'; recommendation: string }
+
+export const assessPatient: BusinessModule = $ => {
+  const { db, ai, on, decide } = $
+
+  on.patient.admitted(async (patient: Patient) => {
+    const assessment = await ai.classify(`Symptoms: ${patient.symptoms.join(', ')}. Vitals: ${JSON.stringify(patient.vitalSigns)}`, ['low', 'medium', 'high', 'critical'])
+
+    decide.switch(assessment)
+      .case('critical', async () => { await db.patients.update(patient.id, { priority: 1, room: 'ER' }) })
+      .case('high', async () => { await db.patients.update(patient.id, { priority: 2, room: 'ICU' }) })
+  })
+}
+```

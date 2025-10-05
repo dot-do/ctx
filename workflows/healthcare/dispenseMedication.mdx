@@ -1,0 +1,222 @@
+---
+$type: Workflow
+$id: workflow/dispensemedication
+title: dispenseMedication
+name: dispenseMedication
+description: Pharmacy prescription fulfillment workflow
+
+trigger:
+  type: api
+  method: POST
+  path: /pharmacy/dispense
+
+input:
+  prescriptionId: Prescription identifier
+  patientId: Patient identifier
+  pharmacistId: Pharmacist identifier
+
+steps:
+  - name: verify-prescription
+    description: Verify prescription is valid and active
+    function: verify-prescription
+    input:
+      prescriptionId: ${input.prescriptionId}
+    onError:
+      action: return
+      status: 400
+      message: Invalid or expired prescription
+
+  - name: check-interactions
+    description: Check for drug interactions
+    agent: PharmacyChecker
+    input:
+      patientId: ${input.patientId}
+      newMedication: ${steps.verify-prescription.output.medication}
+      dosage: ${steps.verify-prescription.output.dosage}
+
+  - name: verify-insurance
+    description: Verify insurance coverage
+    function: check-insurance-coverage
+    input:
+      patientId: ${input.patientId}
+      medication: ${steps.verify-prescription.output.medication}
+      cost: ${steps.verify-prescription.output.cost}
+
+  - name: prepare-medication
+    description: Prepare medication for dispensing
+    function: prepare-medication
+    input:
+      prescriptionId: ${input.prescriptionId}
+      quantity: ${steps.verify-prescription.output.quantity}
+      instructions: ${steps.verify-prescription.output.instructions}
+
+  - name: counsel-patient
+    description: Provide medication counseling
+    condition: ${steps.check-interactions.output.requiresCounseling}
+    agent: PharmacyChecker
+    input:
+      patientId: ${input.patientId}
+      medication: ${steps.verify-prescription.output.medication}
+      interactions: ${steps.check-interactions.output.interactions}
+      sideEffects: ${steps.check-interactions.output.sideEffects}
+
+  - name: dispense
+    description: Record dispensing in system
+    function: record-dispensing
+    input:
+      prescriptionId: ${input.prescriptionId}
+      patientId: ${input.patientId}
+      pharmacistId: ${input.pharmacistId}
+      dispensedAt: ${workflow.timestamp}
+
+  - name: notify-prescriber
+    description: Notify prescriber of dispensing
+    condition: ${steps.check-interactions.output.interactions.length > 0}
+    function: send-email
+    input:
+      to: ${steps.verify-prescription.output.prescriberEmail}
+      template: dispensing-notification
+      data:
+        patientId: ${input.patientId}
+        medication: ${steps.verify-prescription.output.medication}
+        interactions: ${steps.check-interactions.output.interactions}
+
+output:
+  dispensedPrescriptionId: ${steps.dispense.output.id}
+  patientCost: ${steps.verify-insurance.output.patientCost}
+  counselingProvided: ${steps.counsel-patient.output.completed}
+
+timeout: 30000
+---
+
+# Dispense Medication Workflow
+
+Complete pharmacy prescription fulfillment process with safety checks.
+
+## Flow
+
+```
+Receive Prescription
+  ↓
+Verify Valid → ERROR if expired/invalid
+  ↓
+Check Drug Interactions → FLAG if found
+  ↓
+Verify Insurance Coverage
+  ↓
+Prepare Medication
+  ↓
+Counsel Patient (if needed)
+  ↓
+Record Dispensing
+  ↓
+Notify Prescriber (if interactions)
+  ↓
+Complete! 💊
+```
+
+## Safety Checks
+
+### Drug Interaction Checking
+- Patient medication history review
+- New medication cross-reference
+- Alert on potential interactions
+- Require pharmacist counseling if flagged
+
+### Insurance Verification
+- Check coverage eligibility
+- Calculate patient copay
+- Process prior authorization if needed
+- Alert if not covered
+
+### Prescription Validation
+- Verify not expired
+- Check refill count
+- Confirm prescriber DEA number (controlled substances)
+- Validate dosage and quantity
+
+## Counseling Requirements
+
+**Automatic counseling required for:**
+- New medications
+- Drug interactions detected
+- High-risk medications (narcotics, blood thinners)
+- Patient request
+
+**Counseling covers:**
+- How to take medication
+- Potential side effects
+- Drug interactions and food restrictions
+- What to do if dose missed
+
+## Error Handling
+
+**Invalid Prescription:**
+- Return 400 error
+- Do not dispense
+- Contact prescriber for clarification
+
+**Drug Interactions:**
+- Continue workflow with flag
+- Require pharmacist review
+- Document counseling provided
+- Notify prescriber
+
+**Insurance Rejection:**
+- Offer cash price
+- Check alternative medications
+- Assist with prior authorization
+
+## Example Request
+
+```yaml
+POST /pharmacy/dispense
+prescriptionId: RX-12345
+patientId: PT-67890
+pharmacistId: RPH-001
+```
+
+## Example Response
+
+```yaml
+dispensedPrescriptionId: DX-98765
+patientCost: 1500  # $15.00
+counselingProvided: true
+interactions:
+  - medication: Warfarin
+    severity: Moderate
+    counselingGiven: true
+```
+
+## Compliance
+
+**HIPAA:** All patient data encrypted
+**DEA:** Controlled substance tracking
+**State Law:** Pharmacist counseling documented
+
+## Related
+
+- [[../agents/PharmacyChecker|Pharmacy Checker Agent]]
+- [[assessPatient|Assess Patient Workflow]]
+- [[../schemas/PatientRecord|Patient Record Schema]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface Prescription { id: string; patientId: string; medication: string; dosage: string; refills: number }
+
+export const dispenseMedication: BusinessModule = $ => {
+  const { db, ai, send, on, decide } = $
+
+  on.prescription.filled(async (rx: Prescription) => {
+    const patient = await db.patients.findById(rx.patientId)
+    const interactions = await ai.generate({ prompt: `Check drug interactions for ${rx.medication} with existing meds: ${patient.medications.join(', ')}`, format: 'json' })
+
+    decide.if(interactions.hasConflict).then(async () => {
+      await send.email(patient.pharmacist, 'Drug Interaction Alert', { patientId: rx.patientId, interaction: interactions.description })
+    })
+  })
+}
+```

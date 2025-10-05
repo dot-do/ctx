@@ -1,0 +1,368 @@
+---
+$type: Workflow
+$id: workflow/emailwarming
+id: email-warming
+name: Email Domain Warming
+description: Automated IP and domain warmup workflow with gradual volume increases and monitoring
+category: email
+status: active
+trigger: manual
+inputs:
+  - name: domainId
+    type: string
+    required: true
+    description: Email domain ID to warm up
+  - name: warmupSchedule
+    type: string
+    required: false
+    default: standard
+    enum: [conservative, standard, aggressive, custom]
+    description: Warmup schedule type
+  - name: customSchedule
+    type: array
+    required: false
+    description: Custom daily volume limits (only if warmupSchedule=custom)
+  - name: bounceThreshold
+    type: number
+    required: false
+    default: 0.05
+    description: Maximum bounce rate before auto-pause (default 5%)
+  - name: complaintThreshold
+    type: number
+    required: false
+    default: 0.001
+    description: Maximum complaint rate before auto-pause (default 0.1%)
+outputs:
+  - name: warmupId
+    type: string
+    description: Warmup process ID
+  - name: currentDay
+    type: number
+    description: Current warmup day
+  - name: dailyLimit
+    type: number
+    description: Current daily sending limit
+  - name: status
+    type: string
+    description: Warmup status
+estimatedDuration: 14-56 days (schedule dependent)
+---
+
+# Email Domain Warming Workflow
+
+Automated workflow for gradually warming up a new email sending domain to build sender reputation.
+
+## Overview
+
+**Purpose:** Systematically increase sending volume over time to establish positive sender reputation with ISPs (Gmail, Outlook, Yahoo, etc.)
+
+**Why warming is critical:**
+- ISPs monitor sudden volume spikes as spam indicators
+- Gradual volume increases signal legitimate sender
+- Builds trust with ISPs before high-volume sending
+- Reduces risk of being blacklisted or throttled
+
+**When to use:**
+- New domain setup for the first time
+- After long period of inactivity (6+ months)
+- When switching IP addresses
+- Recovering from reputation damage
+
+## Warmup Schedules
+
+### Conservative (6-8 weeks)
+- **Best for:** Highest deliverability priority, enterprise use
+- **Risk level:** Very low
+- **Daily progression:** 50 → 100 → 150 → 200 → 250 → 300 → 400 → 500...
+- **Use when:** Brand reputation is critical, sending to engaged lists
+
+### Standard (4 weeks)
+- **Best for:** Most cold email campaigns
+- **Risk level:** Low
+- **Daily progression:** 50 → 100 → 200 → 500 → 1000 → 2000 → 5000 → 10000...
+- **Use when:** Balanced approach, typical cold outreach
+
+### Aggressive (2 weeks)
+- **Best for:** Time-sensitive campaigns, experienced senders
+- **Risk level:** Medium
+- **Daily progression:** 100 → 500 → 1000 → 2000 → 5000 → 10000 → 20000...
+- **Use when:** Need to ramp up quickly, have clean list, know what you're doing
+
+### Custom
+- **Best for:** Specific requirements, expert users
+- **Risk level:** Depends on configuration
+- **Progression:** User-defined daily limits
+- **Use when:** You have specific volume requirements or constraints
+
+## Workflow Steps
+
+### Step 1: Initialize Warmup
+
+**Service:** `email-warming`
+**Action:** `startWarmup`
+
+```typescript
+const warmup = await env.EMAIL_WARMING.startWarmup({
+  domainId: input.domainId,
+  scheduleType: input.warmupSchedule,
+  customSchedule: input.customSchedule,
+  bounceThreshold: input.bounceThreshold || 0.05,
+  complaintThreshold: input.complaintThreshold || 0.001
+})
+
+// Store warmup ID for tracking
+const warmupId = warmup.id
+```
+
+**Checks:**
+- Domain exists and verified
+- DNS authentication configured (SPF/DKIM/DMARC)
+- ESP connected and working
+- No active warmup already in progress
+
+**Outputs:** warmupId, schedule, currentDay, dailyLimit
+
+### Step 2: Daily Volume Management (Automated)
+
+**Trigger:** Cron (daily at 00:00 UTC)
+**Service:** `email-warming`
+
+```typescript
+// Get all active warmup processes
+const activeWarmups = await env.DB.execute(
+  `SELECT * FROM email_warmup WHERE status = 'in_progress'`
+)
+
+for (const warmup of activeWarmups.rows) {
+  // Check if 80% of daily limit reached
+  const stats = await env.EMAIL_WARMING.getStats(warmup.domain_id)
+
+  if (stats.sentToday >= stats.dailyLimit * 0.8) {
+    // Advance to next day
+    await env.EMAIL_WARMING.advanceWarmup({
+      domainId: warmup.domain_id
+    })
+  }
+}
+```
+
+**Actions:**
+- Check sending progress against daily limit
+- Advance to next day if 80%+ sent
+- Update daily limit based on schedule
+- Log progress in database
+
+### Step 3: Real-time Monitoring
+
+**Trigger:** After each email sent
+**Service:** `email-warming`
+
+```typescript
+// Record send and check limits
+await env.EMAIL_WARMING.recordSend({
+  domainId,
+  status: 'sent', // or 'bounced', 'complained', etc.
+  email: recipientEmail
+})
+
+// Check if limit reached
+const limitCheck = await env.EMAIL_WARMING.checkLimit({
+  domainId,
+  count: 1
+})
+
+if (!limitCheck.allowed) {
+  // Daily limit reached - pause until next day
+  throw new Error(`Daily limit reached: ${limitCheck.dailyLimit}`)
+}
+```
+
+**Monitors:**
+- Emails sent today vs daily limit
+- Bounce rate (auto-pause if > threshold)
+- Complaint rate (auto-pause if > threshold)
+- Delivery rate
+- Engagement metrics (opens, clicks, replies)
+
+### Step 4: Threshold-Based Auto-Pause
+
+**Trigger:** Automatic when thresholds exceeded
+**Service:** `email-warming`
+
+```typescript
+// Triggered automatically when recording sends
+if (currentDaySchedule.bounceRate > config.bounceThreshold) {
+  await env.EMAIL_WARMING.pauseWarmup({
+    domainId,
+    reason: `Bounce rate ${(currentDaySchedule.bounceRate * 100).toFixed(2)}% exceeds threshold ${(config.bounceThreshold * 100).toFixed(2)}%`
+  })
+
+  // Alert administrators
+  await sendAlert({
+    severity: 'critical',
+    message: 'Warmup auto-paused due to high bounce rate',
+    domainId
+  })
+}
+
+if (currentDaySchedule.complaintRate > config.complaintThreshold) {
+  await env.EMAIL_WARMING.pauseWarmup({
+    domainId,
+    reason: `Complaint rate ${(currentDaySchedule.complaintRate * 100).toFixed(4)}% exceeds threshold`
+  })
+
+  await sendAlert({
+    severity: 'critical',
+    message: 'Warmup auto-paused due to spam complaints',
+    domainId
+  })
+}
+```
+
+**Auto-pause conditions:**
+- Bounce rate > 5% (default threshold)
+- Complaint rate > 0.1% (default threshold)
+- Hard bounce spike detected
+- ISP throttling detected
+
+**Recovery actions:**
+- Investigate and fix issue
+- Clean email list
+- Resume warmup manually when ready
+
+### Step 5: Completion Check
+
+**Trigger:** Daily check
+**Service:** `email-warming`
+
+```typescript
+const progress = await env.EMAIL_WARMING.getStats(domainId)
+
+if (progress.currentDay >= progress.totalDays &&
+    progress.status === 'in_progress') {
+  // Mark warmup as completed
+  await env.EMAIL_WARMING.completeWarmup(domainId)
+
+  // Update domain status
+  await env.DB.execute(
+    `UPDATE email_domains SET warmup_status = 'completed' WHERE id = ?`,
+    [domainId]
+  )
+
+  // Notify user
+  await sendNotification({
+    type: 'warmup_completed',
+    domainId,
+    message: 'Domain warmup successfully completed! Ready for full-volume sending.'
+  })
+}
+```
+
+**Completion criteria:**
+- All scheduled days completed
+- 80%+ daily limit reached each day
+- Metrics within acceptable ranges
+- No critical issues
+
+## Best Practices
+
+### List Quality
+- **Use highly engaged contacts first**
+- Start with opens/clicks from previous campaigns
+- Avoid purchased or old lists initially
+- Verify email addresses before sending
+
+### Content Quality
+- Personalize every email ({{firstName}}, {{company}})
+- Provide genuine value
+- Include working unsubscribe links
+- Use clean HTML (avoid spam triggers)
+
+### Timing
+- Send during business hours (9am-4pm recipient time)
+- Avoid weekends initially
+- Spread sends throughout the day
+- Respect timezone differences
+
+### Engagement
+- Higher open/click rates boost warmup
+- Encourage replies
+- Monitor unsubscribes closely
+- Remove bounces immediately
+
+### Monitoring
+- Check metrics daily
+- Watch for ISP feedback
+- Monitor blacklists
+- Track delivery rates per ISP
+
+## Common Issues
+
+### High Bounce Rate
+**Symptoms:** >5% bounce rate
+**Causes:** Bad list, invalid emails, purchased data
+**Fix:** Clean list, verify addresses, remove bounces
+
+### Spam Complaints
+**Symptoms:** >0.1% complaint rate
+**Causes:** Irrelevant content, aggressive messaging, unclear sender
+**Fix:** Improve targeting, soften messaging, clarify sender identity
+
+### Low Engagement
+**Symptoms:** <10% open rate
+**Causes:** Poor subject lines, wrong timing, bad targeting
+**Fix:** A/B test subjects, optimize send times, segment better
+
+### ISP Throttling
+**Symptoms:** Delays, deferrals, low delivery rate
+**Causes:** Too fast ramp-up, reputation concerns
+**Fix:** Slow down schedule, improve engagement, authenticate properly
+
+## Success Metrics
+
+After successful warmup:
+- **Delivery rate:** 98%+
+- **Bounce rate:** <2%
+- **Complaint rate:** <0.05%
+- **Open rate:** 20%+ (for warm list)
+- **No blacklist listings**
+- **Inbox placement:** 80%+ (not spam folder)
+
+## Manual Controls
+
+### Pause Warmup
+```bash
+POST /warmup/:domainId/pause
+```
+Use when: Issues detected, need to investigate, list cleanup required
+
+### Resume Warmup
+```bash
+POST /warmup/:domainId/resume
+```
+Use when: Issues resolved, ready to continue
+
+### Restart Warmup
+```bash
+POST /warmup/:domainId/restart
+```
+Use when: Major issues, starting over with cleaned list
+
+## Integration with Campaign Management
+
+During warmup:
+- Campaigns automatically respect daily limits
+- System prioritizes highest-engagement contacts
+- Volume distributed across campaigns
+- Manual sends may be restricted
+
+After warmup:
+- Full daily volume available (50k-100k+)
+- All campaigns unrestricted
+- Reputation maintained via ongoing monitoring
+
+## Related Workflows
+
+- **domain-onboarding** → triggers warmup after verification
+- **deliverability-monitoring** → runs continuously during warmup
+- **campaign-creation** → checks warmup status before launching

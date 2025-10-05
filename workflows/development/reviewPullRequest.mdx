@@ -1,0 +1,664 @@
+---
+$type: Workflow
+$id: workflow/reviewpullrequest
+title: Review Pull Request
+name: Review Pull Request
+description: Automated PR review workflow - checks, code review, approval, merge
+category: Code Review
+occupation: [[Software Developer]]
+agents:
+  - [[agents/CodeReviewer]]
+  - [[agents/SecurityAuditor]]
+  - [[agents/TestGenerator]]
+functions:
+  - [[functions/parseCode]]
+sources:
+  - [[sources/GitHubActivity]]
+triggers:
+  - type: pull-request
+    action: opened
+  - type: pull-request
+    action: synchronize
+steps:
+  - id: validate
+    name: Validate PR
+    type: action
+  - id: automated-checks
+    name: Run Automated Checks
+    type: parallel
+    dependsOn: [validate]
+    steps:
+      - id: lint
+        name: Lint Code
+        type: action
+      - id: typecheck
+        name: Type Check
+        type: action
+      - id: tests
+        name: Run Tests
+        type: workflow
+        workflow: [[workflows/runTests]]
+      - id: security
+        name: Security Scan
+        type: agent
+        agent: [[agents/SecurityAuditor]]
+  - id: code-review
+    name: AI Code Review
+    type: agent
+    agent: [[agents/CodeReviewer]]
+    dependsOn: [automated-checks]
+  - id: human-review
+    name: Request Human Review
+    type: manual
+    dependsOn: [code-review]
+  - id: approval
+    name: Approve Changes
+    type: manual
+    dependsOn: [human-review]
+  - id: merge
+    name: Merge PR
+    type: action
+    dependsOn: [approval]
+duration: (number) 5-30 minutes
+sla: (number) 99.5
+---
+
+# Review Pull Request Workflow
+
+Automated pull request review workflow that runs checks, performs code review, and manages the approval and merge process.
+
+## Overview
+
+This workflow provides comprehensive PR review:
+
+1. **Validate** - Check PR metadata and requirements
+2. **Automated Checks** - Lint, typecheck, test, security scan (parallel)
+3. **AI Review** - [[agents/CodeReviewer]] analyzes code
+4. **Human Review** - Request review from team members
+5. **Approval** - Approve or request changes
+6. **Merge** - Merge to target branch
+
+## Trigger Conditions
+
+### Automatic Triggers
+
+**Pull Request Opened:**
+```yaml
+trigger:
+  type: pull-request
+  action: opened
+  branches:
+    - main
+    - develop
+```
+
+**Pull Request Updated:**
+```yaml
+trigger:
+  type: pull-request
+  action: synchronize # New commits pushed
+```
+
+**Draft Ready for Review:**
+```yaml
+trigger:
+  type: pull-request
+  action: ready_for_review
+```
+
+## Workflow Steps
+
+### Step 1: Validate PR
+
+```typescript
+async function validatePR(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+
+  const validations = []
+
+  // Check PR title format
+  if (!isPRTitleValid(pullRequest.title)) {
+    validations.push({
+      check: 'title',
+      passed: false,
+      message: 'PR title must match: type(scope): description'
+    })
+  } else {
+    validations.push({ check: 'title', passed: true })
+  }
+
+  // Check PR description
+  if (!pullRequest.body || pullRequest.body.length < 20) {
+    validations.push({
+      check: 'description',
+      passed: false,
+      message: 'PR description must be at least 20 characters'
+    })
+  } else {
+    validations.push({ check: 'description', passed: true })
+  }
+
+  // Check linked issues
+  const linkedIssues = extractIssueNumbers(pullRequest.body)
+  if (linkedIssues.length === 0) {
+    validations.push({
+      check: 'linked-issues',
+      passed: false,
+      message: 'PR must link to at least one issue'
+    })
+  } else {
+    validations.push({ check: 'linked-issues', passed: true })
+  }
+
+  // Check file count
+  if (pullRequest.changedFiles > 50) {
+    validations.push({
+      check: 'file-count',
+      passed: false,
+      message: 'PR should change fewer than 50 files'
+    })
+  } else {
+    validations.push({ check: 'file-count', passed: true })
+  }
+
+  const failed = validations.filter(v => !v.passed)
+
+  if (failed.length > 0) {
+    await commentOnPR(pullRequest, {
+      title: 'PR Validation Failed',
+      items: failed
+    })
+  }
+
+  return {
+    passed: failed.length === 0,
+    validations
+  }
+}
+
+function isPRTitleValid(title: string): boolean {
+  // Match: feat(api): add user endpoint
+  const pattern = /^(feat|fix|docs|style|refactor|perf|test|chore)(\(.+\))?: .+/
+  return pattern.test(title)
+}
+
+function extractIssueNumbers(body: string): string[] {
+  const pattern = /(closes|fixes|resolves) #(\d+)/gi
+  const matches = body.matchAll(pattern)
+  return Array.from(matches, m => m[2])
+}
+```
+
+**Validation Checks:**
+- PR title follows convention
+- Description is comprehensive
+- Linked to issue(s)
+- Reasonable file count
+- Labels applied
+
+### Step 2: Automated Checks (Parallel)
+
+#### 2a. Lint Code
+
+```typescript
+async function lintCode(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+
+  const result = await exec('npm run lint', {
+    cwd: pullRequest.headRef
+  })
+
+  return {
+    passed: result.exitCode === 0,
+    warnings: result.warnings,
+    errors: result.errors
+  }
+}
+```
+
+#### 2b. Type Check
+
+```typescript
+async function typeCheck(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+
+  const result = await exec('npm run typecheck', {
+    cwd: pullRequest.headRef
+  })
+
+  return {
+    passed: result.exitCode === 0,
+    errors: parseTypeScriptErrors(result.stdout)
+  }
+}
+```
+
+#### 2c. Run Tests
+
+Executes [[workflows/runTests]]:
+
+```typescript
+async function runTests(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+
+  const result = await runWorkflow('runTests', {
+    ref: pullRequest.headRef,
+    coverage: true,
+    failFast: true
+  })
+
+  return result
+}
+```
+
+#### 2d. Security Scan
+
+Uses [[agents/SecurityAuditor]]:
+
+```typescript
+async function securityScan(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+
+  const scanner = new SecurityAuditor()
+  const results = await scanner.scan({
+    ref: pullRequest.headRef,
+    diff: true, // Only scan changed files
+    includeOWASP: true,
+    includeDependencies: true
+  })
+
+  return results
+}
+```
+
+### Step 3: AI Code Review
+
+Uses [[agents/CodeReviewer]] to analyze code:
+
+```typescript
+async function codeReview(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+  const { automatedChecks } = context.steps
+
+  // Get PR diff
+  const diff = await getPRDiff(pullRequest)
+
+  // Parse changed files
+  const changedFiles = await parseChangedFiles(diff)
+
+  // Run code review agent
+  const reviewer = new CodeReviewer()
+  const review = await reviewer.review({
+    files: changedFiles,
+    context: {
+      lintResults: automatedChecks.lint,
+      typeErrors: automatedChecks.typecheck.errors,
+      testCoverage: automatedChecks.tests.coverage,
+      securityIssues: automatedChecks.security.issues
+    }
+  })
+
+  // Post review comments
+  for (const comment of review.comments) {
+    await postReviewComment(pullRequest, {
+      path: comment.file,
+      line: comment.line,
+      body: comment.message,
+      severity: comment.severity
+    })
+  }
+
+  // Post review summary
+  await postReviewSummary(pullRequest, {
+    issues: review.issueCount,
+    suggestions: review.suggestionCount,
+    overall: review.recommendation
+  })
+
+  return review
+}
+```
+
+**Review Focuses:**
+- Code quality and maintainability
+- Bug patterns and logic errors
+- Security vulnerabilities
+- Performance issues
+- Best practices
+- Test coverage
+
+### Step 4: Request Human Review
+
+```typescript
+async function requestHumanReview(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+  const { codeReview } = context.steps
+
+  // Determine reviewers based on changed files
+  const reviewers = await determineReviewers({
+    files: pullRequest.changedFiles,
+    author: pullRequest.author,
+    codeReview
+  })
+
+  // Request reviews
+  await requestReviews(pullRequest, {
+    reviewers,
+    requiredApprovals: codeReview.recommendation === 'approve' ? 1 : 2
+  })
+
+  // Notify on Slack
+  await slack.sendMessage({
+    channel: '#code-review',
+    text: `🔍 Review requested: ${pullRequest.title}`,
+    attachments: [
+      {
+        title: pullRequest.title,
+        text: pullRequest.body,
+        fields: [
+          { title: 'Author', value: pullRequest.author, short: true },
+          { title: 'Reviewers', value: reviewers.join(', '), short: true },
+          { title: 'AI Recommendation', value: codeReview.recommendation, short: true }
+        ],
+        actions: [
+          { type: 'button', text: 'Review on GitHub', url: pullRequest.url }
+        ]
+      }
+    ]
+  })
+
+  return { reviewers, requiredApprovals: 1 }
+}
+
+async function determineReviewers(options: {
+  files: string[]
+  author: string
+  codeReview: CodeReview
+}): Promise<string[]> {
+  const { files, author, codeReview } = options
+
+  // Get code owners for changed files
+  const codeOwners = await getCodeOwners(files)
+
+  // Remove PR author from reviewers
+  const reviewers = codeOwners.filter(r => r !== author)
+
+  // Add security expert if security issues found
+  if (codeReview.securityIssueCount > 0) {
+    reviewers.push('security-team')
+  }
+
+  // Add tech lead for large PRs
+  if (files.length > 20) {
+    reviewers.push('tech-lead')
+  }
+
+  return [...new Set(reviewers)] // Remove duplicates
+}
+```
+
+### Step 5: Approval
+
+Manual review and approval:
+
+```typescript
+async function approval(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+
+  // Wait for human reviews
+  const reviews = await waitForReviews(pullRequest, {
+    requiredApprovals: 1,
+    timeout: 86400000 // 24 hours
+  })
+
+  // Check review status
+  const approvals = reviews.filter(r => r.state === 'APPROVED')
+  const changesRequested = reviews.filter(r => r.state === 'CHANGES_REQUESTED')
+
+  if (changesRequested.length > 0) {
+    throw new Error('Changes requested by reviewers')
+  }
+
+  if (approvals.length < 1) {
+    throw new Error('Insufficient approvals')
+  }
+
+  return {
+    approved: true,
+    approvers: approvals.map(r => r.reviewer),
+    timestamp: new Date().toISOString()
+  }
+}
+```
+
+**Approval Requirements:**
+- At least 1 approval
+- No changes requested
+- All checks passed
+- Conflicts resolved
+
+### Step 6: Merge PR
+
+```typescript
+async function mergePR(context: WorkflowContext) {
+  const { pullRequest } = context.trigger
+  const { approval } = context.steps
+
+  if (!approval.approved) {
+    throw new Error('PR not approved')
+  }
+
+  // Check for merge conflicts
+  if (pullRequest.mergeable === false) {
+    throw new Error('PR has merge conflicts')
+  }
+
+  // Determine merge method
+  const mergeMethod = determineMergeMethod(pullRequest)
+
+  // Merge PR
+  const merge = await mergePullRequest(pullRequest, {
+    method: mergeMethod,
+    commitTitle: generateCommitTitle(pullRequest),
+    commitMessage: generateCommitMessage(pullRequest)
+  })
+
+  // Delete branch if configured
+  if (pullRequest.headRef !== 'main' && pullRequest.headRef !== 'develop') {
+    await deleteBranch(pullRequest.headRef)
+  }
+
+  // Post merge notification
+  await slack.sendMessage({
+    channel: '#deployments',
+    text: `✅ Merged: ${pullRequest.title}`,
+    attachments: [
+      {
+        fields: [
+          { title: 'Author', value: pullRequest.author, short: true },
+          { title: 'Merge Method', value: mergeMethod, short: true },
+          { title: 'Commit', value: merge.sha, short: false }
+        ]
+      }
+    ]
+  })
+
+  return {
+    merged: true,
+    sha: merge.sha,
+    method: mergeMethod
+  }
+}
+
+function determineMergeMethod(pr: PullRequest): 'merge' | 'squash' | 'rebase' {
+  // Use squash for feature branches with many commits
+  if (pr.commits > 5) {
+    return 'squash'
+  }
+
+  // Use rebase for single commits
+  if (pr.commits === 1) {
+    return 'rebase'
+  }
+
+  // Use merge for everything else
+  return 'merge'
+}
+```
+
+## Status Checks
+
+PR must pass all checks before merge:
+
+```yaml
+required-checks:
+  - lint
+  - typecheck
+  - tests
+  - security-scan
+  - code-review
+  - human-approval
+```
+
+## Auto-merge Configuration
+
+```yaml
+auto-merge:
+  enabled: true
+  conditions:
+    - all-checks-passed
+    - approved-by: 1
+    - no-conflicts
+    - branch-up-to-date
+
+  wait-for:
+    duration: 5m
+    reason: "Allow time for additional review"
+```
+
+## Review Comments Template
+
+```markdown
+## Code Review Summary
+
+**Overall Recommendation:** {{recommendation}}
+
+### Issues Found ({{issueCount}})
+
+{{#each issues}}
+#### {{severity}}: {{title}}
+
+**File:** `{{file}}:{{line}}`
+
+{{description}}
+
+**Suggestion:**
+```{{language}}
+{{suggestion}}
+```
+{{/each}}
+
+### Suggestions ({{suggestionCount}})
+
+{{#each suggestions}}
+- {{description}}
+{{/each}}
+
+### Metrics
+
+- **Lines Changed:** +{{additions}} / -{{deletions}}
+- **Files Changed:** {{filesChanged}}
+- **Test Coverage:** {{coverage}}%
+- **Complexity:** {{complexity}}
+
+---
+
+Generated by [[agents/CodeReviewer]]
+```
+
+## Configuration
+
+```yaml
+pull-request-review:
+  validation:
+    requireTitle: true
+    requireDescription: true
+    requireLinkedIssue: true
+    maxFiles: 50
+
+  checks:
+    parallel: true
+    timeout: 600000 # 10 minutes
+    required:
+      - lint
+      - typecheck
+      - tests
+      - security
+
+  review:
+    aiEnabled: true
+    humanRequired: true
+    requiredApprovals: 1
+    codeOwners: true
+
+  merge:
+    autoMerge: true
+    deleteBranch: true
+    methods:
+      feature: squash
+      hotfix: rebase
+      release: merge
+```
+
+## Metrics
+
+Tracks PR review metrics:
+
+- **Review Time**: Time from open to merge
+- **First Review Time**: Time to first review
+- **Approval Rate**: % of PRs approved
+- **Merge Rate**: % of PRs merged
+- **Comments per PR**: Average review comments
+
+## Related Examples
+
+- [[agents/CodeReviewer]] - AI code review
+- [[agents/SecurityAuditor]] - Security scanning
+- [[agents/TestGenerator]] - Generate missing tests
+- [[workflows/runTests]] - Test execution
+- [[workflows/fixBug]] - Bug fix workflow
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface PullRequest {
+  id: number
+  title: string
+  author: string
+  files: string[]
+  additions: number
+  deletions: number
+  status: 'open' | 'approved' | 'changes_requested' | 'merged'
+}
+
+export const reviewPullRequest: BusinessModule = $ => {
+  const { db, ai, api, send, on } = $
+
+  on.pullRequest.opened(async (pr: PullRequest) => {
+    const diff = await api.get(`https://api.github.com/repos/owner/repo/pulls/${pr.id}/files`)
+
+    // AI code review
+    const review = await ai.generate({
+      prompt: `Review this PR:\nTitle: ${pr.title}\nFiles: ${pr.files.join(', ')}\nDiff:\n${diff}\n\nProvide feedback on: code quality, security, performance, test coverage.`,
+      maxTokens: 1000,
+    })
+
+    await api.post(`https://api.github.com/repos/owner/repo/pulls/${pr.id}/reviews`, {
+      body: review,
+      event: 'COMMENT',
+    })
+  })
+}
+```

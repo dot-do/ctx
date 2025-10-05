@@ -1,0 +1,655 @@
+---
+$type: Workflow
+$id: workflow/runtests
+title: Run Tests
+name: Run Tests
+description: Test execution and reporting workflow - unit, integration, E2E tests with coverage
+category: Testing
+occupation: [[Software Developer]]
+agents:
+  - [[agents/TestGenerator]]
+functions:
+  - [[functions/parseCode]]
+sources:
+  - [[sources/GitHubActivity]]
+triggers:
+  - type: git-push
+    branches: [main, develop]
+  - type: pull-request
+    action: [opened, synchronize]
+  - type: schedule
+    cron: "0 */4 * * *" # Every 4 hours
+steps:
+  - id: setup
+    name: Setup Test Environment
+    type: action
+  - id: unit-tests
+    name: Run Unit Tests
+    type: action
+    dependsOn: [setup]
+  - id: integration-tests
+    name: Run Integration Tests
+    type: action
+    dependsOn: [setup]
+  - id: e2e-tests
+    name: Run E2E Tests
+    type: action
+    dependsOn: [setup]
+  - id: coverage
+    name: Generate Coverage Report
+    type: action
+    dependsOn: [unit-tests, integration-tests]
+  - id: report
+    name: Generate Test Report
+    type: action
+    dependsOn: [unit-tests, integration-tests, e2e-tests, coverage]
+  - id: notify
+    name: Notify Team
+    type: action
+    dependsOn: [report]
+duration: (number) 5-15 minutes
+sla: (number) 99.9
+---
+
+# Run Tests Workflow
+
+Comprehensive test execution workflow that runs unit, integration, and E2E tests with coverage reporting.
+
+## Overview
+
+This workflow executes a complete test suite:
+
+1. **Setup** - Prepare test environment
+2. **Unit Tests** - Fast, isolated tests
+3. **Integration Tests** - Component interaction tests
+4. **E2E Tests** - Full application flow tests
+5. **Coverage** - Generate coverage metrics
+6. **Report** - Create test report
+7. **Notify** - Alert team of results
+
+## Trigger Conditions
+
+### Automatic Triggers
+
+**Git Push:**
+```yaml
+trigger:
+  type: git-push
+  branches:
+    - main
+    - develop
+    - feature/*
+```
+
+**Pull Request:**
+```yaml
+trigger:
+  type: pull-request
+  action: [opened, synchronize, reopened]
+```
+
+**Scheduled:**
+```yaml
+trigger:
+  type: schedule
+  cron: "0 */4 * * *" # Every 4 hours
+```
+
+### Manual Triggers
+
+**Run Tests Button:**
+```yaml
+trigger:
+  type: manual
+  button: Run Tests
+  inputs:
+    - name: testType
+      type: select
+      options: [all, unit, integration, e2e]
+      default: all
+    - name: coverage
+      type: boolean
+      default: true
+```
+
+## Workflow Steps
+
+### Step 1: Setup Test Environment
+
+```typescript
+async function setupTestEnvironment(context: WorkflowContext) {
+  const { commit, branch } = context.trigger
+
+  // Checkout code
+  await git.checkout(commit)
+
+  // Install dependencies
+  await exec('npm ci')
+
+  // Set up test database
+  const testDb = await createTestDatabase({
+    name: `test_${commit}_${Date.now()}`,
+    schema: 'latest'
+  })
+
+  // Load test fixtures
+  await loadFixtures(testDb, {
+    users: 10,
+    products: 50,
+    orders: 100
+  })
+
+  // Start test services
+  const services = await startTestServices({
+    database: testDb,
+    redis: true,
+    s3: true
+  })
+
+  // Set environment variables
+  process.env.NODE_ENV = 'test'
+  process.env.DATABASE_URL = testDb.url
+  process.env.REDIS_URL = services.redis.url
+  process.env.S3_ENDPOINT = services.s3.endpoint
+
+  return {
+    ready: true,
+    database: testDb,
+    services,
+    timestamp: new Date().toISOString()
+  }
+}
+```
+
+### Step 2: Run Unit Tests
+
+```typescript
+async function runUnitTests(context: WorkflowContext) {
+  const startTime = Date.now()
+
+  // Run unit tests with coverage
+  const result = await exec('npm run test:unit -- --coverage', {
+    env: {
+      ...process.env,
+      FORCE_COLOR: '1'
+    }
+  })
+
+  const duration = Date.now() - startTime
+
+  // Parse test results
+  const parsed = parseTestOutput(result.stdout)
+
+  return {
+    passed: parsed.passed,
+    failed: parsed.failed,
+    skipped: parsed.skipped,
+    total: parsed.total,
+    duration,
+    coverage: parsed.coverage,
+    failures: parsed.failures
+  }
+}
+```
+
+**Test Configuration (vitest.config.ts):**
+```typescript
+export default defineConfig({
+  test: {
+    include: ['src/**/*.test.ts'],
+    exclude: ['src/**/*.integration.test.ts', 'src/**/*.e2e.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'dist/',
+        '**/*.test.ts',
+        '**/*.config.ts'
+      ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 75,
+        statements: 80
+      }
+    }
+  }
+})
+```
+
+### Step 3: Run Integration Tests
+
+```typescript
+async function runIntegrationTests(context: WorkflowContext) {
+  const { database, services } = context.steps.setup
+  const startTime = Date.now()
+
+  // Run integration tests
+  const result = await exec('npm run test:integration', {
+    env: {
+      ...process.env,
+      DATABASE_URL: database.url,
+      REDIS_URL: services.redis.url
+    }
+  })
+
+  const duration = Date.now() - startTime
+  const parsed = parseTestOutput(result.stdout)
+
+  return {
+    passed: parsed.passed,
+    failed: parsed.failed,
+    skipped: parsed.skipped,
+    total: parsed.total,
+    duration,
+    failures: parsed.failures
+  }
+}
+```
+
+**Integration Test Example:**
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { createTestDatabase, createTestRedis } from './test-utils'
+
+describe('User Service Integration', () => {
+  let db, redis
+
+  beforeAll(async () => {
+    db = await createTestDatabase()
+    redis = await createTestRedis()
+  })
+
+  afterAll(async () => {
+    await db.close()
+    await redis.close()
+  })
+
+  it('should create user and cache in Redis', async () => {
+    const user = await createUser({ email: 'test@example.com' })
+
+    // Check database
+    const dbUser = await db.users.findOne({ id: user.id })
+    expect(dbUser).toBeDefined()
+
+    // Check Redis cache
+    const cachedUser = await redis.get(`user:${user.id}`)
+    expect(JSON.parse(cachedUser)).toEqual(user)
+  })
+})
+```
+
+### Step 4: Run E2E Tests
+
+```typescript
+async function runE2ETests(context: WorkflowContext) {
+  const { database } = context.steps.setup
+  const startTime = Date.now()
+
+  // Start application server
+  const server = await startTestServer({
+    port: 3000,
+    database: database.url
+  })
+
+  // Start browser
+  const browser = await launchBrowser({
+    headless: true,
+    slowMo: 0
+  })
+
+  try {
+    // Run E2E tests
+    const result = await exec('npm run test:e2e', {
+      env: {
+        ...process.env,
+        BASE_URL: `http://localhost:3000`,
+        HEADLESS: 'true'
+      }
+    })
+
+    const duration = Date.now() - startTime
+    const parsed = parseTestOutput(result.stdout)
+
+    // Capture screenshots for failures
+    if (parsed.failed > 0) {
+      await captureFailureScreenshots(browser, parsed.failures)
+    }
+
+    return {
+      passed: parsed.passed,
+      failed: parsed.failed,
+      skipped: parsed.skipped,
+      total: parsed.total,
+      duration,
+      failures: parsed.failures,
+      screenshots: parsed.failed > 0
+    }
+  } finally {
+    await browser.close()
+    await server.close()
+  }
+}
+```
+
+**E2E Test Example (Playwright):**
+```typescript
+import { test, expect } from '@playwright/test'
+
+test.describe('User Authentication', () => {
+  test('should login with valid credentials', async ({ page }) => {
+    await page.goto('/login')
+
+    await page.fill('[name="email"]', 'user@example.com')
+    await page.fill('[name="password"]', 'password123')
+    await page.click('button[type="submit"]')
+
+    await expect(page).toHaveURL('/dashboard')
+    await expect(page.locator('h1')).toContainText('Dashboard')
+  })
+
+  test('should show error with invalid credentials', async ({ page }) => {
+    await page.goto('/login')
+
+    await page.fill('[name="email"]', 'user@example.com')
+    await page.fill('[name="password"]', 'wrongpassword')
+    await page.click('button[type="submit"]')
+
+    await expect(page.locator('.error')).toContainText('Invalid credentials')
+  })
+})
+```
+
+### Step 5: Generate Coverage Report
+
+```typescript
+async function generateCoverageReport(context: WorkflowContext) {
+  const { unitTests } = context.steps
+
+  // Merge coverage from different test types
+  await exec('nyc merge coverage/ .nyc_output/coverage.json')
+
+  // Generate reports
+  await exec('nyc report --reporter=html --reporter=json --reporter=text')
+
+  // Parse coverage data
+  const coverage = await parseCoverageReport('.nyc_output/coverage.json')
+
+  // Check coverage thresholds
+  const thresholds = {
+    lines: 80,
+    functions: 80,
+    branches: 75,
+    statements: 80
+  }
+
+  const failures = []
+
+  for (const [metric, threshold] of Object.entries(thresholds)) {
+    if (coverage[metric] < threshold) {
+      failures.push({
+        metric,
+        actual: coverage[metric],
+        threshold
+      })
+    }
+  }
+
+  return {
+    lines: coverage.lines,
+    functions: coverage.functions,
+    branches: coverage.branches,
+    statements: coverage.statements,
+    thresholdsMet: failures.length === 0,
+    failures
+  }
+}
+```
+
+### Step 6: Generate Test Report
+
+```typescript
+async function generateTestReport(context: WorkflowContext) {
+  const { unitTests, integrationTests, e2eTests, coverage } = context.steps
+
+  const report = {
+    summary: {
+      total: unitTests.total + integrationTests.total + e2eTests.total,
+      passed: unitTests.passed + integrationTests.passed + e2eTests.passed,
+      failed: unitTests.failed + integrationTests.failed + e2eTests.failed,
+      skipped: unitTests.skipped + integrationTests.skipped + e2eTests.skipped,
+      duration: unitTests.duration + integrationTests.duration + e2eTests.duration
+    },
+    breakdown: {
+      unit: {
+        passed: unitTests.passed,
+        failed: unitTests.failed,
+        total: unitTests.total,
+        duration: unitTests.duration
+      },
+      integration: {
+        passed: integrationTests.passed,
+        failed: integrationTests.failed,
+        total: integrationTests.total,
+        duration: integrationTests.duration
+      },
+      e2e: {
+        passed: e2eTests.passed,
+        failed: e2eTests.failed,
+        total: e2eTests.total,
+        duration: e2eTests.duration
+      }
+    },
+    coverage: {
+      lines: coverage.lines,
+      functions: coverage.functions,
+      branches: coverage.branches,
+      statements: coverage.statements,
+      thresholdsMet: coverage.thresholdsMet
+    },
+    failures: [
+      ...unitTests.failures,
+      ...integrationTests.failures,
+      ...e2eTests.failures
+    ]
+  }
+
+  // Generate HTML report
+  const html = await generateHTMLReport(report)
+  await writeFile('test-report.html', html)
+
+  // Upload report artifacts
+  await uploadArtifacts({
+    name: 'test-report',
+    files: [
+      'test-report.html',
+      'coverage/index.html',
+      'screenshots/'
+    ]
+  })
+
+  return report
+}
+```
+
+### Step 7: Notify Team
+
+```typescript
+async function notifyTeam(context: WorkflowContext) {
+  const { report } = context.steps
+  const { commit, branch } = context.trigger
+
+  const success = report.summary.failed === 0 && report.coverage.thresholdsMet
+
+  // Slack notification
+  await slack.sendMessage({
+    channel: '#test-results',
+    text: success
+      ? `✅ Tests passed on ${branch}`
+      : `❌ Tests failed on ${branch}`,
+    attachments: [
+      {
+        color: success ? 'good' : 'danger',
+        title: 'Test Results',
+        fields: [
+          {
+            title: 'Tests',
+            value: `${report.summary.passed}/${report.summary.total} passed`,
+            short: true
+          },
+          {
+            title: 'Coverage',
+            value: `${report.coverage.lines}% lines`,
+            short: true
+          },
+          {
+            title: 'Duration',
+            value: `${Math.round(report.summary.duration / 1000)}s`,
+            short: true
+          },
+          {
+            title: 'Commit',
+            value: commit.slice(0, 7),
+            short: true
+          }
+        ],
+        actions: [
+          {
+            type: 'button',
+            text: 'View Report',
+            url: context.artifactUrl
+          }
+        ]
+      }
+    ]
+  })
+
+  // Update commit status
+  await github.setCommitStatus({
+    commit,
+    state: success ? 'success' : 'failure',
+    context: 'tests',
+    description: success
+      ? 'All tests passed'
+      : `${report.summary.failed} test(s) failed`
+  })
+
+  return { notified: true }
+}
+```
+
+## Configuration
+
+```yaml
+run-tests:
+  unit:
+    timeout: 300000 # 5 minutes
+    parallel: true
+    coverage: true
+
+  integration:
+    timeout: 600000 # 10 minutes
+    parallel: false
+    database: ephemeral
+
+  e2e:
+    timeout: 900000 # 15 minutes
+    parallel: false
+    headless: true
+    retries: 2
+
+  coverage:
+    enabled: true
+    thresholds:
+      lines: 80
+      functions: 80
+      branches: 75
+      statements: 80
+
+  notifications:
+    slack:
+      channel: '#test-results'
+      mentionOnFailure: ['@dev-team']
+```
+
+## Metrics
+
+Tracks testing metrics:
+
+- **Test Count**: Total tests, by type
+- **Pass Rate**: % tests passing
+- **Duration**: Time per test type
+- **Coverage**: Lines, functions, branches, statements
+- **Flakiness**: Tests that fail intermittently
+
+## Related Examples
+
+- [[agents/TestGenerator]] - Generate additional tests
+- [[workflows/reviewPullRequest]] - Run tests on PRs
+- [[workflows/deployApplication]] - Tests before deployment
+- [[functions/parseCode]] - Parse code for test generation
+
+## Implementation
+
+```typescript
+import type { BusinessModule } from 'graphdl'
+
+interface TestRun {
+  id: string
+  commit: string
+  branch: string
+  status: 'pending' | 'running' | 'passed' | 'failed'
+  totalTests: number
+  passed: number
+  failed: number
+  duration: number
+  failures: TestFailure[]
+}
+
+interface TestFailure {
+  testName: string
+  file: string
+  error: string
+  stackTrace: string
+}
+
+export const runTests: BusinessModule = $ => {
+  const { db, ai, api, send, on } = $
+
+  on.commit.pushed(async (commit: { sha: string; branch: string }) => {
+    const testRun = await db.testRuns.create({
+      commit: commit.sha,
+      branch: commit.branch,
+      status: 'pending',
+      createdAt: new Date(),
+    })
+
+    // Run test suite
+    const result = await api.post('https://api.github.com/actions/workflows/test.yml/dispatches', {
+      ref: commit.branch,
+    })
+
+    await db.testRuns.update(testRun.id, {
+      status: result.failures > 0 ? 'failed' : 'passed',
+      totalTests: result.total,
+      passed: result.passed,
+      failed: result.failures,
+      duration: result.duration,
+    })
+
+    if (result.failures > 0) {
+      // AI-powered failure analysis
+      const analysis = await ai.generate({
+        prompt: `Analyze test failures:\n${JSON.stringify(result.errors)}\n\nProvide root cause and fix suggestions.`,
+        maxTokens: 500,
+      })
+
+      await send.slack('#engineering', {
+        text: `❌ Tests failed on ${commit.branch}`,
+        attachments: [{ text: analysis }],
+      })
+    }
+  })
+}
+```

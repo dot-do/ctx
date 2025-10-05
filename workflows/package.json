@@ -1,0 +1,19 @@
+{
+  "name": "workflows.do",
+  "version": "0.1.0",
+  "description": "Workflow orchestration patterns with Zod validation and database sync",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "velite build",
+    "dev": "velite build --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "velite": "^0.1.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

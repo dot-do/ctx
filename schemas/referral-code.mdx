@@ -1,0 +1,518 @@
+---
+$type: Schema
+$id: schema/referral-code
+title: Referral Code
+description: Unique codes for tracking user referrals with tiered rewards
+category: growth
+tags: [referral, viral-growth, rewards, gamification]
+version: 1.0.0
+status: active
+created: 2025-10-03
+updated: 2025-10-03
+---
+
+# Referral Code Schema
+
+## Overview
+
+Referral codes are unique identifiers assigned to users for tracking referrals. The system implements a **5-tier reward structure** that incentivizes sustained referral activity with increasing multipliers as users progress through tiers.
+
+## Core Concept
+
+**Purpose**: Enable viral growth through incentivized referrals with gamification mechanics
+
+**Key Features**:
+- Automatic code generation from email or custom codes
+- 5-tier progression system (Bronze → Silver → Gold → Platinum → Diamond)
+- Reward multipliers increase with tier (1.0x → 3.0x)
+- Real-time tracking of referral activity
+- Leaderboard and analytics
+- Fraud detection
+
+## Data Model
+
+```typescript
+interface ReferralCode {
+  // Identity
+  id: string                    // ULID
+  userId: string                // User who owns this code
+  code: string                  // Unique referral code
+  email: string                 // User's email
+  name?: string                 // User's name (optional)
+
+  // Status
+  status: 'active' | 'inactive' | 'suspended'
+
+  // Metrics
+  referralCount: number         // Total referrals tracked
+  successfulReferrals: number   // Referrals that converted
+  creditsEarned: number         // Total rewards earned
+
+  // Tier System
+  tier: ReferralTier            // Current tier
+
+  // Metadata
+  metadata?: Record<string, unknown>
+
+  // Timestamps
+  createdAt: string             // ISO 8601
+  updatedAt: string             // ISO 8601
+}
+
+type ReferralTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond'
+```
+
+## Tier System
+
+The referral program implements a 5-tier reward structure that progressively increases rewards as users refer more people.
+
+### Tier Configuration
+
+| Tier | Min Referrals | Multiplier | Reward Bonus | Badge | Benefits |
+|------|--------------|------------|--------------|-------|----------|
+| 🥉 Bronze | 0 | 1.0x | Base | Bronze | Base platform benefits |
+| 🥈 Silver | 5 | 1.2x | +20% | Silver | Priority support |
+| 🥇 Gold | 15 | 1.5x | +50% | Gold | Early feature access |
+| 💎 Platinum | 30 | 2.0x | 2x | Platinum | VIP support, featured profile |
+| 💎✨ Diamond | 50+ | 3.0x | 3x | Diamond | Direct team access, partnership opportunities |
+
+### Tier Progression
+
+Users automatically advance to the next tier when they reach the minimum successful referrals:
+
+```typescript
+const TIER_CONFIGS = [
+  { tier: 'bronze', minReferrals: 0, multiplier: 1.0, badge: '🥉' },
+  { tier: 'silver', minReferrals: 5, multiplier: 1.2, badge: '🥈' },
+  { tier: 'gold', minReferrals: 15, multiplier: 1.5, badge: '🥇' },
+  { tier: 'platinum', minReferrals: 30, multiplier: 2.0, badge: '💎' },
+  { tier: 'diamond', minReferrals: 50, multiplier: 3.0, badge: '💎✨' },
+]
+```
+
+**Progression is based on successful_referrals (converted signups), not total referrals tracked.**
+
+## Code Generation
+
+### Automatic Generation
+
+Codes are auto-generated from email addresses:
+
+```typescript
+function generateCode(email: string): string {
+  // Extract username from email
+  const username = email.split('@')[0]
+
+  // Sanitize: lowercase, remove special chars, max 8 chars
+  const base = username
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 8)
+
+  // Add 4 random chars for uniqueness
+  const random = Math.random().toString(36).slice(2, 6)
+
+  return base + random
+}
+
+// Examples:
+// john.doe@example.com → johndoe7abc
+// jane_smith123@company.com → janesmith4xyz
+```
+
+### Custom Codes
+
+Users can optionally provide custom codes:
+
+**Requirements**:
+- 3-20 characters
+- Alphanumeric only (a-z, 0-9)
+- Unique (checked at creation)
+- Case-insensitive
+
+**Examples**:
+- `mynameisjon`
+- `startup2025`
+- `techfan99`
+
+## Reward Calculation
+
+Rewards are calculated based on the **referrer's current tier** at the time of conversion:
+
+```typescript
+const BASE_REWARD = 100 // credits
+
+function calculateReward(tier: ReferralTier): number {
+  const tierConfig = TIER_CONFIGS.find(t => t.tier === tier)
+  return Math.round(BASE_REWARD * tierConfig.multiplier)
+}
+
+// Examples:
+// Bronze (1.0x): 100 credits
+// Silver (1.2x): 120 credits
+// Gold (1.5x): 150 credits
+// Platinum (2.0x): 200 credits
+// Diamond (3.0x): 300 credits
+```
+
+**Important**: Rewards are locked at conversion time. If a user's tier increases after conversion but before crediting, the original reward amount is used.
+
+## Referral Tracking
+
+### Lifecycle
+
+```
+1. User generates referral code
+   ↓
+2. Share code with friends
+   ↓
+3. Friend signs up with code (status: pending)
+   ↓
+4. Friend completes signup (status: converted)
+   ↓
+5. Reward distributed via queue (status: credited)
+   ↓
+6. Check for tier upgrade
+```
+
+### Status Flow
+
+```typescript
+type ReferralStatus =
+  | 'pending'      // Referral tracked, awaiting signup
+  | 'converted'    // User signed up, reward queued
+  | 'credited'     // Reward distributed to referrer
+  | 'rejected'     // Invalid referral (duplicate, self-referral)
+  | 'fraudulent'   // Flagged by fraud detection
+```
+
+## Fraud Detection
+
+Basic fraud checks prevent abuse:
+
+```typescript
+interface FraudCheck {
+  rapidReferrals: boolean      // >10 referrals in 1 hour
+  sameIP: boolean              // Multiple referrals from same IP
+  disposableEmail: boolean     // Using temp email services
+  suspiciousPattern: boolean   // Bot-like behavior
+}
+```
+
+**Actions on Fraud**:
+- Mark referral as `fraudulent`
+- No rewards distributed
+- Referrer flagged for review
+- Alert administrators
+- Potential account suspension
+
+## Database Schema
+
+### referral_codes Table
+
+```sql
+CREATE TABLE referral_codes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT UNIQUE NOT NULL,
+  code TEXT UNIQUE NOT NULL,
+  email TEXT NOT NULL,
+  name TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  referral_count INTEGER NOT NULL DEFAULT 0,
+  successful_referrals INTEGER NOT NULL DEFAULT 0,
+  credits_earned INTEGER NOT NULL DEFAULT 0,
+  tier TEXT NOT NULL DEFAULT 'bronze',
+  metadata TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Indexes
+CREATE INDEX idx_referral_codes_user ON referral_codes(user_id);
+CREATE INDEX idx_referral_codes_code ON referral_codes(code);
+CREATE INDEX idx_referral_codes_tier ON referral_codes(tier);
+CREATE INDEX idx_referral_codes_referrals ON referral_codes(successful_referrals DESC);
+```
+
+### referrals Table
+
+```sql
+CREATE TABLE referrals (
+  id TEXT PRIMARY KEY,
+  referral_code_id TEXT NOT NULL,
+  referrer_user_id TEXT NOT NULL,
+  referred_user_id TEXT,
+  referred_email TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  source TEXT,
+  referred_at TEXT NOT NULL,
+  converted_at TEXT,
+  credited_at TEXT,
+  reward_amount INTEGER NOT NULL,
+  metadata TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (referral_code_id) REFERENCES referral_codes(id)
+);
+
+-- Indexes
+CREATE INDEX idx_referrals_code ON referrals(referral_code_id);
+CREATE INDEX idx_referrals_referrer ON referrals(referrer_user_id);
+CREATE INDEX idx_referrals_referred ON referrals(referred_user_id);
+CREATE INDEX idx_referrals_email ON referrals(referred_email);
+CREATE INDEX idx_referrals_status ON referrals(status);
+```
+
+## Integration Points
+
+### With Waitlist Service
+
+**Double-sided Incentives**: Both referrer and referred user benefit
+
+```typescript
+// When someone joins waitlist with referral code
+await env.REFERRAL_SERVICE.trackReferral({
+  referralCode: waitlistEntry.referralCode,
+  referredEmail: waitlistEntry.email,
+  source: 'waitlist',
+})
+
+// Boost referred user's priority score (+20 points)
+waitlistEntry.priorityScore += 20
+
+// Boost referrer's priority score (+5 points)
+await env.WAITLIST_SERVICE.incrementReferrerScore(referralCode)
+```
+
+### With Auth Service
+
+**Conversion on Signup**:
+
+```typescript
+// When referred user completes signup
+await env.REFERRAL_SERVICE.convertReferral({
+  referredEmail: user.email,
+  referredUserId: user.id,
+})
+
+// Queue reward distribution and tier update
+// (handled automatically by the service)
+```
+
+### With Email Service
+
+**Notifications**:
+
+```typescript
+// Referrer notifications
+await env.EMAIL_SERVICE.send({
+  to: referrer.email,
+  template: 'referral-credited',
+  data: {
+    referralName: referredUser.name,
+    rewardAmount: 120,
+    totalCredits: 840,
+    newTier: 'silver',
+  },
+})
+
+// Referred user notifications
+await env.EMAIL_SERVICE.send({
+  to: referredUser.email,
+  template: 'welcome-referred',
+  data: {
+    referrerName: referrer.name,
+    bonusCredits: 20,
+  },
+})
+```
+
+## API Examples
+
+### Generate Referral Code
+
+```typescript
+// Via RPC
+const code = await env.REFERRAL_SERVICE.generateReferralCode({
+  userId: 'user_123',
+  email: 'john@example.com',
+  name: 'John Doe',
+  customCode: 'johnspecial', // Optional
+})
+
+// Response
+{
+  id: '01J1234...',
+  userId: 'user_123',
+  code: 'johnspecial',
+  email: 'john@example.com',
+  status: 'active',
+  tier: 'bronze',
+  referralCount: 0,
+  successfulReferrals: 0,
+  creditsEarned: 0,
+  createdAt: '2025-10-03T14:30:00Z',
+  updatedAt: '2025-10-03T14:30:00Z',
+}
+```
+
+### Track Referral
+
+```typescript
+// Via RPC
+const referral = await env.REFERRAL_SERVICE.trackReferral({
+  referralCode: 'johnspecial',
+  referredEmail: 'jane@example.com',
+  source: 'waitlist', // Optional
+})
+
+// Response
+{
+  id: '01J5678...',
+  referralCodeId: '01J1234...',
+  referrerUserId: 'user_123',
+  referredEmail: 'jane@example.com',
+  status: 'pending',
+  rewardAmount: 100,
+  referredAt: '2025-10-03T14:35:00Z',
+  createdAt: '2025-10-03T14:35:00Z',
+}
+```
+
+### Get User Stats
+
+```typescript
+// Via RPC
+const stats = await env.REFERRAL_SERVICE.getUserStats('user_123')
+
+// Response
+{
+  userId: 'user_123',
+  referralCode: 'johnspecial',
+  totalReferrals: 12,
+  successfulReferrals: 8,
+  conversionRate: 67,
+  creditsEarned: 960,
+  tier: 'silver',
+  nextTier: 'gold',
+  nextTierAt: 7, // 7 more successful referrals needed
+  recentReferrals: [...],
+}
+```
+
+## Analytics & Metrics
+
+### Viral Coefficient
+
+**Formula**: `totalReferrals / totalUsers`
+
+**Target**: >1.0 (each user brings 1+ more users)
+
+**Interpretation**:
+- **<1.0**: Sub-viral (not sustainable)
+- **1.0-1.5**: Break-even to good growth
+- **1.5-2.0**: Strong viral growth
+- **>2.0**: Exceptional viral growth
+
+### Conversion Rate
+
+**Formula**: `convertedReferrals / totalReferrals * 100`
+
+**Target**: >50%
+
+**Interpretation**:
+- **<30%**: Low quality referrals
+- **30-50%**: Average quality
+- **50-70%**: Good targeting
+- **>70%**: Excellent targeting
+
+### Tier Distribution
+
+Track distribution across tiers to identify engagement patterns:
+
+```typescript
+{
+  bronze: 850,    // 85% (most users)
+  silver: 100,    // 10%
+  gold: 35,       // 3.5%
+  platinum: 12,   // 1.2%
+  diamond: 3,     // 0.3% (power users)
+}
+```
+
+## Validation Rules
+
+```typescript
+import { z } from 'zod'
+
+export const ReferralCodeSchema = z.object({
+  id: z.string().ulid(),
+  userId: z.string().min(1),
+  code: z.string()
+    .min(3, 'Code must be at least 3 characters')
+    .max(20, 'Code must be at most 20 characters')
+    .regex(/^[a-z0-9]+$/i, 'Code must be alphanumeric'),
+  email: z.string().email(),
+  name: z.string().optional(),
+  status: z.enum(['active', 'inactive', 'suspended']),
+  referralCount: z.number().int().min(0),
+  successfulReferrals: z.number().int().min(0),
+  creditsEarned: z.number().int().min(0),
+  tier: z.enum(['bronze', 'silver', 'gold', 'platinum', 'diamond']),
+  metadata: z.record(z.unknown()).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+})
+
+export const GenerateReferralCodeSchema = z.object({
+  userId: z.string().min(1, 'User ID is required'),
+  email: z.string().email('Invalid email address'),
+  name: z.string().optional(),
+  customCode: z.string()
+    .min(3).max(20)
+    .regex(/^[a-z0-9]+$/i)
+    .optional(),
+})
+```
+
+## Success Metrics
+
+### Week 1 Targets
+- 50+ referral codes generated
+- Viral coefficient >1.0
+- Conversion rate >40%
+
+### Month 1 Targets
+- 500+ referral codes
+- Viral coefficient >1.5
+- 100+ users at Silver+ tier
+- Conversion rate >50%
+
+### Month 3 Targets
+- 2,000+ referral codes
+- Viral coefficient >2.0
+- 50+ users at Gold+ tier
+- 5+ users at Diamond tier
+- Conversion rate >60%
+
+## Related Schemas
+
+- [Waitlist Entry](./waitlist-entry.mdx) - Integration with waitlist priority
+- [Beta Invitation](./beta-invitation.mdx) - Invitation codes for beta access
+- [User Profile](./user-profile.mdx) - User account information
+
+## Related Workflows
+
+- [Referral Reward Distribution](../workflows/referral-reward-distribution.mdx) - Automated reward processing
+- [Waitlist Invitation](../workflows/waitlist-invitation.mdx) - Beta invitation with referral integration
+
+## Service Implementation
+
+- **Service**: `workers/referral-program`
+- **RPC Interface**: `env.REFERRAL_SERVICE.*`
+- **HTTP API**: `POST /api/referrals/*`
+- **Queue**: `referral-queue` for async processing
+
+## Version History
+
+- **1.0.0** (2025-10-03) - Initial schema with 5-tier reward system

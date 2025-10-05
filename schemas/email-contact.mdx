@@ -1,0 +1,353 @@
+---
+$type: Schema
+$id: schema/email-contact
+title: Email Contact
+description: Contact record for cold email campaigns with enrichment data, validation status, and engagement history
+type: custom/EmailContact
+properties:
+  - name: id
+    type: string
+    description: Unique contact identifier
+  - name: email
+    type: string
+    format: email
+    description: Contact email address
+  - name: firstName
+    type: string
+    description: First name
+  - name: lastName
+    type: string
+    description: Last name
+  - name: fullName
+    type: string
+    description: Full name (computed)
+  - name: title
+    type: string
+    description: Job title
+  - name: company
+    type: object
+    description: Company information
+    properties:
+      - name: name
+        type: string
+        description: Company name
+      - name: domain
+        type: string
+        description: Company website domain
+      - name: industry
+        type: string
+        description: Industry classification
+      - name: size
+        type: string
+        description: Company size (1-10, 11-50, 51-200, 201-500, 501-1000, 1001+)
+      - name: revenue
+        type: string
+        description: Annual revenue range
+      - name: location
+        type: object
+        description: Company headquarters location
+        properties:
+          - name: city
+            type: string
+          - name: state
+            type: string
+          - name: country
+            type: string
+  - name: validation
+    type: object
+    description: Email validation status
+    properties:
+      - name: valid
+        type: boolean
+        description: Whether email is valid
+      - name: score
+        type: number
+        description: Validation score (0-100)
+      - name: issues
+        type: array
+        description: Validation issues found
+        items:
+          type: string
+      - name: validatedAt
+        type: string
+        format: date-time
+        description: Last validation timestamp
+      - name: status
+        type: string
+        description: Validation status (pending, valid, invalid, risky, unknown)
+  - name: enrichment
+    type: object
+    description: Enriched contact data from external sources
+    properties:
+      - name: source
+        type: string
+        description: Enrichment data source (apollo, clearbit, hunter, etc.)
+      - name: linkedinUrl
+        type: string
+        description: LinkedIn profile URL
+      - name: twitterHandle
+        type: string
+        description: Twitter/X handle
+      - name: phoneNumbers
+        type: array
+        description: Phone numbers
+        items:
+          type: string
+      - name: skills
+        type: array
+        description: Professional skills
+        items:
+          type: string
+      - name: experience
+        type: array
+        description: Work experience
+        items:
+          type: object
+          properties:
+            - name: company
+              type: string
+            - name: title
+              type: string
+            - name: startDate
+              type: string
+            - name: endDate
+              type: string
+      - name: education
+        type: array
+        description: Educational background
+        items:
+          type: object
+          properties:
+            - name: institution
+              type: string
+            - name: degree
+              type: string
+            - name: field
+              type: string
+            - name: graduationYear
+              type: number
+      - name: enrichedAt
+        type: string
+        format: date-time
+        description: Enrichment timestamp
+      - name: confidence
+        type: number
+        description: Enrichment confidence score (0-100)
+  - name: engagement
+    type: object
+    description: Email engagement history
+    properties:
+      - name: campaigns
+        type: array
+        description: Campaigns this contact is part of
+        items:
+          type: string
+      - name: totalSent
+        type: number
+        description: Total emails sent
+      - name: totalDelivered
+        type: number
+        description: Total emails delivered
+      - name: totalBounced
+        type: number
+        description: Total bounced emails
+      - name: totalOpened
+        type: number
+        description: Total emails opened
+      - name: totalClicked
+        type: number
+        description: Total links clicked
+      - name: totalReplied
+        type: number
+        description: Total replies received
+      - name: lastSent
+        type: string
+        format: date-time
+        description: Last email sent timestamp
+      - name: lastOpened
+        type: string
+        format: date-time
+        description: Last email opened timestamp
+      - name: lastClicked
+        type: string
+        format: date-time
+        description: Last link clicked timestamp
+      - name: lastReplied
+        type: string
+        format: date-time
+        description: Last reply timestamp
+      - name: score
+        type: number
+        description: Engagement score (0-100)
+      - name: status
+        type: string
+        description: Engagement status (cold, warm, hot, unresponsive, unsubscribed)
+  - name: lists
+    type: array
+    description: Contact list IDs this contact belongs to
+    items:
+      type: string
+  - name: tags
+    type: array
+    description: Custom tags for segmentation
+    items:
+      type: string
+  - name: customFields
+    type: object
+    description: Custom fields for template personalization
+  - name: unsubscribed
+    type: boolean
+    description: Whether contact has unsubscribed
+  - name: unsubscribedAt
+    type: string
+    format: date-time
+    description: Unsubscribe timestamp
+  - name: unsubscribeReason
+    type: string
+    description: Reason for unsubscribing
+  - name: bounceType
+    type: string
+    description: Last bounce type (hard, soft, complaint)
+  - name: createdAt
+    type: string
+    format: date-time
+    description: Contact creation timestamp
+  - name: updatedAt
+    type: string
+    format: date-time
+    description: Last update timestamp
+  - name: createdBy
+    type: string
+    description: User ID who created contact
+  - name: teamId
+    type: string
+    description: Team/organization ID
+required:
+  - id
+  - email
+metadata:
+  ns: schemas
+  visibility: public
+tags:
+  - cold-email
+  - contact
+  - lead
+  - crm
+---
+
+# Email Contact Schema
+
+Comprehensive contact record for cold email campaigns with built-in validation, enrichment, and engagement tracking.
+
+## Overview
+
+This schema represents a contact in the cold email system with:
+- **Email Validation**: Real-time validation with scoring
+- **Data Enrichment**: Automatic enrichment from external sources
+- **Engagement Tracking**: Complete email interaction history
+- **List Management**: Multiple list memberships and custom tags
+- **Compliance**: Unsubscribe tracking and bounce management
+
+## Contact Lifecycle
+
+```
+created → validated → enriched → targeted → engaged → (converted | unsubscribed | unresponsive)
+```
+
+## Validation Scoring
+
+Email validation produces a 0-100 score based on:
+- **Syntax**: Valid RFC 5322 format (critical)
+- **MX Records**: Deliverable domain (critical)
+- **Disposable Detection**: Not a temporary email (high)
+- **Role Detection**: Not a generic role address (medium)
+- **Catch-all Detection**: Domain doesn't accept all emails (low)
+
+**Score Ranges:**
+- **90-100**: Excellent - Very likely deliverable
+- **70-89**: Good - Likely deliverable
+- **50-69**: Fair - May have issues
+- **0-49**: Poor - Likely undeliverable
+
+## Enrichment Sources
+
+Contact data can be enriched from:
+- **Apollo.io**: B2B contact data, company info, technographics
+- **Clearbit**: Company and person enrichment
+- **Hunter.io**: Email discovery and verification
+- **LinkedIn**: Professional profiles and experience
+- **Custom Sources**: Integration-specific enrichment
+
+**Confidence Scoring**: Each enrichment includes a confidence score (0-100) indicating data quality.
+
+## Engagement Scoring
+
+Engagement score (0-100) is calculated based on:
+- **Opens**: +5 points per open (max 25)
+- **Clicks**: +10 points per click (max 30)
+- **Replies**: +15 points per reply (max 45)
+
+**Engagement Status:**
+- **Cold**: 0-25 score, no engagement
+- **Warm**: 26-50 score, some opens/clicks
+- **Hot**: 51-100 score, active engagement with replies
+- **Unresponsive**: 5+ emails sent, no opens
+- **Unsubscribed**: Opted out
+
+## List Management
+
+Contacts can belong to multiple lists:
+- **Static Lists**: Manually created or CSV imported
+- **Dynamic Lists**: Auto-updated based on criteria
+- **Campaign Lists**: Generated from campaign targeting
+
+**Tags**: Custom tags enable flexible segmentation beyond lists.
+
+## Personalization
+
+Custom fields support dynamic template variables:
+
+```
+Hi {{firstName}},
+
+I noticed {{company.name}} is in the {{company.industry}} industry...
+```
+
+## Compliance & Deliverability
+
+### Unsubscribe Management
+- Honor unsubscribe requests immediately
+- Track unsubscribe reason for insights
+- Never re-add unsubscribed contacts to campaigns
+
+### Bounce Handling
+- **Hard Bounces**: Permanent failure, mark invalid
+- **Soft Bounces**: Temporary failure, retry with exponential backoff
+- **Complaints**: Spam report, unsubscribe and flag
+
+### List Hygiene
+- Remove hard bounces immediately
+- Re-validate soft bounces after 30 days
+- Monitor engagement and remove unresponsive (90+ days)
+
+## Data Privacy
+
+- **GDPR Compliance**: Support for right to erasure
+- **CAN-SPAM Act**: Required unsubscribe mechanism
+- **Data Retention**: Configurable retention policies
+- **PII Protection**: Encrypt sensitive fields at rest
+
+## Best Practices
+
+1. **Validation First**: Always validate before sending
+2. **Enrich Early**: Enrich immediately after creation for better targeting
+3. **Segment Carefully**: Use lists and tags for precise targeting
+4. **Monitor Engagement**: Track scores and adjust strategy
+5. **Clean Regularly**: Remove bounces and unresponsive contacts
+6. **Respect Opt-outs**: Honor unsubscribes immediately
+
+## Related Schemas
+
+- **cold-email-campaign.mdx**: Campaigns that target contacts
+- **email-domain.mdx**: Sending domains used for outreach
+- **email-sequence.mdx**: Email sequences sent to contacts

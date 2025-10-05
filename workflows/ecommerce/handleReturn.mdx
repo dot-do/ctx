@@ -1,0 +1,598 @@
+---
+$type: Workflow
+$id: workflow/handlereturn
+title: handle-return
+name: handle-return
+description: Complete returns processing from request through refund and inventory update
+
+trigger:
+  type: customer-request
+  source: return-portal
+
+input:
+  orderId: Original order identifier
+  customerId: Customer ID
+  items: Array of items to return with quantities
+  reason: Return reason code
+  comments: Customer comments (optional)
+  receiptDate: Original purchase date (ISO date)
+
+steps:
+  - name: validate-return-eligibility
+    description: Check if return is within policy window
+    function: validate-return-eligibility
+    input:
+      orderId: ${input.orderId}
+      receiptDate: ${input.receiptDate}
+      items: ${input.items}
+      returnWindow: 30 # days
+    onError:
+      action: return
+      status: 400
+      message: Return not eligible - ${error.reason}
+
+  - name: verify-order
+    description: Verify order exists and belongs to customer
+    function: verify-order
+    input:
+      orderId: ${input.orderId}
+      customerId: ${input.customerId}
+      items: ${input.items}
+    onError:
+      action: return
+      status: 404
+      message: Order not found or items mismatch
+
+  - name: calculate-refund
+    description: Calculate refund amount
+    function: calculate-refund
+    input:
+      orderId: ${input.orderId}
+      items: ${input.items}
+      returnReason: ${input.reason}
+    output:
+      refundAmount: Total refund amount (number)
+      restockingFee: Fee if applicable (number)
+      shippingRefund: Shipping refund amount (number)
+      taxRefund: Tax refund amount (number)
+
+  - name: generate-return-label
+    description: Create prepaid return shipping label
+    function: generate-return-label
+    input:
+      orderId: ${input.orderId}
+      items: ${input.items}
+      returnAddress: ${env.RETURNS_WAREHOUSE_ADDRESS}
+      carrier: ${steps.verify-order.output.originalCarrier}
+    output:
+      trackingNumber: Return tracking number
+      labelUrl: Printable label URL
+
+  - name: send-return-instructions
+    description: Email return label and instructions
+    function: send-email
+    input:
+      to: ${input.customerEmail}
+      template: return-instructions
+      data:
+        orderId: ${input.orderId}
+        items: ${input.items}
+        refundAmount: ${steps.calculate-refund.output.refundAmount}
+        labelUrl: ${steps.generate-return-label.output.labelUrl}
+        trackingNumber: ${steps.generate-return-label.output.trackingNumber}
+        returnByDate: ${workflow.timestamp + 604800000} # 7 days
+    retry:
+      maxAttempts: 3
+
+  - name: track-return-shipment
+    description: Monitor return package tracking
+    type: wait-for-event
+    events:
+      - return.in_transit
+      - return.delivered_to_warehouse
+    timeout: 1209600000 # 14 days
+    trackingNumber: ${steps.generate-return-label.output.trackingNumber}
+
+  - name: inspect-returned-items
+    description: Wait for warehouse inspection
+    type: wait-for-event
+    events:
+      - inspection.completed
+    timeout: 172800000 # 48 hours
+    onTimeout:
+      action: alert
+      message: Inspection delayed for return ${input.orderId}
+
+  - name: process-inspection-results
+    description: Handle inspection outcome
+    function: process-inspection
+    input:
+      orderId: ${input.orderId}
+      items: ${input.items}
+      inspectionResults: ${steps.inspect-returned-items.data}
+      expectedRefund: ${steps.calculate-refund.output.refundAmount}
+
+  - name: adjust-refund-if-needed
+    description: Adjust refund based on condition
+    condition: ${steps.inspect-returned-items.data.conditionIssues}
+    function: adjust-refund
+    input:
+      originalRefund: ${steps.calculate-refund.output.refundAmount}
+      conditionIssues: ${steps.inspect-returned-items.data.conditionIssues}
+      policy: ${env.RETURN_POLICY}
+
+  - name: notify-refund-adjustment
+    description: Email customer about refund adjustment
+    condition: ${steps.adjust-refund-if-needed !== null}
+    function: send-email
+    input:
+      to: ${input.customerEmail}
+      template: refund-adjusted
+      data:
+        orderId: ${input.orderId}
+        originalRefund: ${steps.calculate-refund.output.refundAmount}
+        adjustedRefund: ${steps.adjust-refund-if-needed.output.finalRefund}
+        reason: ${steps.adjust-refund-if-needed.output.adjustmentReason}
+
+  - name: process-refund
+    description: Issue refund to original payment method
+    function: process-refund
+    input:
+      orderId: ${input.orderId}
+      customerId: ${input.customerId}
+      amount: ${steps.adjust-refund-if-needed.output.finalRefund || steps.calculate-refund.output.refundAmount}
+      paymentMethod: ${steps.verify-order.output.originalPaymentMethod}
+    retry:
+      maxAttempts: 3
+      backoff: exponential
+
+  - name: update-inventory
+    description: Return items to available inventory
+    condition: ${steps.inspect-returned-items.data.resellable}
+    function: update-inventory
+    input:
+      items: ${input.items}
+      warehouseId: ${steps.inspect-returned-items.data.warehouseId}
+      condition: ${steps.inspect-returned-items.data.condition}
+
+  - name: send-refund-confirmation
+    description: Email refund confirmation
+    function: send-email
+    input:
+      to: ${input.customerEmail}
+      template: refund-confirmed
+      data:
+        orderId: ${input.orderId}
+        refundAmount: ${steps.process-refund.output.amount}
+        refundMethod: ${steps.verify-order.output.originalPaymentMethod}
+        processingTime: 5-7 business days
+
+  - name: track-analytics
+    description: Log return metrics
+    function: track-event
+    input:
+      event: return_completed
+      userId: ${input.customerId}
+      properties:
+        orderId: ${input.orderId}
+        returnReason: ${input.reason}
+        refundAmount: ${steps.process-refund.output.amount}
+        itemsReturned: ${input.items.length}
+        processingTime: ${workflow.duration}
+
+output:
+  orderId: ${input.orderId}
+  status: completed
+  refundAmount: ${steps.process-refund.output.amount}
+  trackingNumber: ${steps.generate-return-label.output.trackingNumber}
+  refundProcessed: ${steps.process-refund.output.timestamp}
+
+timeout: 1209600000 # 14 days
+
+notifications:
+  onSuccess:
+    - channel: internal
+      message: Return processed - ${input.orderId} ($${steps.process-refund.output.amount})
+  onError:
+    - channel: email
+      to: returns@company.com
+      subject: Return processing failed - ${input.orderId}
+    - channel: slack
+      webhook: ${env.SLACK_ALERTS_URL}
+      message: 🚨 Return ${input.orderId} failed at step ${error.step}
+---
+
+# Handle Return Workflow
+
+Complete returns processing from customer request through refund issuance and inventory restocking.
+
+## Flow Overview
+
+```
+Customer Requests Return
+  ↓
+Validate Eligibility → If outside window → Decline
+  ↓
+Verify Order Details
+  ↓
+Calculate Refund Amount
+  ↓
+Generate Return Label
+  ↓
+Email Instructions to Customer
+  ↓
+Track Return Shipment ⟳
+  ↓
+Wait for Warehouse Receipt
+  ↓
+Inspect Items
+  ↓
+Adjust Refund (if needed)
+  ↓
+Process Refund
+  ↓
+Update Inventory
+  ↓
+Confirm to Customer
+  ↓
+Complete! ✅
+```
+
+## Return Eligibility
+
+### Standard Policy
+
+**30-Day Return Window:**
+- Must be within 30 days of receipt
+- Items must be unused and in original packaging
+- Tags and labels must be attached
+- Proof of purchase required
+
+**Non-Returnable Items:**
+- Final sale items
+- Personalized/customized products
+- Opened software or media
+- Health and hygiene products
+- Gift cards
+
+### Eligibility Check
+
+```yaml
+eligible:
+  - withinReturnWindow: true
+  - itemsReturnable: true
+  - proofOfPurchase: true
+
+ineligible:
+  - reason: Outside return window (purchased 45 days ago)
+  - action: Offer exchange or store credit
+```
+
+## Refund Calculation
+
+### Full Refund
+
+**Conditions:**
+- Item unused/unopened
+- Original packaging intact
+- Within 30 days
+- Defective or wrong item sent
+
+**Calculation:**
+```yaml
+refund:
+  itemTotal: $150.00
+  shippingRefund: $12.00 (if order wrong)
+  taxRefund: $13.50
+  total: $175.50
+```
+
+### Partial Refund
+
+**Restocking Fee (15%):**
+- Applied to opened items
+- Not applied if defective
+
+**Calculation:**
+```yaml
+refund:
+  itemTotal: $150.00
+  restockingFee: -$22.50 (15%)
+  shippingRefund: $0.00 (customer remorse)
+  taxRefund: $11.48
+  total: $139.98
+```
+
+### No Refund
+
+**Conditions:**
+- Damaged by customer
+- Missing components
+- Outside return window
+- Non-returnable category
+
+**Action:**
+- Deny return
+- Offer disposal or return to customer (customer pays shipping)
+
+## Return Label Generation
+
+### Label Options
+
+**Prepaid Label (Free to Customer):**
+- Company pays return shipping
+- Used for: defects, wrong items, mistakes
+- Carrier: Same as original shipment
+
+**Customer-Paid Label:**
+- Customer pays return shipping (deducted from refund)
+- Used for: remorse returns, exchanges
+- Cost: Actual carrier rates
+
+### Label Instructions
+
+**Email Content:**
+```yaml
+subject: Return Label for Order #{{orderId}}
+body: |
+  We've created your return label.
+
+  Return Items:
+  {{itemsList}}
+
+  Refund Amount: ${{refundAmount}}
+
+  Instructions:
+  1. Print the attached label
+  2. Pack items in original box
+  3. Attach label over old label
+  4. Drop off at any {{carrier}} location
+  5. Keep receipt for tracking
+
+  Return By: {{returnByDate}}
+
+  Track Return: {{trackingUrl}}
+
+  Questions? Reply to this email.
+
+attachments:
+  - name: return-label.pdf
+    url: {{labelUrl}}
+```
+
+## Warehouse Inspection
+
+### Inspection Checklist
+
+**Physical Condition:**
+- [ ] Packaging intact
+- [ ] Product unused
+- [ ] No damage or wear
+- [ ] All components present
+- [ ] Tags attached
+
+**Functional Test:**
+- [ ] Powers on (electronics)
+- [ ] All features work
+- [ ] No defects found
+
+**Resellability:**
+- [ ] Pass: Return to inventory
+- [ ] Fail: Send to liquidation or disposal
+
+### Condition Codes
+
+```yaml
+conditions:
+  NEW: Original condition, resellable as new
+  LIKE_NEW: Opened but unused, resellable
+  GOOD: Minor wear, resellable as open-box
+  FAIR: Significant wear, liquidation only
+  DAMAGED: Not resellable, dispose or repair
+```
+
+## Refund Adjustment
+
+### Condition-Based Adjustments
+
+**LIKE_NEW (5% deduction):**
+```yaml
+originalRefund: $100.00
+adjustment: -$5.00 (5%)
+finalRefund: $95.00
+reason: Opened packaging
+```
+
+**GOOD (15% deduction):**
+```yaml
+originalRefund: $100.00
+adjustment: -$15.00 (15%)
+finalRefund: $85.00
+reason: Minor wear and tear
+```
+
+**DAMAGED (Full denial):**
+```yaml
+originalRefund: $100.00
+adjustment: -$100.00 (100%)
+finalRefund: $0.00
+reason: Significant damage - customer responsibility
+```
+
+### Customer Notification
+
+If refund adjusted, email customer before processing:
+
+```
+Your Return - Refund Update
+
+We've received your return for Order #{{orderId}}.
+
+Original Refund: ${{originalRefund}}
+Adjusted Refund: ${{adjustedRefund}}
+
+Reason: {{adjustmentReason}}
+
+This refund will be processed to your original
+payment method within 5-7 business days.
+
+Questions? Contact support: support@company.com
+```
+
+## Refund Processing
+
+### Payment Method
+
+**Credit Card:**
+- Refund to original card
+- 5-7 business days to appear
+- Customer sees "REFUND - Order #{{orderId}}"
+
+**PayPal:**
+- Instant refund to PayPal balance
+- 1-2 days to bank account
+
+**Gift Card:**
+- Credit back to gift card
+- Available immediately
+
+### Refund Notification
+
+```yaml
+subject: Refund Processed - Order #{{orderId}}
+body: |
+  Your refund has been processed!
+
+  Order Number: {{orderId}}
+  Refund Amount: ${{refundAmount}}
+  Payment Method: {{paymentMethod}}
+
+  Timeframe: 5-7 business days
+
+  Thank you for shopping with us!
+```
+
+## Inventory Update
+
+### Restocking Process
+
+**Resellable Items:**
+1. Update inventory quantity
+2. Set condition (new/open-box)
+3. Update product listing
+4. Resume sales
+
+**Non-Resellable:**
+1. Mark as liquidation
+2. Send to liquidation warehouse
+3. Remove from active inventory
+
+### Inventory Record
+
+```yaml
+update:
+  sku: PROD-123
+  warehouse: RETURNS-01
+  quantity: +1
+  condition: LIKE_NEW
+  location: Bin A-42
+  inspectedBy: inspector@company.com
+  inspectedAt: 2025-10-04T10:30:00Z
+```
+
+## Analytics & Reporting
+
+**Return Metrics:**
+- **Return Rate** - % of orders returned
+- **Return Reasons** - Categorized breakdown
+- **Refund Amount** - Average and total
+- **Processing Time** - Days from request to refund
+- **Restocking Rate** - % returned to inventory
+
+**Targets:**
+- <10% return rate
+- <5 days processing time
+- >80% restocking rate
+
+## Related
+
+- [[rental-agent.mdx|Rental Agent]]
+- [[order-processor-agent.mdx|Order Processor Agent]]
+- [[inventory-clerk-agent.mdx|Inventory Clerk Agent]]
+- [[processOrder.mdx|Process Order Workflow]]
+- [[trackShipment.mdx|Track Shipment Workflow]]
+- [[stripe-webhooks-integration.mdx|Payment Processing]]
+
+## Implementation
+
+```typescript
+import type { BusinessModule} from 'graphdl'
+
+interface Return {
+  id: string
+  orderId: string
+  customerId: string
+  items: ReturnItem[]
+  reason: string
+  status: 'requested' | 'approved' | 'rejected' | 'received' | 'refunded'
+  refundAmount: number
+  returnLabel?: string
+  createdAt: Date
+}
+
+interface ReturnItem {
+  sku: string
+  quantity: number
+  condition?: 'new' | 'used' | 'damaged'
+}
+
+export const handleReturn: BusinessModule = $ => {
+  const { db, ai, api, send, on, decide } = $
+
+  on.return.requested(async (returnRequest: Return) => {
+    const order = await db.orders.findById(returnRequest.orderId)
+    const daysSincePurchase = (Date.now() - order.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+
+    // AI-powered return eligibility check
+    const eligible = await ai.classify(
+      `Return request: ${returnRequest.reason}, ${daysSincePurchase} days since purchase, ${returnRequest.items.length} items`,
+      ['approve', 'reject', 'review']
+    )
+
+    decide.switch(eligible)
+      .case('approve', async () => {
+        await db.returns.update(returnRequest.id, { status: 'approved' })
+
+        // Generate return label
+        const label = await api.post('https://api.shippo.com/return-labels', {
+          to: order.shippingAddress,
+          from: { /* warehouse address */ },
+        })
+
+        await send.email(returnRequest.customerId, 'Return Approved', {
+          returnLabel: label.url,
+          instructions: 'Please package items and attach label',
+        })
+      })
+      .case('reject', async () => {
+        await db.returns.update(returnRequest.id, { status: 'rejected' })
+        await send.email(returnRequest.customerId, 'Return Request Declined', {
+          reason: 'Outside return window or ineligible condition',
+        })
+      })
+  })
+
+  on.return.received(async (returnData: Return) => {
+    // Process refund
+    const refund = await api.post('https://api.stripe.com/v1/refunds', {
+      charge: returnData.orderId,
+      amount: returnData.refundAmount * 100,
+    })
+
+    await db.returns.update(returnData.id, { status: 'refunded' })
+    await send.email(returnData.customerId, 'Refund Processed', {
+      amount: returnData.refundAmount,
+    })
+  })
+}
+```
