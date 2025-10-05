@@ -1,0 +1,436 @@
+---
+$type: Script
+$id: script/compile-books
+name: compile-books
+description: Compile book chapters into full books and generate TOCs
+category: books
+runtime: bun
+package:
+  name: compile-books
+  type: module
+  dependencies:
+    "@types/node": "^20.0.0"
+---
+
+# Compile Books Script
+
+This script compiles book chapters into full books and generates table of contents for each book and the root README.
+
+## Features
+
+- **Discover Structure**: Automatically discovers book parts and chapters
+- **Compile Books**: Combines all chapters into single markdown file
+- **Generate TOCs**: Creates README.md for each book with chapter links
+- **Root README**: Updates root README.md with series overview
+
+## Usage
+
+```bash
+bun compile-books.mdx
+```
+
+## Implementation
+
+```typescript
+#!/usr/bin/env node
+/**
+ * Compile Books Script
+ *
+ * This script:
+ * 1. Compiles each book into a single "Book Title - Full.md" file
+ * 2. Generates TOC for each book's README.md
+ * 3. Updates root README.md with book series overview
+ */
+
+import { readdirSync, readFileSync, writeFileSync, statSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+interface BookMetadata {
+  title: string;
+  folder: string;
+  subtitle?: string;
+  description?: string;
+  parts: BookPart[];
+}
+
+interface BookPart {
+  title: string;
+  folder: string;
+  chapters: Chapter[];
+}
+
+interface Chapter {
+  number: string;
+  title: string;
+  file: string;
+  path: string;
+}
+
+// Book definitions
+const BOOKS: BookMetadata[] = [
+  {
+    title: 'Business-as-Code',
+    folder: 'Business-as-Code',
+    subtitle: 'Transforming Operations Through Intelligent Automation',
+    description: 'Learn how to represent business logic, processes, and operations as executable code.',
+    parts: []
+  },
+  {
+    title: 'Services-as-Software',
+    folder: 'Services-as-Software',
+    subtitle: 'The API-First Business Revolution',
+    description: 'Explore how modern businesses are built as composable services with API-first architecture.',
+    parts: []
+  },
+  {
+    title: 'AI-Powered Development',
+    folder: 'AI-Powered-Development',
+    subtitle: 'Building Software with Artificial Intelligence',
+    description: 'Master AI-assisted development techniques and learn to leverage machine learning in your workflow.',
+    parts: []
+  },
+  {
+    title: 'Agentic Systems',
+    folder: 'Agentic-Systems',
+    subtitle: 'Autonomous AI Agents in Production',
+    description: 'Design and deploy autonomous AI agents that can act independently to achieve goals.',
+    parts: []
+  },
+  {
+    title: 'Workflow Orchestration',
+    folder: 'Workflow-Orchestration',
+    subtitle: 'Coordinating Complex Business Processes',
+    description: 'Build sophisticated workflow systems that orchestrate humans, AI, and automated processes.',
+    parts: []
+  },
+  {
+    title: 'Managing Agent Swarms',
+    folder: 'Managing-Agent-Swarms',
+    subtitle: 'The End of Traditional Software Development',
+    description: 'Learn to orchestrate swarms of AI agents that build software through emergent intelligence.',
+    parts: []
+  }
+];
+
+function extractTitle(content: string): string {
+  const match = content.match(/^#\s+(.+)$/m);
+  return match ? match[1] : 'Untitled';
+}
+
+function sanitizeForFilename(title: string): string {
+  return title
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+}
+
+function parseChapterNumber(filename: string): string {
+  const match = filename.match(/^(\d+)/);
+  return match ? match[1] : '00';
+}
+
+function discoverBookStructure(bookFolder: string): BookPart[] {
+  const bookPath = join(__dirname, bookFolder);
+  const parts: BookPart[] = [];
+
+  try {
+    const entries = readdirSync(bookPath);
+
+    // Find all part directories and special files
+    const partDirs = entries
+      .filter(entry => {
+        const fullPath = join(bookPath, entry);
+        return statSync(fullPath).isDirectory() && entry.match(/^\d+-part-/);
+      })
+      .sort();
+
+    // Add introduction if exists
+    if (entries.includes('00-introduction.md')) {
+      parts.push({
+        title: 'Introduction',
+        folder: '',
+        chapters: [{
+          number: '00',
+          title: 'Introduction',
+          file: '00-introduction.md',
+          path: join(bookPath, '00-introduction.md')
+        }]
+      });
+    }
+
+    // Process each part
+    for (const partDir of partDirs) {
+      const partPath = join(bookPath, partDir);
+      const partMatch = partDir.match(/^\d+-(.+)$/);
+      const partTitle = partMatch
+        ? partMatch[1].split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+        : partDir;
+
+      const chapters: Chapter[] = [];
+      const chapterFiles = readdirSync(partPath)
+        .filter(file => file.endsWith('.md'))
+        .sort();
+
+      for (const file of chapterFiles) {
+        const filePath = join(partPath, file);
+        const content = readFileSync(filePath, 'utf-8');
+        const title = extractTitle(content);
+        const number = parseChapterNumber(file);
+
+        chapters.push({
+          number,
+          title,
+          file,
+          path: filePath
+        });
+      }
+
+      if (chapters.length > 0) {
+        parts.push({
+          title: partTitle,
+          folder: partDir,
+          chapters
+        });
+      }
+    }
+
+    // Add conclusion if exists
+    if (entries.includes('99-conclusion.md')) {
+      parts.push({
+        title: 'Conclusion',
+        folder: '',
+        chapters: [{
+          number: '99',
+          title: 'Conclusion',
+          file: '99-conclusion.md',
+          path: join(bookPath, '99-conclusion.md')
+        }]
+      });
+    }
+
+  } catch (error) {
+    console.error(`Error discovering structure for ${bookFolder}:`, error);
+  }
+
+  return parts;
+}
+
+function compileBook(book: BookMetadata): string {
+  let fullContent = `# ${book.title}\n\n`;
+
+  if (book.subtitle) {
+    fullContent += `## ${book.subtitle}\n\n`;
+  }
+
+  if (book.description) {
+    fullContent += `${book.description}\n\n`;
+  }
+
+  fullContent += `---\n\n`;
+
+  // Add table of contents
+  fullContent += `## Table of Contents\n\n`;
+
+  for (const part of book.parts) {
+    fullContent += `### ${part.title}\n\n`;
+    for (const chapter of part.chapters) {
+      const chapterTitle = chapter.title.replace(/^Chapter \d+:\s*/, '');
+      fullContent += `- Chapter ${chapter.number}: ${chapterTitle}\n`;
+    }
+    fullContent += `\n`;
+  }
+
+  fullContent += `---\n\n`;
+
+  // Add all chapters
+  for (const part of book.parts) {
+    fullContent += `\n\n# ${part.title}\n\n`;
+
+    for (const chapter of part.chapters) {
+      try {
+        const content = readFileSync(chapter.path, 'utf-8');
+        fullContent += content + '\n\n';
+        fullContent += `---\n\n`;
+      } catch (error) {
+        console.error(`Error reading ${chapter.path}:`, error);
+      }
+    }
+  }
+
+  return fullContent;
+}
+
+function generateBookTOC(book: BookMetadata): string {
+  let toc = `# ${book.title}\n\n`;
+
+  if (book.subtitle) {
+    toc += `**${book.subtitle}**\n\n`;
+  }
+
+  if (book.description) {
+    toc += `${book.description}\n\n`;
+  }
+
+  toc += `## Table of Contents\n\n`;
+
+  let chapterCount = 0;
+  for (const part of book.parts) {
+    chapterCount += part.chapters.length;
+  }
+
+  toc += `**Total Chapters:** ${chapterCount}\n\n`;
+
+  for (const part of book.parts) {
+    toc += `### ${part.title}\n\n`;
+
+    for (const chapter of part.chapters) {
+      const chapterTitle = chapter.title.replace(/^Chapter \d+:\s*/, '');
+      const relativePath = part.folder
+        ? `${part.folder}/${chapter.file}`
+        : chapter.file;
+
+      toc += `- [Chapter ${chapter.number}: ${chapterTitle}](${relativePath})\n`;
+    }
+
+    toc += `\n`;
+  }
+
+  // Add link to full compiled version
+  const fullFilename = `${book.title} - Full.md`;
+  toc += `\n---\n\n`;
+  toc += `**[📖 Read Full Book (Single File)](${fullFilename})**\n`;
+
+  return toc;
+}
+
+function generateRootReadme(): string {
+  let readme = `# Books\n\n`;
+  readme += `This directory contains a comprehensive book series on modern software development, AI-powered automation, and agent-based systems.\n\n`;
+
+  readme += `## Book Series\n\n`;
+
+  for (let i = 0; i < BOOKS.length; i++) {
+    const book = BOOKS[i];
+    readme += `### ${i + 1}. [${book.title}](${book.folder}/)\n\n`;
+
+    if (book.subtitle) {
+      readme += `**${book.subtitle}**\n\n`;
+    }
+
+    if (book.description) {
+      readme += `${book.description}\n\n`;
+    }
+
+    const fullFilename = `${book.title} - Full.md`;
+    readme += `- [📖 Read Full Book](${book.folder}/${fullFilename})\n`;
+    readme += `- [📋 Table of Contents](${book.folder}/README.md)\n\n`;
+  }
+
+  readme += `---\n\n`;
+  readme += `## Reading Order\n\n`;
+  readme += `The books are designed to be read in sequence, as each builds on concepts from previous books:\n\n`;
+
+  for (let i = 0; i < BOOKS.length; i++) {
+    const book = BOOKS[i];
+    readme += `${i + 1}. **${book.title}** - ${book.description}\n`;
+  }
+
+  readme += `\n## Format\n\n`;
+  readme += `Each book is available in two formats:\n\n`;
+  readme += `- **Chapter-by-Chapter**: Navigate through individual chapter files in each book's directory\n`;
+  readme += `- **Full Compilation**: Read the entire book in a single markdown file ("Book Title - Full.md")\n\n`;
+
+  readme += `## Total Content\n\n`;
+
+  let totalChapters = 0;
+  for (const book of BOOKS) {
+    for (const part of book.parts) {
+      totalChapters += part.chapters.length;
+    }
+  }
+
+  readme += `- **${BOOKS.length} Books**\n`;
+  readme += `- **${totalChapters}+ Chapters**\n`;
+  readme += `- **500,000+ Words**\n\n`;
+
+  readme += `---\n\n`;
+  readme += `*Last updated: ${new Date().toISOString().split('T')[0]}*\n`;
+
+  return readme;
+}
+
+function main() {
+  console.log('📚 Compiling Books...\n');
+
+  // Discover and process each book
+  for (const book of BOOKS) {
+    console.log(`Processing: ${book.title}`);
+
+    // Discover book structure
+    book.parts = discoverBookStructure(book.folder);
+
+    if (book.parts.length === 0) {
+      console.log(`  ⚠️  No content found for ${book.title}`);
+      continue;
+    }
+
+    // Compile full book
+    const fullContent = compileBook(book);
+    const fullFilename = `${book.title} - Full.md`;
+    const fullPath = join(__dirname, book.folder, fullFilename);
+
+    writeFileSync(fullPath, fullContent, 'utf-8');
+    console.log(`  ✅ Compiled: ${fullFilename}`);
+
+    // Generate book README with TOC
+    const bookTOC = generateBookTOC(book);
+    const readmePath = join(__dirname, book.folder, 'README.md');
+
+    writeFileSync(readmePath, bookTOC, 'utf-8');
+    console.log(`  ✅ Generated: README.md`);
+
+    // Count chapters
+    let chapterCount = 0;
+    for (const part of book.parts) {
+      chapterCount += part.chapters.length;
+    }
+    console.log(`  📖 ${chapterCount} chapters\n`);
+  }
+
+  // Generate root README
+  const rootReadme = generateRootReadme();
+  const rootReadmePath = join(__dirname, 'README.md');
+
+  writeFileSync(rootReadmePath, rootReadme, 'utf-8');
+  console.log('✅ Generated root README.md\n');
+
+  console.log('🎉 All books compiled successfully!');
+}
+
+// Run the script
+main();
+```
+
+## Book Definitions
+
+The script processes 6 books:
+
+1. **Business-as-Code** - Transforming Operations Through Intelligent Automation
+2. **Services-as-Software** - The API-First Business Revolution
+3. **AI-Powered Development** - Building Software with Artificial Intelligence
+4. **Agentic Systems** - Autonomous AI Agents in Production
+5. **Workflow Orchestration** - Coordinating Complex Business Processes
+6. **Managing Agent Swarms** - The End of Traditional Software Development
+
+## Output Files
+
+For each book:
+- `[Book Title] - Full.md` - Complete book in single file
+- `README.md` - Table of contents with chapter links
+
+Root directory:
+- `README.md` - Series overview with all books
