@@ -50,58 +50,88 @@ Each content repository (submodule) syncs independently with the database via re
 
 ```
 ctx/
-├── brands/
-│   ├── example-brand.mdx
-│   └── [brand-name].mdx
-├── functions/
-│   ├── send-email.mdx
-│   └── [function-name].mdx
-├── nouns/
-│   ├── organization.mdx
-│   └── [noun-name].mdx
-├── verbs/
-│   ├── create.mdx
-│   └── [verb-name].mdx
-├── workflows/
-│   ├── user-onboarding.mdx
-│   └── [workflow-name].mdx
-├── agents/
-│   ├── support-agent.mdx
-│   └── [agent-name].mdx
-├── ideas/
-│   ├── ai-code-review.mdx
-│   └── [idea-name].mdx
-├── business-as-code/     # Business-as-Code entities
-│   ├── companies/        # Company definitions
-│   │   ├── dot-do.mdx
-│   │   └── [company-name].mdx
-│   ├── objectives/       # OKRs and key results
-│   ├── roles/           # Organizational roles
-│   ├── offerings/       # Products and services
-│   ├── operations/      # Business processes
-│   ├── metrics/         # KPIs and tracking
-│   ├── resources/       # Budget and allocation
-│   ├── governance/      # Policies and authority
-│   ├── types.ts         # TypeScript interfaces
-│   └── README.md        # Documentation
-├── services-as-software/ # Services-as-Software entities
-│   ├── services/        # Service definitions
-│   │   ├── tax-return-preparation.mdx
-│   │   └── [service-name].mdx
-│   ├── tasks/           # Task decomposition
-│   ├── deliverables/    # Output specs
-│   ├── quality/         # Standards and SLAs
-│   ├── pricing/         # Pricing models
-│   ├── delivery/        # Execution mechanisms
-│   ├── types.ts         # TypeScript interfaces
-│   └── README.md        # Documentation
-├── .velite/              # Generated (gitignored)
-├── velite.config.ts      # Velite configuration
+├── .gitmodules              # Submodule configuration
+├── agents/                  # (submodule) AI agent definitions
+├── apps/                    # (submodule) Application definitions
+├── brands/                  # (submodule) Brand identity
+├── business/                # (submodule) Business entities
+├── db/                      # (submodule) Database records and migrations
+├── functions/               # (submodule) Function definitions
+├── integrations/            # (submodule) Integration configs
+├── notes/                   # (submodule) Documentation and notes
+├── research/                # (submodule) Research materials
+├── schemas/                 # (submodule) Schema definitions
+├── services/                # (submodule) Service definitions
+├── sources/                 # (submodule) Data source definitions
+├── workflows/               # (submodule) Workflow patterns
+│
+├── business-as-code/        # Business-as-Code framework (local)
+│   ├── companies/           # Company definitions
+│   ├── objectives/          # OKRs and key results
+│   ├── roles/              # Organizational roles
+│   ├── offerings/          # Products and services
+│   ├── operations/         # Business processes
+│   ├── metrics/            # KPIs and tracking
+│   ├── resources/          # Budget and allocation
+│   ├── governance/         # Policies and authority
+│   ├── types.ts            # TypeScript interfaces
+│   └── README.md           # Documentation
+│
+├── services-as-software/    # Services framework (local)
+│   ├── services/           # Service definitions
+│   ├── tasks/              # Task decomposition
+│   ├── deliverables/       # Output specs
+│   ├── quality/            # Standards and SLAs
+│   ├── pricing/            # Pricing models
+│   ├── delivery/           # Execution mechanisms
+│   ├── types.ts            # TypeScript interfaces
+│   └── README.md           # Documentation
+│
+├── ideas/                   # Local entity types (local)
+├── nouns/                   # Entity/type definitions (local)
+├── verbs/                   # Action definitions (local)
+├── standards/               # Standards and conventions (local)
+├── templates/               # Template files (local)
+├── reports/                 # Generated reports (local)
+│
+├── ABSTRACTIONS.md          # Business-as-Code system design
+├── ARCHITECTURE.md          # Platform architecture overview
+├── IDEAS.md                 # Future ideas and concepts
+├── ROADMAP.md              # Development roadmap
+├── SEMANTICS.md            # Semantic triple network design
+├── WORKSTREAMS.md          # Active workstream tracking
+│
+├── .velite/                 # Generated (gitignored)
+├── velite.config.ts         # Velite configuration
 ├── package.json
 ├── tsconfig.json
 ├── .gitignore
 ├── README.md
-└── CLAUDE.md            # This file
+└── CLAUDE.md               # This file
+```
+
+### Working with Submodules
+
+```bash
+# Clone ctx with all submodules
+git clone --recurse-submodules https://github.com/dot-do/ctx.git
+
+# Update all submodules to latest
+cd ctx
+git submodule update --remote --merge
+
+# Work on a specific content repo
+cd agents
+git checkout -b new-feature
+# make changes
+git add . && git commit -m "Add new agent"
+git push origin new-feature
+
+# Update parent ctx repo to track new commit
+cd ..
+git add agents
+git commit -m "Update agents submodule"
+git push
 ```
 
 ## Development Commands
