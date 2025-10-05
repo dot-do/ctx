@@ -1,0 +1,231 @@
+name: Claude Code Integration
+
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+
+# Only allow one Claude Code run at a time per repository
+concurrency:
+  group: claude-code-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude-code:
+    name: Run Claude Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Run on new unassigned issues (not in backlog) or when mentioned on any issue
+    if: |
+      (
+        github.event_name == 'issues' &&
+        github.event.action == 'opened' &&
+        github.event.issue.assignees[0] == null &&
+        !contains(github.event.issue.labels.*.name, 'backlog')
+      ) ||
+      (
+        github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@claude')
+      )
+
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Extract Priority from Issue Title
+        id: priority
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+          if [[ "$TITLE" =~ \[P0\] ]]; then
+            echo "priority=P0" >> $GITHUB_OUTPUT
+            echo "label=priority:P0" >> $GITHUB_OUTPUT
+          elif [[ "$TITLE" =~ \[P1\] ]]; then
+            echo "priority=P1" >> $GITHUB_OUTPUT
+            echo "label=priority:P1" >> $GITHUB_OUTPUT
+          elif [[ "$TITLE" =~ \[P2\] ]]; then
+            echo "priority=P2" >> $GITHUB_OUTPUT
+            echo "label=priority:P2" >> $GITHUB_OUTPUT
+          else
+            echo "priority=P2" >> $GITHUB_OUTPUT
+            echo "label=priority:P2" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine if Root Repository
+        id: repo-type
+        run: |
+          REPO_NAME="${{ github.repository }}"
+          if [[ "$REPO_NAME" == *"/.do" ]] || [[ "$REPO_NAME" == "dot-do/.do" ]]; then
+            echo "is_root=true" >> $GITHUB_OUTPUT
+            echo "submodules=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_root=false" >> $GITHUB_OUTPUT
+            echo "submodules=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout Code (with submodules for root repo)
+        if: steps.repo-type.outputs.is_root == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Code (without submodules for sub repos)
+        if: steps.repo-type.outputs.is_root == 'false'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+
+      - name: Create Claude Code Prompt from Issue
+        id: create-prompt
+        run: |
+          cat > /tmp/claude-prompt.md << 'EOF'
+          # Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}
+
+          **Priority**: ${{ steps.priority.outputs.priority }}
+          **Repository**: ${{ github.repository }}
+          **Issue URL**: ${{ github.event.issue.html_url }}
+
+          ## Issue Description
+
+          ${{ github.event.issue.body }}
+
+          ## Instructions
+
+          Please implement the changes requested in this issue. Follow these guidelines:
+
+          1. **Read and understand** the issue requirements carefully
+          2. **Analyze** the existing codebase to understand the context
+          3. **Implement** the requested changes following the repository's code standards
+          4. **Test** your changes to ensure they work correctly
+          5. **Document** any significant changes or decisions made
+          6. **Commit** your changes with a clear commit message
+
+          ## Expected Deliverables
+
+          - Implementation of requested features/fixes
+          - Updated tests (if applicable)
+          - Updated documentation (if applicable)
+          - Clean, well-structured code following repository standards
+
+          ## Notes
+
+          - Check for CLAUDE.md in the repository for specific guidelines
+          - Follow existing patterns and conventions in the codebase
+          - Ensure all changes are backwards compatible unless explicitly requested otherwise
+          - Add appropriate error handling and validation
+
+          EOF
+
+          echo "Prompt created at /tmp/claude-prompt.md"
+          cat /tmp/claude-prompt.md
+
+      - name: Run Claude Code
+        id: claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Create a branch for the changes
+          BRANCH_NAME="claude-code/issue-${{ github.event.issue.number }}"
+          git config --global user.name "Claude Code Bot"
+          git config --global user.email "claude-code@anthropic.com"
+          git checkout -b "$BRANCH_NAME"
+
+          # Run Claude Code with the prompt
+          claude-code execute --prompt-file /tmp/claude-prompt.md --auto-commit
+
+          # Check if changes were made
+          if git diff --quiet origin/main; then
+            echo "changes_made=false" >> $GITHUB_OUTPUT
+          else
+            echo "changes_made=true" >> $GITHUB_OUTPUT
+            echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push Changes and Create PR
+        if: steps.claude.outputs.changes_made == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH_NAME="${{ steps.claude.outputs.branch }}"
+
+          # Push the branch
+          git push origin "$BRANCH_NAME"
+
+          # Create PR using GitHub CLI
+          gh pr create \
+            --title "[${{ steps.priority.outputs.priority }}] Fix for Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}" \
+            --body "$(cat << 'EOF'
+          ## Summary
+
+          This PR was automatically generated by Claude Code to address issue #${{ github.event.issue.number }}.
+
+          **Issue**: ${{ github.event.issue.html_url }}
+          **Priority**: ${{ steps.priority.outputs.priority }}
+          **Repository**: ${{ github.repository }}
+
+          ## Changes Made
+
+          Claude Code analyzed the issue and implemented the requested changes. Please review the commits and code changes for details.
+
+          ## Testing
+
+          - [ ] Review the code changes
+          - [ ] Run tests locally
+          - [ ] Verify the implementation meets requirements
+          - [ ] Check for any edge cases or issues
+
+          ## Metadata
+
+          - **Generated by**: Claude Code Bot
+          - **Issue**: #${{ github.event.issue.number }}
+          - **Priority**: ${{ steps.priority.outputs.priority }}
+          - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          ---
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+          Closes #${{ github.event.issue.number }}
+          EOF
+          )" \
+            --label "automated,${{ steps.priority.outputs.label }},claude-code" \
+            --base main
+
+          # Get PR number and add comment to issue
+          PR_URL=$(gh pr view --json url -q .url)
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "✅ Claude Code has created a PR to address this issue: $PR_URL"
+
+      - name: Comment on Issue (No Changes)
+        if: steps.claude.outputs.changes_made == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "ℹ️ Claude Code analyzed this issue but determined no code changes are necessary. Please review the issue description and clarify if changes are needed."
+
+      - name: Handle Errors
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "❌ Claude Code encountered an error while processing this issue. Please check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+
+          # Add error label
+          gh issue edit ${{ github.event.issue.number }} --add-label "claude-code-error"

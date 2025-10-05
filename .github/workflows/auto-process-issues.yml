@@ -1,0 +1,84 @@
+name: Auto-Process New Issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  auto-assign-claude:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      issues: write
+
+    steps:
+      - name: Check for Opt-Out
+        id: check-optout
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+          BODY="${{ github.event.issue.body }}"
+
+          # Check for opt-out patterns
+          if [[ "$TITLE" =~ \[NO-AUTO\] ]] || [[ "$BODY" =~ \[NO-AUTO\] ]]; then
+            echo "opted_out=true" >> $GITHUB_OUTPUT
+            echo "Issue opted out of auto-processing"
+          else
+            echo "opted_out=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Auto-Comment with @claude
+        if: steps.check-optout.outputs.opted_out == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract priority from title if present
+          TITLE="${{ github.event.issue.title }}"
+          if [[ "$TITLE" =~ \[P0\] ]]; then
+            PRIORITY="P0 - Critical"
+          elif [[ "$TITLE" =~ \[P1\] ]]; then
+            PRIORITY="P1 - High"
+          elif [[ "$TITLE" =~ \[P2\] ]]; then
+            PRIORITY="P2 - Normal"
+          else
+            PRIORITY="P2 - Normal"
+          fi
+
+          # Create comment with @claude mention to trigger the main workflow
+          gh issue comment ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --body "👋 @claude, please help with this issue.
+
+**Priority**: ${PRIORITY}
+**Auto-assigned**: Yes
+
+Please analyze this issue and:
+1. Review the requirements carefully
+2. Check for any related issues or PRs
+3. Determine the scope of work needed
+4. Break down into subtasks if complex
+5. Implement the requested changes or provide guidance
+
+If this is a complex issue requiring multiple steps, please create sub-issues and link them to this parent issue.
+
+Reference documentation:
+- Check CLAUDE.md for project-specific guidelines
+- Follow existing code patterns and conventions
+- Ensure backwards compatibility unless specified otherwise
+"
+
+          # Add automated label
+          gh issue edit ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --add-label "automated"
+
+      - name: Comment on Opt-Out
+        if: steps.check-optout.outputs.opted_out == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --body "ℹ️ This issue has been marked with [NO-AUTO] and will not be automatically processed by Claude Code.
+
+To enable auto-processing, remove [NO-AUTO] from the title or body and add a comment mentioning @claude."
