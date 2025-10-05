@@ -2,43 +2,49 @@
 
 ## Project Overview
 
-The **ctx repository** (ctx.do) is the single source of truth for **entity definitions** in the dot-do ecosystem. It stores structured content as MDX files with Zod schema validation via Velite, enabling bidirectional synchronization with the PostgreSQL database.
+The **ctx repository** (ctx.do) is a **parent repository** organizing all MDX content and database records for the dot-do ecosystem. It consolidates entity definitions as **nested git submodules**, enabling independent version control while maintaining organizational structure.
 
-**Purpose**: Define and manage entities (brands, functions, nouns, verbs, workflows, agents, ideas) as version-controlled MDX files that sync automatically to the database.
+**Purpose**: Organize and manage all content repositories (agents, apps, brands, business, db, functions, integrations, notes, research, schemas, services, sources, workflows) as submodules under a single parent repository.
 
-**Position**: 📝 **Content Layer** - Content source that syncs to db layer
+**Position**: 📝 **Content Organization Layer** - Parent repository for all MDX content repos
+
+**Architecture**: Each content type is an independent git repository, but organized under ctx/ for easier discovery and management.
 
 ## Architecture
 
-### Content as Code
+### Parent Repository with Nested Submodules
 
-MDX files in this repository are treated as the canonical source for entity definitions. Changes to these files automatically sync to the database via GitHub webhooks.
+The ctx repository contains **13 content repositories as git submodules**:
+
+1. **agents/** - AI agent definitions (submodule)
+2. **apps/** - Application definitions (submodule)
+3. **brands/** - Brand identity (submodule)
+4. **business/** - Business entities (submodule)
+5. **db/** - Database records and migrations (submodule)
+6. **functions/** - Function definitions (submodule)
+7. **integrations/** - Integration configs (submodule)
+8. **notes/** - Documentation and notes (submodule)
+9. **research/** - Research materials (submodule)
+10. **schemas/** - Schema definitions (submodule)
+11. **services/** - Service definitions (submodule)
+12. **sources/** - Data source definitions (submodule)
+13. **workflows/** - Workflow patterns (submodule)
+
+**Plus local directories:**
+- **business-as-code/** - Business entity framework (not a submodule)
+- **services-as-software/** - Service definitions framework (not a submodule)
+- **ideas/**, **nouns/**, **verbs/**, **standards/**, **templates/**, **reports/** - Local entity types
 
 ### Bidirectional Sync
 
 ```
-GitHub (MDX) ←→ Database (PostgreSQL)
+GitHub (MDX in submodules) ←→ Database (PostgreSQL)
 
-Commit to ctx repo → Webhook → Parse MDX → Validate → Upsert to DB
+Commit to content repo → Webhook → Parse MDX → Validate → Upsert to DB
 Database change → Queue job → Generate MDX → Create PR → Review → Merge
 ```
 
-### Entity Types (9 Total)
-
-**Core Entities:**
-1. **Brands** - Brand identity and metadata
-2. **Functions** - Code/generative/human/agentic functions
-3. **Nouns** - Entities and types (Schema.org vocabulary)
-4. **Verbs** - Actions and operations
-5. **Workflows** - Orchestration patterns
-6. **Agents** - Autonomous AI workers
-7. **Ideas** - Concepts and opportunities
-
-**Business-as-Code:**
-8. **Companies** - Business entities with OKRs, roles, offerings, operations (business-as-code/)
-
-**Services-as-Software:**
-9. **Services** - AI-deliverable services mapped to ONET occupations and GDPval tasks (services-as-software/)
+Each content repository (submodule) syncs independently with the database via repo.do GitHub webhooks.
 
 ## Directory Structure
 
