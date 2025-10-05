@@ -1,0 +1,405 @@
+---
+$type: Worker::Documentation
+$id: worker/auth/readme
+worker: auth
+title: Auth Worker - Authentication & Authorization
+description: Microservice for WorkOS integration, API keys, sessions, and RBAC
+---
+
+# Auth Worker
+
+**Authentication & Authorization Microservice**
+
+## Purpose
+
+Centralized authentication and authorization service providing WorkOS integration, API key management, JWT sessions, and role-based access control (RBAC).
+
+## Key Features
+
+- **WorkOS Integration** - OAuth 2.0 SSO (Google, Microsoft, Okta, GitHub)
+- **API Key Management** - Create, validate, revoke API keys
+- **Session Management** - JWT-based sessions with refresh tokens
+- **RBAC** - Role-based access control with permissions
+- **Rate Limiting** - Per-user rate limits
+- **Encryption** - Secure API key storage
+
+## Architecture
+
+```
+HTTP/RPC Request → Auth Worker → WorkOS/Database → Validation → AuthContext
+```
+
+## Core Responsibilities
+
+1. **Authenticate** - Validate bearer tokens, API keys, sessions
+2. **Authorize** - Check permissions and roles
+3. **Manage** - Create/revoke API keys and sessions
+4. **Integrate** - WorkOS OAuth provider
+
+## Interfaces
+
+### 1. RPC Interface (WorkerEntrypoint)
+
+```typescript
+class AuthService extends WorkerEntrypoint {
+  async validateToken(token: string): Promise<ValidateTokenResponse>
+  async validateApiKey(apiKey: string): Promise<User | null>
+  async createApiKey(input: ApiKeyCreateInput): Promise<CreateApiKeyResponse>
+  async revokeApiKey(userId: string, keyId: string): Promise<boolean>
+  async checkPermission(check: PermissionCheck): Promise<boolean>
+  async createSession(userId: string, ...): Promise<SessionResponse>
+  async getSession(sessionId: string): Promise<Session | null>
+  async revokeSession(sessionId: string): Promise<boolean>
+}
+```
+
+### 2. HTTP Interface (Hono)
+
+```
+POST   /auth/login              → WorkOS OAuth initiation
+GET    /auth/callback           → WorkOS OAuth callback
+POST   /auth/logout             → Session termination
+GET    /auth/session            → Current session info
+POST   /auth/apikeys            → Create API key
+GET    /auth/apikeys            → List API keys
+DELETE /auth/apikeys/:id        → Revoke API key
+POST   /auth/validate           → Validate token
+POST   /auth/permissions/check  → Check permission
+```
+
+## Authentication Methods
+
+### 1. WorkOS OAuth
+
+Social login via WorkOS providers:
+
+```typescript
+// Initiate OAuth flow
+GET /auth/login?provider=google
+
+// Callback handling
+GET /auth/callback?code=xxx&state=xxx
+```
+
+Supported providers:
+- Google
+- Microsoft
+- GitHub
+- Okta
+- Any SAML provider
+
+### 2. API Keys
+
+Service-to-service authentication:
+
+```typescript
+// Create API key
+POST /auth/apikeys
+{
+  "name": "Production API Key",
+  "scopes": ["read", "write"],
+  "expiresInDays": 365
+}
+
+// Returns
+{
+  "key": "sk_live_xxx",  // Only shown once!
+  "id": "key_xxx",
+  "name": "Production API Key",
+  "scopes": ["read", "write"],
+  "expiresAt": "2026-01-01T00:00:00Z"
+}
+```
+
+API key format: `sk_{env}_{random}`
+- `sk_test_xxx` - Test environment
+- `sk_live_xxx` - Production environment
+
+### 3. JWT Sessions
+
+Browser-based authentication:
+
+```typescript
+// Session created on successful OAuth
+{
+  "session": {
+    "id": "sess_xxx",
+    "userId": "user_xxx",
+    "expiresAt": "2025-01-08T00:00:00Z"
+  },
+  "token": "eyJhbGc...",          // JWT token
+  "refreshToken": "refresh_xxx"   // Refresh token
+}
+```
+
+Session cookies:
+- `session` - HttpOnly, Secure, SameSite=Lax
+- `refresh_token` - HttpOnly, Secure, SameSite=Strict
+
+## Role-Based Access Control (RBAC)
+
+### Roles
+
+Three built-in roles:
+
+```typescript
+type Role = 'admin' | 'user' | 'guest'
+```
+
+- **admin** - Full access to all resources and operations
+- **user** - Access to own resources, limited operations
+- **guest** - Read-only access to public resources
+
+### Permissions
+
+Granular permissions:
+
+```typescript
+type Permission =
+  | 'read'      // Read operations
+  | 'write'     // Create/update operations
+  | 'delete'    // Delete operations
+  | 'admin'     // Admin operations
+  | 'execute'   // Execute workflows/functions
+  | 'deploy'    // Deploy services
+```
+
+### Permission Checks
+
+```typescript
+// Check permission
+const hasPermission = await authService.checkPermission({
+  userId: 'user_xxx',
+  resource: 'workflows',
+  action: 'execute'
+})
+```
+
+Permission matrix:
+
+| Role  | read | write | delete | admin | execute | deploy |
+|-------|------|-------|--------|-------|---------|--------|
+| admin | ✅   | ✅    | ✅     | ✅    | ✅      | ✅     |
+| user  | ✅   | ✅    | ❌     | ❌    | ✅      | ❌     |
+| guest | ✅   | ❌    | ❌     | ❌    | ❌      | ❌     |
+
+## WorkOS Integration
+
+### OAuth Configuration
+
+```typescript
+const workosClient = new WorkOS(env.WORKOS_API_KEY)
+
+// Initiate OAuth
+const authorizationUrl = workosClient.sso.getAuthorizationUrl({
+  provider: 'GoogleOAuth',
+  clientId: env.WORKOS_CLIENT_ID,
+  redirectUri: `${env.PUBLIC_URL}/auth/callback`,
+  state: generateState(),
+})
+
+// Handle callback
+const { profile } = await workosClient.sso.getProfileAndToken({
+  code: params.code,
+  clientId: env.WORKOS_CLIENT_ID,
+})
+```
+
+### User Creation
+
+On successful OAuth:
+
+1. Extract profile (email, name, avatar)
+2. Find or create user in database
+3. Create session with JWT token
+4. Set session cookie
+5. Redirect to application
+
+## API Key Management
+
+### Storage
+
+API keys are hashed before storage:
+
+```typescript
+// Hash key
+const hashedKey = await sha256(apiKey)
+
+// Store in database
+await db.execute(`
+  INSERT INTO api_keys (id, user_id, key_hash, name, scopes, expires_at)
+  VALUES (?, ?, ?, ?, ?, ?)
+`, id, userId, hashedKey, name, scopes, expiresAt)
+```
+
+### Validation
+
+```typescript
+export async function validateApiKeyAndGetUser(
+  env: AuthServiceEnv,
+  apiKey: string
+): Promise<User | null> {
+  // Hash the provided key
+  const hashedKey = await sha256(apiKey)
+
+  // Query database
+  const result = await env.DB.query({
+    sql: `
+      SELECT u.*, a.scopes
+      FROM api_keys a
+      JOIN users u ON a.user_id = u.id
+      WHERE a.key_hash = ? AND a.revoked = 0 AND a.expires_at > ?
+    `,
+    params: [hashedKey, Date.now()],
+  })
+
+  if (!result.rows || result.rows.length === 0) {
+    return null
+  }
+
+  return mapRowToUser(result.rows[0])
+}
+```
+
+## Session Management
+
+### JWT Structure
+
+```json
+{
+  "sub": "user_xxx",
+  "email": "user@example.com",
+  "role": "user",
+  "org": "org_xxx",
+  "iat": 1704067200,
+  "exp": 1704153600
+}
+```
+
+### Token Lifetime
+
+- **Access Token** - 1 hour (short-lived)
+- **Refresh Token** - 7 days (long-lived)
+- **Session** - 7 days (database record)
+
+### Refresh Flow
+
+```typescript
+POST /auth/refresh
+{
+  "refreshToken": "refresh_xxx"
+}
+
+// Returns new tokens
+{
+  "token": "eyJhbGc...",
+  "refreshToken": "refresh_yyy",
+  "expiresAt": "2025-01-08T00:00:00Z"
+}
+```
+
+## Database Schema
+
+### users
+
+```sql
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  image TEXT,
+  role TEXT DEFAULT 'user',
+  email_verified INTEGER DEFAULT 0,
+  workos_id TEXT,
+  organization_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+)
+```
+
+### api_keys
+
+```sql
+CREATE TABLE api_keys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  key_hash TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  scopes TEXT,
+  revoked INTEGER DEFAULT 0,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+)
+```
+
+### sessions
+
+```sql
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  refresh_token TEXT UNIQUE NOT NULL,
+  device TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+)
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# WorkOS
+WORKOS_API_KEY=sk_live_xxx
+WORKOS_CLIENT_ID=client_xxx
+WORKOS_ORGANIZATION_ID=org_xxx
+
+# JWT
+JWT_SECRET=your-secret-min-32-chars
+JWT_EXPIRES_IN=1h
+
+# Public URL
+PUBLIC_URL=https://auth.do
+```
+
+### Service Bindings
+
+```json
+{
+  "services": [
+    { "binding": "DB", "service": "db" }
+  ]
+}
+```
+
+## Testing
+
+Run tests:
+
+```bash
+cd workers/auth
+pnpm test
+```
+
+Key test suites:
+- API key validation (10+ tests)
+- Session management (8 tests)
+- WorkOS OAuth flow (5 tests)
+- RBAC permission checks (12 tests)
+
+## Related Documentation
+
+- [validate-token.mdx](./validate-token.mdx) - Token validation
+- [create-api-key.mdx](./create-api-key.mdx) - API key management
+- [create-session.mdx](./create-session.mdx) - Session management
+- [check-permission.mdx](./check-permission.mdx) - RBAC
+
+## See Also
+
+- **[workers/gateway/](../gateway/)** - Gateway routing and auth middleware
+- **[workers/db/](../db/)** - Database service

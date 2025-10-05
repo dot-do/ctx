@@ -1,0 +1,167 @@
+---
+$type: Worker::Function
+$id: worker/gateway/route-request
+worker: gateway
+function: routeRequest
+description: Route incoming requests to appropriate backend services
+---
+
+# Route Request Function
+
+## Purpose
+
+Match incoming HTTP requests against configured routes and forward to the appropriate backend service via service bindings.
+
+## Routing Strategies
+
+The gateway uses two routing strategies:
+
+### 1. Path-Based Routing
+
+Routes based on URL path patterns:
+
+```typescript
+const routes: RouteConfig[] = [
+  { pattern: /^\/db\//, service: 'db', binding: 'DB' },
+  { pattern: /^\/ai\//, service: 'ai', binding: 'AI' },
+  { pattern: /^\/auth\//, service: 'auth', binding: 'AUTH' },
+  { pattern: /^\/queue\//, service: 'queue', binding: 'QUEUE' },
+  { pattern: /^\/relationships\//, service: 'relationships', binding: 'RELATIONSHIPS' },
+  { pattern: /^\/events\//, service: 'events', binding: 'EVENTS' },
+  { pattern: /^\/workflows\//, service: 'workflows', binding: 'WORKFLOWS' }
+]
+```
+
+### 2. Domain-Based Routing
+
+Routes based on hostname:
+
+```typescript
+const domainRoutes: Record<string, keyof GatewayEnv> = {
+  'db.services.do': 'DB',
+  'ai.services.do': 'AI',
+  'auth.services.do': 'AUTH',
+  'queue.services.do': 'QUEUE'
+}
+```
+
+## Implementation
+
+```typescript
+export function matchRoute(pathname: string): RouteMatch | null {
+  for (const route of routes) {
+    if (route.pattern.test(pathname)) {
+      const transformedPath = route.transform ? route.transform(pathname) : pathname
+      return {
+        service: route.service,
+        path: transformedPath,
+        binding: route.binding,
+      }
+    }
+  }
+  return null
+}
+
+export function getServiceForDomain(hostname: string): keyof GatewayEnv | null {
+  // Check exact match
+  if (domainRoutes[hostname]) {
+    return domainRoutes[hostname]
+  }
+
+  // Check wildcard subdomains
+  const parts = hostname.split('.')
+  if (parts.length >= 2) {
+    const baseDomain = parts.slice(-2).join('.')
+    if (domainRoutes[baseDomain]) {
+      return domainRoutes[baseDomain]
+    }
+  }
+
+  return null
+}
+```
+
+## Request Flow
+
+```
+1. Extract URL pathname or hostname
+2. Match against route patterns
+3. Get service binding from environment
+4. Clone request with transformed path
+5. Forward to service via fetch()
+6. Return service response
+```
+
+## Service Bindings
+
+The gateway requires these service bindings in wrangler.jsonc:
+
+```json
+{
+  "services": [
+    { "binding": "DB", "service": "db" },
+    { "binding": "AUTH", "service": "auth" },
+    { "binding": "AI", "service": "ai" },
+    { "binding": "QUEUE", "service": "queue" },
+    { "binding": "RELATIONSHIPS", "service": "relationships" },
+    { "binding": "EVENTS", "service": "events" },
+    { "binding": "WORKFLOWS", "service": "workflows" }
+  ]
+}
+```
+
+## Error Handling
+
+If routing fails:
+
+- **404** - No matching route found
+- **502** - Service error (service threw exception)
+- **500** - Internal error (gateway error)
+
+## Example Usage
+
+```typescript
+// Path-based routing
+GET /api/db/query → DB service
+
+// Domain-based routing
+GET https://db.services.do/query → DB service
+
+// Wildcard subdomain
+GET https://foo.services.do/health → Default service
+```
+
+## Tests
+
+Key test cases:
+
+```typescript
+describe('Route Matching', () => {
+  it('matches path-based routes', () => {
+    const route = matchRoute('/db/query')
+    expect(route?.service).toBe('db')
+    expect(route?.binding).toBe('DB')
+  })
+
+  it('matches domain-based routes', () => {
+    const service = getServiceForDomain('db.services.do')
+    expect(service).toBe('DB')
+  })
+
+  it('returns null for unknown routes', () => {
+    const route = matchRoute('/unknown/path')
+    expect(route).toBeNull()
+  })
+})
+```
+
+## Performance
+
+- **Route matching**: O(n) where n = number of routes
+- **Domain lookup**: O(1) hash map lookup
+- **Service call**: Direct RPC via service binding (sub-millisecond)
+
+## Related
+
+- [router.ts](./router.mdx) - Route configuration
+- [types.ts](./types.mdx) - Type definitions

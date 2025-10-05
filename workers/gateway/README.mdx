@@ -1,0 +1,210 @@
+---
+$type: Worker::Documentation
+$id: worker/gateway/readme
+worker: gateway
+title: Gateway Worker - Pure Router
+description: Cloudflare Worker that routes requests to appropriate microservices
+---
+
+# Gateway Worker
+
+**Pure router following Unix philosophy - does one thing well: route requests**
+
+## Purpose
+
+The gateway worker is the single HTTP entry point for all platform services. It routes incoming requests to the appropriate backend microservices based on domain patterns and URL paths.
+
+## Architecture
+
+```
+HTTP Request → Gateway Worker → Authentication → Rate Limiting → Route Matching → Service Binding
+```
+
+## Key Features
+
+- **Domain-based routing** - Route by hostname (e.g., db.do → db service)
+- **Path-based routing** - Route by URL path (e.g., /api/db/* → db service)
+- **Authentication** - Bearer tokens, API keys, WorkOS sessions
+- **Rate limiting** - Per-user and per-IP limits
+- **Request logging** - Full observability with request IDs
+- **Zero business logic** - Pure routing layer
+
+## Service Bindings
+
+The gateway routes to these services:
+
+- **DB** - Database operations
+- **AUTH** - Authentication and authorization
+- **AI** - AI/ML operations
+- **QUEUE** - Message queue
+- **RELATIONSHIPS** - Graph database
+- **EVENTS** - Event streaming
+- **WORKFLOWS** - Workflow orchestration
+
+## Routes
+
+### Path-Based Routes
+
+- `/api/db/*` → DB service
+- `/api/auth/*` → AUTH service
+- `/api/ai/*` → AI service
+- `/api/queue/*` → QUEUE service
+
+### Domain-Based Routes
+
+- `db.do` → DB service
+- `auth.do` → AUTH service
+- `ai.do` → AI service
+
+## Interfaces
+
+### 1. HTTP Interface (Hono)
+
+```typescript
+// Public routes
+GET /health → Health check
+
+// All other routes
+* /* → Route to appropriate service
+```
+
+### 2. RPC Interface (WorkerEntrypoint)
+
+```typescript
+class GatewayService extends WorkerEntrypoint {
+  async route(url: string, options?: RequestInit): Promise<GatewayResponse>
+  async health(): Promise<HealthStatus>
+}
+```
+
+## Middleware Stack
+
+1. **CORS** - Cross-origin resource sharing
+2. **Request ID** - Generate unique request identifier
+3. **Request Logging** - Log incoming request
+4. **Authentication** - Validate tokens (optional for public routes)
+5. **Rate Limiting** - Check rate limits per user/IP
+6. **Authorization** - Check required permissions
+7. **Route Matching** - Find target service
+8. **Service Call** - Forward to service binding
+9. **Response Logging** - Log outgoing response with metrics
+
+## Authentication
+
+The gateway supports three authentication methods:
+
+1. **Bearer Tokens** - JWT tokens from WorkOS OAuth
+2. **API Keys** - Service API keys (prefix: `sk_`)
+3. **Session Cookies** - Browser session cookies
+
+## Rate Limiting
+
+Rate limits are enforced using KV:
+
+- **Per User** - 1000 requests per hour per authenticated user
+- **Per IP** - 100 requests per hour per IP address (unauthenticated)
+- **Admin** - Unlimited (bypasses rate limits)
+
+## Error Handling
+
+All errors return JSON with:
+
+```json
+{
+  "error": "Error type",
+  "message": "Human-readable message",
+  "requestId": "req_xxx",
+  "service": "service-name"
+}
+```
+
+HTTP status codes:
+
+- `401` - Unauthorized (missing or invalid auth)
+- `403` - Forbidden (insufficient permissions)
+- `404` - Not found (no matching route)
+- `429` - Too many requests (rate limited)
+- `502` - Bad gateway (service error)
+- `500` - Internal server error
+
+## Observability
+
+Every request generates structured logs:
+
+```json
+{
+  "requestId": "req_xxx",
+  "method": "GET",
+  "path": "/api/db/query",
+  "service": "DB",
+  "userId": "user_xxx",
+  "ip": "1.2.3.4",
+  "duration": 45,
+  "status": 200
+}
+```
+
+Response headers include performance metrics:
+
+- `X-Request-ID` - Unique request identifier
+- `X-Response-Time` - Processing time in milliseconds
+- `X-Service` - Target service name
+
+## Deployment
+
+Deploy via Workers for Platforms:
+
+```bash
+# Deploy to production namespace
+curl -X POST https://deploy.do/deploy \
+  -H "Authorization: Bearer $DEPLOY_API_KEY" \
+  -d '{"service": "gateway", "environment": "production"}'
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Not needed - uses service bindings
+```
+
+### Service Bindings (wrangler.jsonc)
+
+```json
+{
+  "services": [
+    { "binding": "DB", "service": "db" },
+    { "binding": "AUTH", "service": "auth" },
+    { "binding": "AI", "service": "ai" },
+    { "binding": "QUEUE", "service": "queue" },
+    { "binding": "RELATIONSHIPS", "service": "relationships" },
+    { "binding": "EVENTS", "service": "events" },
+    { "binding": "WORKFLOWS", "service": "workflows" }
+  ]
+}
+```
+
+## Testing
+
+Run tests:
+
+```bash
+cd workers/gateway
+pnpm test
+```
+
+Test coverage: **80%+** (30+ tests)
+
+## Related Documentation
+
+- [router.ts](./router.mdx) - Route matching and service mapping
+- [auth-middleware.ts](./auth-middleware.mdx) - Authentication middleware
+- [rate-limit.ts](./rate-limit.mdx) - Rate limiting middleware
+- [logging.ts](./logging.mdx) - Request/response logging
+
+## See Also
+
+- **[workers/CLAUDE.md](../../workers/CLAUDE.md)** - Workers architecture
+- **[workers/db/](../db/)** - Database service
+- **[workers/auth/](../auth/)** - Auth service

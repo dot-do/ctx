@@ -1,0 +1,272 @@
+---
+$type: Worker::Function
+$id: worker/gateway/auth-middleware
+worker: gateway
+function: authenticate
+description: Authenticate incoming requests via Bearer tokens, API keys, or session cookies
+---
+
+# Authentication Middleware
+
+## Purpose
+
+Validate authentication credentials from incoming requests and populate the gateway context with user information.
+
+## Supported Authentication Methods
+
+### 1. Bearer Token (API Keys)
+
+API keys in the `Authorization` header:
+
+```http
+Authorization: Bearer sk_live_xxx
+```
+
+Format requirements:
+- Must start with `sk_live_` or `sk_test_`
+- Validated via AUTH service RPC call
+
+### 2. Session Cookies (WorkOS)
+
+Session tokens in cookies:
+
+```http
+Cookie: session=xxx
+```
+
+- Used for browser-based authentication
+- Validated via AUTH service WorkOS integration
+
+### 3. Public Routes (No Auth)
+
+Some routes don't require authentication:
+- `/health` - Health check
+- `/auth/*` - Authentication endpoints
+- `/` - Root endpoint
+
+## Implementation
+
+```typescript
+export async function authenticate(
+  request: Request,
+  ctx: GatewayContext
+): Promise<AuthContext | null> {
+  // Try bearer token first (API key)
+  const bearerToken = getBearerToken(request)
+  if (bearerToken && isValidApiKeyFormat(bearerToken)) {
+    const auth = await validateApiKey(bearerToken, ctx)
+    if (auth) return auth
+  }
+
+  // Try session cookie (WorkOS)
+  const sessionToken = getSessionToken(request)
+  if (sessionToken) {
+    const auth = await validateWorkOSSession(sessionToken, ctx)
+    if (auth) return auth
+  }
+
+  // No valid authentication found
+  return null
+}
+
+function getBearerToken(request: Request): string | null {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null
+  }
+  return authHeader.substring(7)
+}
+
+function isValidApiKeyFormat(token: string): boolean {
+  return token.startsWith('sk_live_') || token.startsWith('sk_test_')
+}
+
+async function validateApiKey(
+  token: string,
+  ctx: GatewayContext
+): Promise<AuthContext | null> {
+  const result = await ctx.env.AUTH.validateApiKey(token)
+
+  if (!result || !result.valid) {
+    return null
+  }
+
+  return {
+    userId: result.userId,
+    userEmail: result.email,
+    role: result.role || 'user',
+    apiKey: token,
+  }
+}
+```
+
+## Authorization Functions
+
+### Require Authentication
+
+Return 401 if not authenticated:
+
+```typescript
+export function requireAuth(ctx: GatewayContext): Response | null {
+  if (!ctx.auth) {
+    return Response.json(
+      {
+        error: 'Authentication required',
+        message: 'Please provide a valid API key or session token',
+      },
+      { status: 401 }
+    )
+  }
+  return null
+}
+```
+
+### Require Admin Role
+
+Return 403 if not admin:
+
+```typescript
+export function requireAdmin(ctx: GatewayContext): Response | null {
+  if (!ctx.auth) {
+    return Response.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    )
+  }
+
+  if (ctx.auth.role !== 'admin') {
+    return Response.json(
+      { error: 'Admin access required' },
+      { status: 403 }
+    )
+  }
+
+  return null
+}
+```
+
+## Auth Context
+
+Populated auth context includes:
+
+```typescript
+interface AuthContext {
+  userId: string
+  userEmail: string
+  role: 'admin' | 'user'
+  organizationId?: string
+  apiKey?: string
+}
+```
+
+## Route-Based Auth Requirements
+
+Routes can require different auth levels:
+
+```typescript
+export function requiresAuth(pathname: string, method: string): boolean {
+  // Public routes
+  const publicRoutes = ['/auth/', '/health', '/']
+  if (publicRoutes.some(route => pathname.startsWith(route))) {
+    return false
+  }
+
+  // All mutations require auth
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    return true
+  }
+
+  return false
+}
+
+export function requiresAdmin(pathname: string, method: string): boolean {
+  // Admin-only routes
+  const adminRoutes = ['/admin/', '/batch/', '/schedule/']
+  if (adminRoutes.some(route => pathname.startsWith(route))) {
+    return true
+  }
+
+  return false
+}
+```
+
+## Error Responses
+
+### 401 Unauthorized
+
+Missing or invalid credentials:
+
+```json
+{
+  "error": "Authentication required",
+  "message": "Please provide a valid API key or session token"
+}
+```
+
+### 403 Forbidden
+
+Insufficient permissions:
+
+```json
+{
+  "error": "Admin access required",
+  "message": "This endpoint requires admin privileges"
+}
+```
+
+## Integration with AUTH Service
+
+The gateway relies on the AUTH service for validation:
+
+```typescript
+// AUTH service RPC interface
+interface AuthService {
+  validateApiKey(token: string): Promise<{
+    valid: boolean
+    userId: string
+    email: string
+    role: string
+  }>
+
+  validateSession(sessionToken: string): Promise<{
+    valid: boolean
+    userId: string
+    email: string
+    role: string
+    organizationId: string
+  }>
+}
+```
+
+## Tests
+
+```typescript
+describe('Authentication Middleware', () => {
+  it('authenticates with valid API key', async () => {
+    const request = new Request('https://api.do/', {
+      headers: { Authorization: 'Bearer sk_live_xxx' }
+    })
+    const auth = await authenticate(request, ctx)
+    expect(auth).toBeDefined()
+    expect(auth?.userId).toBe('user_123')
+  })
+
+  it('returns null for invalid API key', async () => {
+    const request = new Request('https://api.do/', {
+      headers: { Authorization: 'Bearer invalid' }
+    })
+    const auth = await authenticate(request, ctx)
+    expect(auth).toBeNull()
+  })
+
+  it('requires auth for protected routes', () => {
+    const response = requireAuth({ auth: null } as GatewayContext)
+    expect(response?.status).toBe(401)
+  })
+})
+```
+
+## Related
+
+- [AUTH service](../auth/) - Authentication service
+- [types.ts](./types.mdx) - AuthContext type definition

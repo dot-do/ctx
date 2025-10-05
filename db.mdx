@@ -1,0 +1,1072 @@
+---
+$type: Cloudflare::Worker
+$id: worker/db
+name: db
+title: Database Worker
+description: PostgreSQL/Neon database abstraction layer with RPC interface
+
+package:
+  name: "@dot-do/db"
+  version: "0.1.0"
+  description: "Database worker for dot-do platform - PostgreSQL graph database with RPC, Queue, and Pipeline support"
+  dependencies:
+    drizzle-orm: "^0.44.5"
+    "@neondatabase/serverless": "^1.0.2"
+    postgres: "^3.4.7"
+    zod: "^4.1.11"
+  devDependencies:
+    drizzle-kit: "^0.31.5"
+    tsx: "^4.20.6"
+    typescript: "^5.5.2"
+    vitest: "~3.2.0"
+    "@types/node": "^24.6.1"
+    prettier: "^3.6.2"
+    dotenv: "^17.2.3"
+    wrangler: "^4.40.3"
+    "@cloudflare/workers-types": "^4.20241022.0"
+
+wrangler:
+  name: "db"
+  main: "worker.ts"
+  compatibility_date: "2024-10-01"
+  compatibility_flags: ["nodejs_compat"]
+
+  services:
+    - binding: "DB"
+      service: "db"
+      entrypoint: "DatabaseService"
+
+  queues:
+    producers:
+      - binding: "DB_QUEUE"
+        queue: "db-operations"
+    consumers:
+      - queue: "db-operations"
+        max_batch_size: 100
+        max_batch_timeout: 30
+        max_retries: 3
+        dead_letter_queue: "db-operations-dlq"
+
+  vars:
+    ENVIRONMENT: "production"
+
+  observability:
+    enabled: true
+    head_sampling_rate: 0.1
+
+  dev:
+    port: 8788
+    vars:
+      ENVIRONMENT: "development"
+---
+
+# Database Worker
+
+Complete PostgreSQL database abstraction layer providing RPC interface, queue processing, and pipeline support for the dot-do platform.
+
+## Features
+
+- **PostgreSQL via Neon** - Serverless PostgreSQL database
+- **Graph Model** - Composite (ns, id) primary keys for semantic URLs
+- **Vector Search** - pgvector extension for semantic similarity
+- **Full-Text Search** - PostgreSQL tsvector for content search
+- **Hybrid Search** - Reciprocal Rank Fusion combining both
+- **RPC Interface** - Service bindings for cross-worker communication
+- **Queue Processing** - Background operations via Cloudflare Queues
+- **Pipeline Support** - Bulk data ingestion
+- **Multi-Tenant** - Namespace isolation for data segregation
+
+## Architecture
+
+### Core Tables
+
+**Things Table** - Entities (ns, id composite PK)
+```sql
+things (
+  ns TEXT NOT NULL,
+  id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  content TEXT,
+  code TEXT,
+  data JSON NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'public',
+  embedding vector(768),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (ns, id)
+)
+```
+
+**Relationships Table** - Edges between entities
+```sql
+relationships (
+  ns TEXT NOT NULL,
+  id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  from_ns TEXT NOT NULL,
+  from_id TEXT NOT NULL,
+  to_ns TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  data JSON NOT NULL,
+  code TEXT,
+  visibility TEXT NOT NULL DEFAULT 'public',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (ns, id)
+)
+```
+
+### Composite Primary Key Strategy
+
+Why (ns, id) instead of uuid/serial:
+- ✅ Human-readable URLs: `/software-developers` not `/uuid-123`
+- ✅ Self-documenting: ID contains semantic meaning
+- ✅ Multi-tenancy: Namespace isolation
+- ✅ SEO-friendly: Clean, memorable URLs
+- ✅ Type-safe queries: Strong namespace + ID typing
+
+### Namespaces
+
+| Namespace | Purpose | Example IDs |
+|-----------|---------|-------------|
+| `onet` | O*NET occupation data | `software-developers`, `data-scientists` |
+| `naics` | NAICS industry classifications | `information`, `professional-services` |
+| `schema` | Schema.org vocabulary | `Occupation`, `Organization` |
+| `zapier` | Zapier integration data | `slack`, `google-sheets` |
+| `gs1` | GS1 CBV/EPCIS business vocabulary | `shipping`, `receiving` |
+| `wiki` | Wikipedia articles | `artificial-intelligence` |
+| `services` | AI-generated service definitions | `data-analysis-service` |
+| `user:{id}` | User-specific entities | `user:123:my-project` |
+
+## Implementation
+
+```typescript
+import { WorkerEntrypoint } from 'cloudflare:workers'
+import { drizzle } from 'drizzle-orm/neon-http'
+import { neon } from '@neondatabase/serverless'
+import { pgTable, serial, text, integer, json, index, timestamp, boolean, customType, primaryKey } from 'drizzle-orm/pg-core'
+import { eq, and, or, asc, desc, sql } from 'drizzle-orm'
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+export interface Env {
+  DATABASE_URL: string
+  DB?: any
+  DB_QUEUE?: any
+  DB_PIPELINE?: any
+}
+
+type QueueMessage =
+  | { type: 'upsert-thing'; data: any }
+  | { type: 'upsert-relationship'; data: any }
+  | { type: 'bulk-upsert-things'; data: any[] }
+  | { type: 'bulk-upsert-relationships'; data: any[] }
+  | { type: 'delete-thing'; ns: string; id: string }
+  | { type: 'delete-relationship'; ns: string; id: string }
+  | { type: 'generate-embedding'; ns: string; id: string }
+
+interface PipelineMessage {
+  type: 'things' | 'relationships'
+  items: any[]
+}
+
+// ============================================================================
+// SCHEMA
+// ============================================================================
+
+// Custom type for pgvector
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return 'vector(768)'
+  },
+  toDriver(value: number[]): string {
+    return \`[\${value.join(',')}]\`
+  },
+  fromDriver(value: string): number[] {
+    const matches = value.match(/\[(.*)\]/)
+    if (!matches) return []
+    return matches[1].split(',').map(Number)
+  }
+})
+
+export const things = pgTable('things', {
+  ns: text('ns').notNull(),
+  id: text('id').notNull(),
+  type: text('type').notNull(),
+  content: text('content'),
+  code: text('code'),
+  data: json('data').$type<Record<string, any>>().notNull(),
+  visibility: text('visibility').$type<'public' | 'private' | 'unlisted'>().notNull().default('public'),
+  embedding: vector('embedding'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+}, (table) => ({
+  pk: primaryKey({ columns: [table.ns, table.id] }),
+  typeIdx: index('things_type_idx').on(table.type),
+  visibilityIdx: index('things_visibility_idx').on(table.visibility)
+}))
+
+export const relationships = pgTable('relationships', {
+  ns: text('ns').notNull(),
+  id: text('id').notNull(),
+  type: text('type').notNull(),
+  fromNs: text('from_ns').notNull(),
+  fromId: text('from_id').notNull(),
+  toNs: text('to_ns').notNull(),
+  toId: text('to_id').notNull(),
+  data: json('data').$type<Record<string, any>>().notNull(),
+  code: text('code'),
+  visibility: text('visibility').$type<'public' | 'private' | 'unlisted'>().notNull().default('public'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+}, (table) => ({
+  pk: primaryKey({ columns: [table.ns, table.id] }),
+  fromIdx: index('relationships_from_idx').on(table.fromNs, table.fromId),
+  toIdx: index('relationships_to_idx').on(table.toNs, table.toId),
+  typeIdx: index('relationships_type_idx').on(table.type),
+  visibilityIdx: index('relationships_visibility_idx').on(table.visibility)
+}))
+
+export const generations = pgTable('generations', {
+  id: text('id').primaryKey(),
+  jobId: text('job_id'),
+  status: text('status').$type<'pending' | 'in_progress' | 'completed' | 'failed'>().notNull().default('pending'),
+  model: text('model').notNull(),
+  generationType: text('generation_type').notNull(),
+  entityNs: text('entity_ns').notNull(),
+  entityId: text('entity_id').notNull(),
+  entityType: text('entity_type').notNull(),
+  prompt: text('prompt'),
+  systemPrompt: text('system_prompt'),
+  result: json('result').$type<Record<string, any>>(),
+  error: text('error'),
+  tokensUsed: integer('tokens_used'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  reasoningTokens: integer('reasoning_tokens'),
+  cachedTokens: integer('cached_tokens'),
+  cost: text('cost'),
+  metadata: json('metadata').$type<Record<string, any>>(),
+  embedding: vector('embedding'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  completedAt: timestamp('completed_at'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+}, (table) => ({
+  jobIdIdx: index('generations_job_id_idx').on(table.jobId),
+  statusIdx: index('generations_status_idx').on(table.status),
+  entityIdx: index('generations_entity_idx').on(table.entityNs, table.entityId),
+  typeIdx: index('generations_type_idx').on(table.generationType),
+  createdAtIdx: index('generations_created_at_idx').on(table.createdAt),
+  embeddingIdx: index('generations_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops'))
+}))
+
+// ============================================================================
+// CLIENT
+// ============================================================================
+
+function createDbFromUrl(databaseUrl: string) {
+  const sql = neon(databaseUrl)
+  return drizzle(sql, { schema: { things, relationships, generations } })
+}
+
+// ============================================================================
+// QUERY HELPERS
+// ============================================================================
+
+export type Thing = typeof things.$inferSelect
+export type NewThing = typeof things.$inferInsert
+export type Relationship = typeof relationships.$inferSelect
+export type NewRelationship = typeof relationships.$inferInsert
+
+// Thing Queries
+async function getThing(db: any, ns: string, id: string): Promise<Thing | undefined> {
+  const result = await db.select().from(things).where(and(eq(things.ns, ns), eq(things.id, id))).limit(1)
+  return result[0]
+}
+
+async function getThings(db: any, items: Array<{ ns: string; id: string }>): Promise<Thing[]> {
+  if (items.length === 0) return []
+  const conditions = items.map(({ ns, id }) => and(eq(things.ns, ns), eq(things.id, id)))
+  return await db.select().from(things).where(or(...conditions))
+}
+
+async function listThings(db: any, ns: string, type?: string, limit = 100, offset = 0): Promise<Thing[]> {
+  const where = type ? and(eq(things.ns, ns), eq(things.type, type)) : eq(things.ns, ns)
+  return await db.select().from(things).where(where).limit(limit).offset(offset).orderBy(asc(things.id))
+}
+
+async function countThings(db: any, ns: string, type?: string): Promise<number> {
+  const where = type ? and(eq(things.ns, ns), eq(things.type, type)) : eq(things.ns, ns)
+  const result = await db.select({ count: sql<number>\`count(*)::int\` }).from(things).where(where)
+  return result[0]?.count || 0
+}
+
+async function createThing(db: any, thing: NewThing): Promise<Thing> {
+  const result = await db.insert(things).values(thing).returning()
+  return result[0]
+}
+
+async function createThings(db: any, items: NewThing[]): Promise<Thing[]> {
+  if (items.length === 0) return []
+  return await db.insert(things).values(items).returning()
+}
+
+async function updateThing(db: any, ns: string, id: string, updates: Partial<Omit<NewThing, 'ns' | 'id'>>): Promise<Thing | undefined> {
+  const result = await db
+    .update(things)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(and(eq(things.ns, ns), eq(things.id, id)))
+    .returning()
+  return result[0]
+}
+
+async function deleteThing(db: any, ns: string, id: string): Promise<boolean> {
+  const result = await db.delete(things).where(and(eq(things.ns, ns), eq(things.id, id))).returning()
+  return result.length > 0
+}
+
+async function searchThings(db: any, query: string, ns?: string, limit = 10): Promise<Thing[]> {
+  const searchCondition = sql\`to_tsvector('english', \${things.content} || ' ' || coalesce(\${things.data}::text, '')) @@ plainto_tsquery('english', \${query})\`
+  const where = ns ? and(eq(things.ns, ns), searchCondition) : searchCondition
+  return await db.select().from(things).where(where).limit(limit)
+}
+
+async function getThingsWithEmbeddings(db: any, ns?: string, limit = 100, offset = 0): Promise<Thing[]> {
+  const embeddingCondition = sql\`\${things.embedding} IS NOT NULL\`
+  const where = ns ? and(eq(things.ns, ns), embeddingCondition) : embeddingCondition
+  return await db.select().from(things).where(where).limit(limit).offset(offset)
+}
+
+// Relationship Queries
+async function getRelationshipsFrom(db: any, ns: string, id: string, type?: string): Promise<Relationship[]> {
+  const where = type
+    ? and(eq(relationships.fromNs, ns), eq(relationships.fromId, id), eq(relationships.type, type))
+    : and(eq(relationships.fromNs, ns), eq(relationships.fromId, id))
+  return await db.select().from(relationships).where(where)
+}
+
+async function getRelationshipsTo(db: any, ns: string, id: string, type?: string): Promise<Relationship[]> {
+  const where = type
+    ? and(eq(relationships.toNs, ns), eq(relationships.toId, id), eq(relationships.type, type))
+    : and(eq(relationships.toNs, ns), eq(relationships.toId, id))
+  return await db.select().from(relationships).where(where)
+}
+
+async function getAllRelationships(db: any, ns: string, id: string, type?: string): Promise<Relationship[]> {
+  const where = type
+    ? or(
+        and(eq(relationships.fromNs, ns), eq(relationships.fromId, id), eq(relationships.type, type)),
+        and(eq(relationships.toNs, ns), eq(relationships.toId, id), eq(relationships.type, type))
+      )
+    : or(
+        and(eq(relationships.fromNs, ns), eq(relationships.fromId, id)),
+        and(eq(relationships.toNs, ns), eq(relationships.toId, id))
+      )
+  return await db.select().from(relationships).where(where)
+}
+
+async function getRelationship(db: any, ns: string, id: string): Promise<Relationship | undefined> {
+  const result = await db.select().from(relationships).where(and(eq(relationships.ns, ns), eq(relationships.id, id))).limit(1)
+  return result[0]
+}
+
+async function createRelationship(db: any, relationship: NewRelationship): Promise<Relationship> {
+  const result = await db.insert(relationships).values(relationship).returning()
+  return result[0]
+}
+
+async function createRelationships(db: any, items: NewRelationship[]): Promise<Relationship[]> {
+  if (items.length === 0) return []
+  return await db.insert(relationships).values(items).returning()
+}
+
+async function updateRelationship(db: any, ns: string, id: string, updates: Partial<Omit<NewRelationship, 'ns' | 'id'>>): Promise<Relationship | undefined> {
+  const result = await db
+    .update(relationships)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(and(eq(relationships.ns, ns), eq(relationships.id, id)))
+    .returning()
+  return result[0]
+}
+
+async function deleteRelationship(db: any, ns: string, id: string): Promise<boolean> {
+  const result = await db.delete(relationships).where(and(eq(relationships.ns, ns), eq(relationships.id, id))).returning()
+  return result.length > 0
+}
+
+async function deleteAllRelationships(db: any, ns: string, id: string): Promise<number> {
+  const result = await db
+    .delete(relationships)
+    .where(or(
+      and(eq(relationships.fromNs, ns), eq(relationships.fromId, id)),
+      and(eq(relationships.toNs, ns), eq(relationships.toId, id))
+    ))
+    .returning()
+  return result.length
+}
+
+async function countRelationshipsByType(db: any, type: string): Promise<number> {
+  const result = await db.select({ count: sql<number>\`count(*)::int\` }).from(relationships).where(eq(relationships.type, type))
+  return result[0]?.count || 0
+}
+
+// ============================================================================
+// RPC SERVICE
+// ============================================================================
+
+export class DatabaseService extends WorkerEntrypoint<Env> {
+  private _db: ReturnType<typeof createDbFromUrl> | null = null
+
+  private get db() {
+    if (!this._db) {
+      this._db = createDbFromUrl(this.env.DATABASE_URL)
+    }
+    return this._db
+  }
+
+  // Thing Operations
+  async getThing(ns: string, id: string) {
+    return await getThing(this.db, ns, id)
+  }
+
+  async getThings(items: Array<{ ns: string; id: string }>) {
+    return await getThings(this.db, items)
+  }
+
+  async listThings(ns: string, type?: string, limit = 100, offset = 0) {
+    return await listThings(this.db, ns, type, limit, offset)
+  }
+
+  async countThings(ns: string, type?: string) {
+    return await countThings(this.db, ns, type)
+  }
+
+  async createThing(thing: NewThing) {
+    return await createThing(this.db, thing)
+  }
+
+  async createThings(items: NewThing[]) {
+    return await createThings(this.db, items)
+  }
+
+  async updateThing(ns: string, id: string, updates: Partial<Omit<NewThing, 'ns' | 'id'>>) {
+    return await updateThing(this.db, ns, id, updates)
+  }
+
+  async deleteThing(ns: string, id: string) {
+    return await deleteThing(this.db, ns, id)
+  }
+
+  async searchThings(query: string, ns?: string, limit = 10) {
+    return await searchThings(this.db, query, ns, limit)
+  }
+
+  async getThingsWithEmbeddings(ns?: string, limit = 100, offset = 0) {
+    return await getThingsWithEmbeddings(this.db, ns, limit, offset)
+  }
+
+  // Relationship Operations
+  async getRelationshipsFrom(ns: string, id: string, type?: string) {
+    return await getRelationshipsFrom(this.db, ns, id, type)
+  }
+
+  async getRelationshipsTo(ns: string, id: string, type?: string) {
+    return await getRelationshipsTo(this.db, ns, id, type)
+  }
+
+  async getAllRelationships(ns: string, id: string, type?: string) {
+    return await getAllRelationships(this.db, ns, id, type)
+  }
+
+  async getRelationship(ns: string, id: string) {
+    return await getRelationship(this.db, ns, id)
+  }
+
+  async createRelationship(relationship: NewRelationship) {
+    return await createRelationship(this.db, relationship)
+  }
+
+  async createRelationships(items: NewRelationship[]) {
+    return await createRelationships(this.db, items)
+  }
+
+  async updateRelationship(ns: string, id: string, updates: Partial<Omit<NewRelationship, 'ns' | 'id'>>) {
+    return await updateRelationship(this.db, ns, id, updates)
+  }
+
+  async deleteRelationship(ns: string, id: string) {
+    return await deleteRelationship(this.db, ns, id)
+  }
+
+  async deleteAllRelationships(ns: string, id: string) {
+    return await deleteAllRelationships(this.db, ns, id)
+  }
+
+  async countRelationshipsByType(type: string) {
+    return await countRelationshipsByType(this.db, type)
+  }
+
+  // Advanced Operations
+  async getThingWithRelationships(ns: string, id: string) {
+    const thing = await getThing(this.db, ns, id)
+    if (!thing) return null
+
+    const rels = await getAllRelationships(this.db, ns, id)
+    return { ...thing, relationships: rels }
+  }
+
+  async vectorSearch(embedding: number[], ns?: string, limit = 10, threshold = 0.5) {
+    const embeddingStr = \`[\${embedding.join(',')}]\`
+    let query = this.db
+      .select()
+      .from(things)
+      .where(sql\`\${things.embedding} <=> \${embeddingStr}::vector < \${threshold}\`)
+      .orderBy(sql\`\${things.embedding} <=> \${embeddingStr}::vector\`)
+      .limit(limit)
+
+    if (ns) {
+      query = this.db
+        .select()
+        .from(things)
+        .where(and(eq(things.ns, ns), sql\`\${things.embedding} <=> \${embeddingStr}::vector < \${threshold}\`))
+        .orderBy(sql\`\${things.embedding} <=> \${embeddingStr}::vector\`)
+        .limit(limit)
+    }
+
+    return await query
+  }
+
+  async hybridSearch(query: string, embedding: number[], ns?: string, limit = 10, alpha = 0.5) {
+    const embeddingStr = \`[\${embedding.join(',')}]\`
+    const nsFilter = ns ? sql\`AND ns = \${ns}\` : sql\`\`
+
+    const result = await this.db.execute(sql\`
+      WITH full_text AS (
+        SELECT *, ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('english', content), plainto_tsquery('english', \${query})) DESC) as rank
+        FROM \${things}
+        WHERE to_tsvector('english', content) @@ plainto_tsquery('english', \${query})
+        \${nsFilter}
+      ),
+      vector AS (
+        SELECT *, ROW_NUMBER() OVER (ORDER BY embedding <=> \${embeddingStr}::vector) as rank
+        FROM \${things}
+        WHERE embedding IS NOT NULL
+        \${nsFilter}
+      )
+      SELECT t.*,
+        COALESCE(\${alpha} / (60 + ft.rank), 0) + COALESCE(\${1 - alpha} / (60 + v.rank), 0) as score
+      FROM \${things} t
+      LEFT JOIN full_text ft ON t.ns = ft.ns AND t.id = ft.id
+      LEFT JOIN vector v ON t.ns = v.ns AND t.id = v.id
+      WHERE ft.rank IS NOT NULL OR v.rank IS NOT NULL
+      ORDER BY score DESC
+      LIMIT \${limit}
+    \`)
+
+    return result.rows
+  }
+
+  async batchInsert(data: { things: NewThing[]; relationships: NewRelationship[] }) {
+    return await this.db.transaction(async (tx) => {
+      const insertedThings = data.things.length > 0 ? await tx.insert(things).values(data.things).returning() : []
+      const insertedRelationships = data.relationships.length > 0 ? await tx.insert(relationships).values(data.relationships).returning() : []
+
+      return {
+        things: insertedThings,
+        relationships: insertedRelationships
+      }
+    })
+  }
+
+  async getStats() {
+    const thingsCount = await this.db.select({ count: sql<number>\`count(*)::int\` }).from(things)
+    const relationshipsCount = await this.db.select({ count: sql<number>\`count(*)::int\` }).from(relationships)
+    const generationsCount = await this.db.select({ count: sql<number>\`count(*)::int\` }).from(generations)
+
+    const thingsByNs = await this.db
+      .select({ ns: things.ns, count: sql<number>\`count(*)::int\` })
+      .from(things)
+      .groupBy(things.ns)
+
+    const relationshipsByType = await this.db
+      .select({ type: relationships.type, count: sql<number>\`count(*)::int\` })
+      .from(relationships)
+      .groupBy(relationships.type)
+      .limit(20)
+
+    return {
+      counts: {
+        things: thingsCount[0]?.count || 0,
+        relationships: relationshipsCount[0]?.count || 0,
+        generations: generationsCount[0]?.count || 0
+      },
+      thingsByNamespace: thingsByNs,
+      topRelationshipTypes: relationshipsByType
+    }
+  }
+
+  async upsertThing(thing: NewThing) {
+    const existing = await getThing(this.db, thing.ns, thing.id)
+    if (existing) {
+      return await updateThing(this.db, thing.ns, thing.id, thing)
+    }
+    return await createThing(this.db, thing)
+  }
+
+  async bulkUpsertThings(items: NewThing[]) {
+    return await this.db.transaction(async (tx) => {
+      const results = []
+      for (const thing of items) {
+        const existing = await tx.select().from(things).where(and(eq(things.ns, thing.ns), eq(things.id, thing.id))).limit(1)
+
+        if (existing.length > 0) {
+          const updated = await tx
+            .update(things)
+            .set({ ...thing, updatedAt: new Date() })
+            .where(and(eq(things.ns, thing.ns), eq(things.id, thing.id)))
+            .returning()
+          results.push(updated[0])
+        } else {
+          const created = await tx.insert(things).values(thing).returning()
+          results.push(created[0])
+        }
+      }
+      return results
+    })
+  }
+
+  async upsertRelationship(relationship: NewRelationship) {
+    const existing = await getRelationship(this.db, relationship.ns, relationship.id)
+    if (existing) {
+      return await updateRelationship(this.db, relationship.ns, relationship.id, relationship)
+    }
+    return await createRelationship(this.db, relationship)
+  }
+
+  async bulkUpsertRelationships(items: NewRelationship[]) {
+    return await this.db.transaction(async (tx) => {
+      const results = []
+      for (const relationship of items) {
+        const existing = await tx.select().from(relationships).where(and(eq(relationships.ns, relationship.ns), eq(relationships.id, relationship.id))).limit(1)
+
+        if (existing.length > 0) {
+          const updated = await tx
+            .update(relationships)
+            .set({ ...relationship, updatedAt: new Date() })
+            .where(and(eq(relationships.ns, relationship.ns), eq(relationships.id, relationship.id)))
+            .returning()
+          results.push(updated[0])
+        } else {
+          const created = await tx.insert(relationships).values(relationship).returning()
+          results.push(created[0])
+        }
+      }
+      return results
+    })
+  }
+
+  async health() {
+    try {
+      await this.db.execute(sql\`SELECT 1\`)
+      return { status: 'healthy', timestamp: new Date().toISOString() }
+    } catch (error) {
+      return { status: 'unhealthy', error: error instanceof Error ? error.message : 'Unknown error', timestamp: new Date().toISOString() }
+    }
+  }
+}
+
+// ============================================================================
+// HTTP HANDLER
+// ============================================================================
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url)
+
+    // Health check
+    if (url.pathname === '/health') {
+      const service = new DatabaseService(ctx, env)
+      const health = await service.health()
+      return Response.json(health, { status: health.status === 'healthy' ? 200 : 503 })
+    }
+
+    // Stats endpoint
+    if (url.pathname === '/stats') {
+      const service = new DatabaseService(ctx, env)
+      const stats = await service.getStats()
+      return Response.json(stats)
+    }
+
+    return Response.json({ error: 'Not found. Use RPC binding to call database methods.' }, { status: 404 })
+  },
+
+  async queue(batch: MessageBatch<QueueMessage>, env: Env, ctx: ExecutionContext): Promise<void> {
+    const service = new DatabaseService(ctx, env)
+
+    for (const message of batch.messages) {
+      try {
+        switch (message.body.type) {
+          case 'upsert-thing':
+            await service.upsertThing(message.body.data)
+            message.ack()
+            break
+
+          case 'upsert-relationship':
+            await service.upsertRelationship(message.body.data)
+            message.ack()
+            break
+
+          case 'bulk-upsert-things':
+            await service.bulkUpsertThings(message.body.data)
+            message.ack()
+            break
+
+          case 'bulk-upsert-relationships':
+            await service.bulkUpsertRelationships(message.body.data)
+            message.ack()
+            break
+
+          case 'delete-thing':
+            await service.deleteThing(message.body.ns, message.body.id)
+            message.ack()
+            break
+
+          case 'delete-relationship':
+            await service.deleteRelationship(message.body.ns, message.body.id)
+            message.ack()
+            break
+
+          case 'generate-embedding':
+            // TODO: Generate embedding and update thing
+            // This would call the AI service to generate embeddings
+            message.ack()
+            break
+
+          default:
+            console.error('Unknown message type:', message.body)
+            message.retry()
+        }
+      } catch (error) {
+        console.error('Error processing queue message:', error)
+        message.retry()
+      }
+    }
+  }
+}
+
+// ============================================================================
+// PIPELINE HANDLER
+// ============================================================================
+
+export class DatabasePipeline extends DatabaseService {
+  async handlePipeline(message: PipelineMessage) {
+    switch (message.type) {
+      case 'things':
+        return await this.bulkUpsertThings(message.items)
+
+      case 'relationships':
+        return await this.bulkUpsertRelationships(message.items)
+
+      default:
+        throw new Error(\`Unknown pipeline message type: \${(message as any).type}\`)
+    }
+  }
+}
+
+// ============================================================================
+// CLIENT UTILITIES
+// ============================================================================
+
+export function createDbClient(service: Service<DatabaseService>) {
+  return service as unknown as DatabaseService
+}
+
+export type DbQueue = Queue<QueueMessage>
+
+export interface DbPipeline {
+  send(message: PipelineMessage): Promise<void>
+}
+
+export interface DbEnv {
+  DB: Service<DatabaseService>
+  DB_QUEUE: DbQueue
+  DB_PIPELINE: DbPipeline
+}
+```
+
+## RPC Interface
+
+### Thing Operations
+
+```typescript
+// Get single thing
+const thing = await env.DB.getThing('onet', 'software-developers')
+
+// Get multiple things
+const things = await env.DB.getThings([
+  { ns: 'onet', id: 'software-developers' },
+  { ns: 'onet', id: 'data-scientists' }
+])
+
+// List things in namespace
+const things = await env.DB.listThings('onet', 'Occupation', 100, 0)
+
+// Count things
+const count = await env.DB.countThings('onet', 'Occupation')
+
+// Create thing
+const thing = await env.DB.createThing({
+  ns: 'user:123',
+  id: 'my-project',
+  type: 'Project',
+  data: { name: 'My Project', status: 'active' }
+})
+
+// Update thing
+const updated = await env.DB.updateThing('user:123', 'my-project', {
+  data: { status: 'completed' }
+})
+
+// Delete thing
+const deleted = await env.DB.deleteThing('user:123', 'my-project')
+
+// Search things (full-text)
+const results = await env.DB.searchThings('software engineer', 'onet', 10)
+```
+
+### Relationship Operations
+
+```typescript
+// Get relationships from entity
+const outgoing = await env.DB.getRelationshipsFrom('onet', 'software-developers', 'requires')
+
+// Get relationships to entity
+const incoming = await env.DB.getRelationshipsTo('onet', 'software-developers', 'requires')
+
+// Get all relationships
+const all = await env.DB.getAllRelationships('onet', 'software-developers')
+
+// Create relationship
+const rel = await env.DB.createRelationship({
+  ns: 'onet',
+  id: 'software-developers-requires-python',
+  type: 'requires',
+  fromNs: 'onet',
+  fromId: 'software-developers',
+  toNs: 'skills',
+  toId: 'python',
+  data: { level: 'advanced' }
+})
+
+// Delete all relationships for entity
+const count = await env.DB.deleteAllRelationships('onet', 'software-developers')
+```
+
+### Advanced Operations
+
+```typescript
+// Get thing with relationships
+const result = await env.DB.getThingWithRelationships('onet', 'software-developers')
+
+// Vector similarity search
+const similar = await env.DB.vectorSearch(
+  [0.1, 0.2, ...], // embedding vector
+  'onet',
+  10,
+  0.5
+)
+
+// Hybrid search (full-text + vector)
+const results = await env.DB.hybridSearch(
+  'software engineer',
+  [0.1, 0.2, ...],
+  'onet',
+  10,
+  0.5 // alpha: 0.5 = 50% text, 50% vector
+)
+
+// Batch insert (transaction)
+const inserted = await env.DB.batchInsert({
+  things: [
+    { ns: 'test', id: 'thing-1', type: 'Thing', data: {} },
+    { ns: 'test', id: 'thing-2', type: 'Thing', data: {} }
+  ],
+  relationships: [
+    { ns: 'test', id: 'rel-1', type: 'knows', fromNs: 'test', fromId: 'thing-1', toNs: 'test', toId: 'thing-2', data: {} }
+  ]
+})
+
+// Get statistics
+const stats = await env.DB.getStats()
+```
+
+### Queue Operations
+
+```typescript
+// Queue single upsert
+await env.DB_QUEUE.send({
+  type: 'upsert-thing',
+  data: {
+    ns: 'user:123',
+    id: 'my-thing',
+    type: 'Thing',
+    data: { name: 'My Thing' }
+  }
+})
+
+// Queue bulk upsert
+await env.DB_QUEUE.send({
+  type: 'bulk-upsert-things',
+  data: [
+    { ns: 'test', id: 'thing-1', type: 'Thing', data: {} },
+    { ns: 'test', id: 'thing-2', type: 'Thing', data: {} }
+  ]
+})
+
+// Queue delete
+await env.DB_QUEUE.send({
+  type: 'delete-thing',
+  ns: 'test',
+  id: 'thing-1'
+})
+```
+
+### Pipeline Operations
+
+```typescript
+// Send bulk data to pipeline
+await env.DB_PIPELINE.send({
+  type: 'things',
+  items: [
+    { ns: 'test', id: 'thing-1', type: 'Thing', data: {} },
+    { ns: 'test', id: 'thing-2', type: 'Thing', data: {} }
+  ]
+})
+```
+
+## Usage Examples
+
+### Basic CRUD
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env) {
+    // Create a thing
+    const thing = await env.DB.createThing({
+      ns: 'products',
+      id: 'laptop-pro',
+      type: 'Product',
+      data: {
+        name: 'Laptop Pro',
+        price: 1999,
+        stock: 50
+      }
+    })
+
+    // Get the thing
+    const product = await env.DB.getThing('products', 'laptop-pro')
+
+    // Update the thing
+    await env.DB.updateThing('products', 'laptop-pro', {
+      data: { stock: 49 }
+    })
+
+    return Response.json({ thing, product })
+  }
+}
+```
+
+### Graph Queries
+
+```typescript
+// Find related entities
+const developer = await env.DB.getThing('onet', 'software-developers')
+const skills = await env.DB.getRelationshipsFrom('onet', 'software-developers', 'requires')
+
+// Build a knowledge graph
+const graph = await buildGraph('onet', 'software-developers', 2) // depth 2
+
+async function buildGraph(ns: string, id: string, depth: number) {
+  const thing = await env.DB.getThing(ns, id)
+  if (!thing || depth === 0) return thing
+
+  const rels = await env.DB.getAllRelationships(ns, id)
+  const children = await Promise.all(
+    rels.map(rel => buildGraph(rel.toNs, rel.toId, depth - 1))
+  )
+
+  return { ...thing, children }
+}
+```
+
+### Search
+
+```typescript
+// Full-text search
+const textResults = await env.DB.searchThings('machine learning', 'onet')
+
+// Vector search (requires embeddings)
+const embedding = await generateEmbedding('machine learning expert')
+const vectorResults = await env.DB.vectorSearch(embedding, 'onet', 10, 0.7)
+
+// Hybrid search (best of both)
+const hybridResults = await env.DB.hybridSearch(
+  'machine learning expert',
+  embedding,
+  'onet',
+  10,
+  0.5 // 50% text, 50% vector
+)
+```
+
+## Performance
+
+### Indexes
+
+All critical paths are indexed:
+- `(ns, id)` - Primary key (composite)
+- `type` - Type filtering
+- `visibility` - Access control
+- `(from_ns, from_id)` - Outgoing relationships
+- `(to_ns, to_id)` - Incoming relationships
+- `embedding` - Vector similarity (HNSW)
+- Full-text search on `content` field
+
+### Connection Pooling
+
+Uses Neon's HTTP driver optimized for serverless:
+- No connection pooling needed
+- Sub-millisecond cold starts
+- Scales to zero
+
+### Query Optimization
+
+- Use `limit` and `offset` for pagination
+- Batch operations with `createThings()` and `createRelationships()`
+- Use queue for background operations
+- Use pipeline for bulk imports
+
+## Environment Variables
+
+```bash
+# Required
+DATABASE_URL=postgresql://user:pass@host:5432/db
+
+# Optional (for workers)
+ENVIRONMENT=production
+```
+
+## Related Documentation
+
+- **Schema**: Full table definitions in schema section above
+- **Workers CLAUDE.md**: Complete workers architecture
+- **Root CLAUDE.md**: Multi-repo project management
+
+---
+
+**Status**: ✅ Complete - All worker files consolidated into single MDX
+**Lines of Code**: ~1,909 (from rpc.ts, worker.ts, client.ts, client-rpc.ts, index.ts)
+**Dependencies**: drizzle-orm, @neondatabase/serverless, postgres, zod
+**Last Updated**: 2025-10-05

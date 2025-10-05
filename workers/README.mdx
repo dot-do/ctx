@@ -1,0 +1,364 @@
+---
+$type: Documentation
+$id: ctx/workers/readme
+title: ctx/workers - MDX Worker Rewrites
+description: Ideal MDX syntax rewrites of production Cloudflare Workers
+---
+
+# ctx/workers - MDX Worker Rewrites
+
+## Overview
+
+This directory contains **MDX rewrites** of key production workers from `/workers/`. These are not the actual production code, but rather **ideal representations** showing how workers should be documented and structured using MDX format.
+
+## Purpose
+
+1. **Documentation-as-Code** - Workers documented in executable MDX format
+2. **Function-Level Granularity** - Each major function gets its own MDX file
+3. **Semantic Metadata** - All files have `$type` and `$id` frontmatter
+4. **Reference Architecture** - Shows ideal structure for future workers
+
+## Directory Structure
+
+```
+ctx/workers/
+├── README.mdx              # This file
+├── gateway/                # Gateway worker (pure router)
+│   ├── README.mdx         # Worker documentation
+│   ├── route-request.mdx  # Route matching and forwarding
+│   ├── auth-middleware.mdx # Authentication middleware
+│   └── rate-limit.mdx     # Rate limiting middleware
+├── auth/                   # Auth worker (authentication & RBAC)
+│   └── README.mdx         # Worker documentation
+├── email/                  # Email worker (transactional emails)
+│   └── README.mdx         # Worker documentation
+└── mcp/                    # MCP worker (Model Context Protocol)
+    └── README.mdx         # Worker documentation
+```
+
+## Workers Rewritten
+
+### 1. Gateway Worker (4 files, ~800 lines)
+
+**Production Location:** `/workers/gateway/`
+
+**Purpose:** Pure router that routes requests to appropriate microservices
+
+**MDX Files:**
+- `README.mdx` - Complete worker documentation (200 lines)
+- `route-request.mdx` - Route matching logic (180 lines)
+- `auth-middleware.mdx` - Authentication middleware (190 lines)
+- `rate-limit.mdx` - Rate limiting middleware (230 lines)
+
+**Key Features:**
+- Path-based routing (`/api/db/*` → db service)
+- Domain-based routing (`db.do` → db service)
+- Bearer token authentication (API keys + JWT)
+- Per-user/per-IP rate limiting
+- Request/response logging with metrics
+
+**Service Bindings:**
+- DB, AUTH, AI, QUEUE, RELATIONSHIPS, EVENTS, WORKFLOWS
+
+### 2. Auth Worker (1 file, ~450 lines)
+
+**Production Location:** `/workers/auth/`
+
+**Purpose:** Authentication and authorization microservice
+
+**MDX Files:**
+- `README.mdx` - Complete worker documentation (450 lines)
+
+**Key Features:**
+- WorkOS OAuth integration (Google, Microsoft, GitHub, Okta)
+- API key management (create, validate, revoke)
+- JWT session management with refresh tokens
+- Role-based access control (admin, user, guest)
+- Permission system (read, write, delete, admin, execute, deploy)
+
+**RPC Methods:**
+- `validateToken()` - Validate bearer tokens
+- `createApiKey()` - Create new API key
+- `createSession()` - Create user session
+- `checkPermission()` - Check user permissions
+
+### 3. Email Worker (1 file, ~570 lines)
+
+**Production Location:** `/workers/email/`
+
+**Purpose:** Transactional email delivery with multiple providers
+
+**MDX Files:**
+- `README.mdx` - Complete worker documentation (570 lines)
+
+**Key Features:**
+- Multi-provider support (Resend, WorkOS, AWS SES)
+- Built-in email templates (8 templates)
+- Variable substitution ({{name}}, {{url}}, etc.)
+- Cold email sequences with personalization
+- Delivery tracking (sent, delivered, opened, clicked, bounced)
+- Webhook handling for status updates
+
+**Templates:**
+- welcome, verification, password-reset, invitation, receipt, notification, newsletter, cold-outreach
+
+**RPC Methods:**
+- `send()` - Send raw email
+- `sendTemplate()` - Send templated email
+- `sendColdEmail()` - Send cold outreach email
+- `getEmailStatus()` - Get delivery status
+
+### 4. MCP Worker (1 file, ~550 lines)
+
+**Production Location:** `/workers/mcp/`
+
+**Purpose:** Model Context Protocol server exposing platform as AI tools
+
+**MDX Files:**
+- `README.mdx` - Complete worker documentation (550 lines)
+
+**Key Features:**
+- JSON-RPC 2.0 protocol for AI agents
+- 20+ tools across 7 categories
+- Database, AI, auth, search, queue, workflow tools
+- Code execution sandboxes (JavaScript, TypeScript, Python, Rust)
+- Resource subscriptions (users, workflows, schemas, logs)
+
+**Tool Categories:**
+1. Database Tools (`db_*`) - Query, execute, schema, tables
+2. AI Tools (`ai_*`) - Generate, embed, chat, models
+3. Auth Tools (`auth_*`) - Validate, create keys, permissions
+4. Search Tools (`search_*`) - Fulltext, vector, hybrid search
+5. Queue Tools (`queue_*`) - Send, batch, status
+6. Workflow Tools (`workflow_*`) - Execute, status, list
+7. Sandbox Tools (`sandbox_*`) - Create, execute, destroy
+
+## MDX Format Standards
+
+### Frontmatter Structure
+
+All MDX files use this frontmatter format:
+
+```yaml
+---
+$type: Worker::Documentation | Worker::Function
+$id: worker/name/function-name
+worker: name
+function: functionName  # For function files
+title: Human-readable title
+description: Brief description
+---
+```
+
+### File Naming Convention
+
+- **README.mdx** - Worker-level documentation
+- **function-name.mdx** - Individual function documentation (kebab-case)
+
+### Content Structure
+
+```markdown
+# Title
+
+## Purpose
+Brief description of what this does
+
+## Implementation
+Code examples and implementation details
+
+## Usage Examples
+Real-world usage examples
+
+## Configuration
+Environment variables and bindings
+
+## Testing
+Test examples and coverage
+
+## Related Documentation
+Links to related files
+
+## See Also
+Links to production code
+```
+
+## Statistics
+
+### Files Created
+
+- **7 MDX files total**
+- **4 workers documented**
+- **~2,219 lines of documentation**
+
+### Per Worker
+
+| Worker  | Files | Lines | Features Documented |
+|---------|-------|-------|---------------------|
+| gateway | 4     | ~800  | Routing, auth, rate limiting, logging |
+| auth    | 1     | ~450  | OAuth, API keys, sessions, RBAC |
+| email   | 1     | ~570  | Multi-provider, templates, tracking |
+| mcp     | 1     | ~550  | JSON-RPC, tools, sandboxes |
+
+## Comparison to Production
+
+### Production Code
+
+Located in `/workers/`:
+
+- **gateway/** - 1,349 LOC, 30+ tests, 80%+ coverage
+- **auth/** - 2,669 LOC, basic tests
+- **email/** - ~1,500 LOC (estimated)
+- **mcp/** - ~2,000 LOC (estimated)
+
+**Total:** ~7,500 LOC of production TypeScript
+
+### MDX Rewrites
+
+Located in `ctx/workers/`:
+
+- **gateway/** - 800 lines of MDX documentation + examples
+- **auth/** - 450 lines of MDX documentation + examples
+- **email/** - 570 lines of MDX documentation + examples
+- **mcp/** - 550 lines of MDX documentation + examples
+
+**Total:** ~2,200 lines of MDX documentation
+
+## Key Differences
+
+### Production Workers
+
+- **Implementation-focused** - Actual working TypeScript code
+- **Multi-file architecture** - Split into types, handlers, utils, tests
+- **Deployed services** - Running on Cloudflare Workers
+- **Full test coverage** - Vitest test suites
+
+### MDX Rewrites
+
+- **Documentation-focused** - Explanation and examples
+- **Single-file per function** - One MDX file per major function
+- **Not executable** - Pure documentation (no wrangler.jsonc, no deployment)
+- **Architecture reference** - Shows ideal structure and patterns
+
+## Usage
+
+### Reading Documentation
+
+```bash
+# View gateway documentation
+open ctx/workers/gateway/README.mdx
+
+# View specific function
+open ctx/workers/gateway/route-request.mdx
+```
+
+### Creating New MDX Files
+
+Follow the established patterns:
+
+1. Create worker directory: `ctx/workers/new-worker/`
+2. Add README.mdx with worker documentation
+3. Add function-name.mdx for each major function
+4. Use proper frontmatter with `$type` and `$id`
+5. Include implementation examples and usage
+
+### Pattern Template
+
+```yaml
+---
+$type: Worker::Function
+$id: worker/name/function-name
+worker: name
+function: functionName
+description: Brief description
+---
+
+# Function Name
+
+## Purpose
+What this function does
+
+## Implementation
+\```typescript
+// Code example
+\```
+
+## Usage
+\```typescript
+// Usage example
+\```
+
+## Tests
+\```typescript
+// Test example
+\```
+
+## Related
+- [other-file.mdx](./other-file.mdx)
+```
+
+## Production Code Location
+
+All production workers are in:
+
+```
+/Users/nathanclevenger/Projects/.do/workers/
+├── gateway/    # 1,349 LOC, 30+ tests
+├── auth/       # 2,669 LOC
+├── email/      # ~1,500 LOC
+├── mcp/        # ~2,000 LOC
+└── db/         # 1,909 LOC (already documented by another agent)
+```
+
+## Related Documentation
+
+### Production Documentation
+
+- **[/workers/CLAUDE.md](../../workers/CLAUDE.md)** - Workers architecture and standards
+- **[/workers/gateway/](../../workers/gateway/)** - Gateway worker source
+- **[/workers/auth/](../../workers/auth/)** - Auth worker source
+- **[/workers/email/](../../workers/email/)** - Email worker source
+- **[/workers/mcp/](../../workers/mcp/)** - MCP worker source
+
+### Root Documentation
+
+- **[/CLAUDE.md](../../CLAUDE.md)** - Multi-repo project management
+- **[/ctx/CLAUDE.md](../CLAUDE.md)** - MDX content repository
+
+## Future Work
+
+### Additional Workers to Document
+
+1. **db** - Database layer (1,909 LOC, 16 tests) - **DONE by another agent**
+2. **schedule** - Cron jobs (1,925 LOC, 39 tests)
+3. **webhooks** - External webhooks (2,114 LOC, 10 tests)
+4. **queue** - Message queue processing
+5. **workflows** - Workflow orchestration
+6. **ai** - AI/ML operations
+
+### Enhancement Ideas
+
+1. **Executable Examples** - Add runnable code examples
+2. **Sequence Diagrams** - Visualize request flows
+3. **API Documentation** - Generate OpenAPI specs from MDX
+4. **Interactive Demos** - Embed playground for testing functions
+5. **Video Walkthroughs** - Screen recordings of key features
+
+## Notes
+
+- **Not a replacement** - These MDX files complement, not replace, production code
+- **Living documentation** - Should be updated as production code evolves
+- **Reference architecture** - Shows ideal patterns for new workers
+- **Database integration** - All MDX files sync to PostgreSQL via repo.do webhooks
+
+## See Also
+
+- **[ctx/db/](../db/)** - Database records and migrations
+- **[ctx/schemas/](../schemas/)** - Schema definitions
+- **[ctx/functions/](../functions/)** - Function definitions
+- **[ctx/workflows/](../workflows/)** - Workflow patterns
+
+---
+
+**Created:** 2025-10-05
+**Status:** 4 workers documented (gateway, auth, email, mcp)
+**Total:** 7 MDX files, ~2,219 lines

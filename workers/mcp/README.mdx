@@ -1,0 +1,481 @@
+---
+$type: Worker::Documentation
+$id: worker/mcp/readme
+worker: mcp
+title: MCP Worker - Model Context Protocol Server
+description: JSON-RPC 2.0 server exposing platform capabilities as AI-accessible tools
+---
+
+# MCP Worker
+
+**Model Context Protocol Server**
+
+## Purpose
+
+Expose all platform capabilities as AI-accessible tools using the Model Context Protocol (MCP) JSON-RPC 2.0 standard.
+
+## Key Features
+
+- **20+ Tools** - Database, AI, auth, search, queue, workflows, sandboxes
+- **JSON-RPC 2.0** - Standard protocol for AI agents
+- **Tool Categories** - Organized by function (db, ai, auth, etc.)
+- **Resources** - Subscribable data resources
+- **Sandboxes** - Real code execution via Durable Objects
+- **HTTP Transport** - Works with any HTTP client
+
+## Architecture
+
+```
+AI Agent → MCP Client → HTTP/JSON-RPC → MCP Worker → Platform Services → Response
+```
+
+## Protocol: MCP (Model Context Protocol)
+
+MCP is a JSON-RPC 2.0-based protocol for AI agents to interact with external tools and resources.
+
+### JSON-RPC 2.0 Format
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req_123",
+  "method": "tools/call",
+  "params": {
+    "name": "db_query",
+    "arguments": {
+      "sql": "SELECT * FROM users LIMIT 10"
+    }
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req_123",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Found 10 users: ..."
+      }
+    ]
+  }
+}
+```
+
+## Tool Categories
+
+### 1. Database Tools (db_*)
+
+- `db_query` - Execute SQL queries
+- `db_execute` - Execute SQL statements
+- `db_schema` - Get table schemas
+- `db_tables` - List all tables
+
+### 2. AI Tools (ai_*)
+
+- `ai_generate` - Generate text with AI models
+- `ai_embed` - Generate embeddings
+- `ai_chat` - Chat completions
+- `ai_models` - List available models
+
+### 3. Auth Tools (auth_*)
+
+- `auth_validate_token` - Validate auth tokens
+- `auth_create_api_key` - Create API keys
+- `auth_check_permission` - Check permissions
+
+### 4. Search Tools (search_*)
+
+- `search_fulltext` - Full-text search
+- `search_vector` - Vector similarity search
+- `search_hybrid` - Hybrid search (fulltext + vector)
+
+### 5. Queue Tools (queue_*)
+
+- `queue_send` - Send message to queue
+- `queue_batch` - Send batch of messages
+- `queue_status` - Get queue status
+
+### 6. Workflow Tools (workflow_*)
+
+- `workflow_execute` - Execute workflow
+- `workflow_status` - Get workflow status
+- `workflow_list` - List workflows
+
+### 7. Sandbox Tools (sandbox_*)
+
+- `sandbox_create` - Create code execution sandbox
+- `sandbox_execute` - Execute code in sandbox
+- `sandbox_destroy` - Destroy sandbox
+
+## Tool Definitions
+
+Each tool has a JSON schema:
+
+```typescript
+{
+  name: 'db_query',
+  description: 'Execute a SQL query and return results',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      sql: {
+        type: 'string',
+        description: 'SQL query to execute'
+      },
+      params: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Query parameters'
+      }
+    },
+    required: ['sql']
+  }
+}
+```
+
+## Resources
+
+MCP resources are subscribable data sources:
+
+```typescript
+{
+  uri: 'resource://users',
+  name: 'Users',
+  description: 'User database records',
+  mimeType: 'application/json'
+}
+```
+
+Resource types:
+- `resource://users` - User records
+- `resource://workflows` - Workflow definitions
+- `resource://schemas` - Schema definitions
+- `resource://logs` - System logs
+
+## Sandboxes
+
+Real code execution using Cloudflare Durable Objects:
+
+```typescript
+// Create sandbox
+const sandbox = await mcp.tools.call('sandbox_create', {
+  language: 'javascript',
+  timeout: 5000
+})
+
+// Execute code
+const result = await mcp.tools.call('sandbox_execute', {
+  sandboxId: sandbox.id,
+  code: `
+    function hello(name) {
+      return 'Hello, ' + name + '!'
+    }
+    return hello('World')
+  `
+})
+
+console.log(result.output) // "Hello, World!"
+
+// Destroy sandbox
+await mcp.tools.call('sandbox_destroy', {
+  sandboxId: sandbox.id
+})
+```
+
+Supported languages:
+- JavaScript
+- TypeScript
+- Python
+- Rust (WASM)
+
+## HTTP Endpoints
+
+### Server Info
+
+```
+GET /
+```
+
+Returns server metadata:
+
+```json
+{
+  "name": "do-mcp-server",
+  "version": "1.0.0",
+  "protocol": "mcp/2024-11-05",
+  "description": "MCP server exposing platform capabilities",
+  "capabilities": {
+    "tools": { "listChanged": true },
+    "resources": { "subscribe": true, "listChanged": true }
+  },
+  "categories": [
+    "Database Tools",
+    "AI Tools",
+    "Auth Tools",
+    "Search Tools",
+    "Queue Tools",
+    "Workflow Tools"
+  ],
+  "transport": ["http", "sse", "stdio"]
+}
+```
+
+### JSON-RPC Endpoint
+
+```
+POST /
+Content-Type: application/json
+```
+
+Handles all MCP JSON-RPC requests.
+
+### Health Check
+
+```
+GET /health
+```
+
+Returns:
+
+```json
+{
+  "status": "ok",
+  "service": "mcp-server",
+  "version": "1.0.0",
+  "protocol": "mcp/2024-11-05"
+}
+```
+
+## Usage Examples
+
+### List Tools
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list"
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "db_query",
+        "description": "Execute SQL query",
+        "inputSchema": { ... }
+      },
+      ...
+    ]
+  }
+}
+```
+
+### Call Tool
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "db_query",
+    "arguments": {
+      "sql": "SELECT COUNT(*) as total FROM users"
+    }
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Query returned 1 row: {\"total\": 42}"
+      }
+    ]
+  }
+}
+```
+
+### List Resources
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "resources/list"
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "resources": [
+      {
+        "uri": "resource://users",
+        "name": "Users",
+        "description": "User database records",
+        "mimeType": "application/json"
+      },
+      ...
+    ]
+  }
+}
+```
+
+## AI Agent Integration
+
+### Claude Desktop
+
+Add to `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "do": {
+      "url": "https://mcp.services.do"
+    }
+  }
+}
+```
+
+### Custom Agents
+
+```typescript
+import { MCPClient } from '@modelcontextprotocol/client'
+
+const client = new MCPClient({
+  transport: 'http',
+  url: 'https://mcp.services.do'
+})
+
+// List available tools
+const { tools } = await client.listTools()
+
+// Call tool
+const result = await client.callTool('db_query', {
+  sql: 'SELECT * FROM workflows WHERE status = ?',
+  params: ['active']
+})
+
+console.log(result.content[0].text)
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Service bindings (automatic via wrangler.jsonc)
+# No environment variables needed
+```
+
+### Service Bindings
+
+```json
+{
+  "services": [
+    { "binding": "DB", "service": "db" },
+    { "binding": "AI", "service": "ai" },
+    { "binding": "AUTH", "service": "auth" },
+    { "binding": "QUEUE", "service": "queue" },
+    { "binding": "WORKFLOWS", "service": "workflows" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SANDBOX",
+        "class_name": "Sandbox",
+        "script_name": "mcp"
+      }
+    ]
+  }
+}
+```
+
+## Sandbox Durable Objects
+
+Code execution sandboxes use Cloudflare Durable Objects for isolation:
+
+```typescript
+export class Sandbox extends DurableObject {
+  async execute(code: string, options: SandboxOptions): Promise<SandboxResult> {
+    const startTime = Date.now()
+
+    try {
+      // Create isolated execution context
+      const result = await this.runInSandbox(code, options)
+
+      return {
+        success: true,
+        output: result,
+        duration: Date.now() - startTime
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        duration: Date.now() - startTime
+      }
+    }
+  }
+}
+```
+
+## Security
+
+- **No Authentication** - MCP server is public (intended for AI agents)
+- **Rate Limiting** - Enforced via gateway
+- **Resource Limits** - Sandboxes have CPU/memory/time limits
+- **Input Validation** - All tool inputs validated against JSON schemas
+
+## Testing
+
+```bash
+cd workers/mcp
+pnpm test
+```
+
+Test coverage: **70%+**
+
+## Related Documentation
+
+- [server.ts](./server.mdx) - MCP JSON-RPC server
+- [tools.ts](./tools.mdx) - Tool definitions
+- [resources.ts](./resources.mdx) - Resource definitions
+- [sandbox.ts](./sandbox.mdx) - Code execution sandboxes
+
+## See Also
+
+- **[workers/CLAUDE.md](../../workers/CLAUDE.md)** - Workers architecture
+- **[MCP Specification](https://modelcontextprotocol.io)** - Protocol docs

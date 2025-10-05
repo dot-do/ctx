@@ -1,0 +1,571 @@
+---
+$type: Type::Schema
+$id: type/services-as-software
+title: Services-as-Software Type System
+description: AI-delivered services based on ONET occupational data
+category: Service Types
+version: 1.0.0
+
+# Type definitions for AI service delivery
+types:
+  Service:
+    id: string
+    name: string
+    description: string
+    category: enum[content, design, code, data, marketing, legal, accounting, consulting, support, research, custom]
+    occupation: string
+    occupationTitle: string?
+    tasks: string[]
+    skills: string[]?
+    knowledge: string[]?
+    tools: string[]?
+    gdpvalScore: number?
+    aiReady: boolean
+    humanBackup: boolean
+    deliverable: Deliverable
+    examples: string[]?
+    turnaroundTime: Duration
+    minimumTime: Duration?
+    rushAvailable: boolean
+    quality: QualitySpec
+    guarantees: Guarantee[]
+    sla: SLA
+    pricing: PricingModel
+    discounts: Discount[]?
+    fulfillmentWorkflow: Workflow
+    assignedAgents: Agent[]
+    backupHumans: Human[]?
+    capacity: ServiceCapacity
+    briefTemplate: object
+    requiredFiles: FileRequirement[]?
+    restrictions: string[]?
+    addOns: AddOn[]?
+    bundledWith: string[]?
+    status: enum[draft, active, paused, deprecated, archived]
+    createdAt: Date
+    updatedAt: Date
+
+  Deliverable:
+    format: enum[document, code, image, video, audio, data, report, ui, api, other]
+    mimeType: string
+    fileSize: object?
+    specifications: object
+    acceptanceCriteria: string[]
+    reviewProcess: enum[automatic, manual, hybrid]
+
+  Duration:
+    min: number
+    max: number
+    typical: number
+    unit: enum[minutes, hours, days, weeks]
+
+  QualitySpec:
+    standard: string
+    metrics: object
+    testingMethod: string
+    passRate: number
+
+  Guarantee:
+    type: enum[quality, delivery, satisfaction, refund]
+    description: string
+    terms: string
+    remedy: string
+
+  SLA:
+    availability: number
+    responseTime: Duration
+    resolutionTime: Duration
+    qualityTarget: number
+    penaltyTerms: string?
+
+  ServiceCapacity:
+    concurrent: number
+    daily: number
+    weekly: number
+    monthly: number
+    scaleThreshold: number
+
+  FileRequirement:
+    name: string
+    format: string[]
+    maxSize: number
+    required: boolean
+    description: string
+
+  AddOn:
+    id: string
+    name: string
+    description: string
+    pricing: PricingModel
+    compatible: string[]
+
+  Agent:
+    id: string
+    name: string
+    type: string
+    capabilities: string[]
+    model: string
+    systemPrompt: string
+
+  Human:
+    id: string
+    name: string
+    role: string
+    skills: string[]
+    availability: string
+
+  Workflow:
+    id: string
+    name: string
+    steps: WorkflowStep[]
+    triggers: object[]
+    automation: number
+
+  WorkflowStep:
+    id: string
+    name: string
+    type: enum[automated, manual, decision, approval]
+    assignee: string
+    function: string?
+    duration: Duration
+    dependencies: string[]?
+
+  PricingModel:
+    type: enum[fixed, hourly, subscription, usage, tiered, value-based, dynamic]
+    basePrice: number?
+    currency: string
+    billingCycle: enum[one-time, hourly, daily, weekly, monthly, quarterly, annually]?
+    tiers: object[]?
+    usage: object?
+    volumeDiscounts: object[]?
+
+  Discount:
+    type: enum[volume, bundle, seasonal, promotional, loyalty]
+    amount: number
+    unit: enum[percent, fixed]
+    conditions: object
+    validUntil: Date?
+
+  SemanticBusiness:
+    subject: string
+    predicate: string
+    object: string
+    context: object
+    confidence: number
+    source: string
+
+  ONETOccupation:
+    code: string
+    title: string
+    description: string
+    tasks: ONETTask[]
+    skills: ONETSkill[]
+    knowledge: ONETKnowledge[]
+    abilities: ONETAbility[]
+    education: string
+    experience: string
+    jobZone: number
+
+  ONETTask:
+    id: string
+    description: string
+    importance: number
+    frequency: number
+
+  ONETSkill:
+    id: string
+    name: string
+    description: string
+    level: number
+
+  ONETKnowledge:
+    id: string
+    name: string
+    description: string
+    level: number
+
+  ONETAbility:
+    id: string
+    name: string
+    description: string
+    level: number
+
+  NAICSIndustry:
+    code: string
+    title: string
+    description: string
+    parentCode: string?
+    level: number
+
+  GenerativeAPI:
+    endpoint: string
+    method: enum[GET, POST, PUT, DELETE, PATCH]
+    input: object
+    output: object
+    model: string
+    provider: string
+
+  ProxyImplementation:
+    service: string
+    upstream: string
+    transformation: object
+    caching: object?
+    rateLimit: object?
+
+  Order:
+    id: string
+    serviceId: string
+    customerId: string
+    status: enum[draft, submitted, in-progress, review, completed, cancelled, refunded]
+    brief: object
+    files: string[]
+    deliverables: string[]?
+    pricing: object
+    payment: object
+    timeline: object
+    communication: object[]
+    satisfaction: number?
+    createdAt: Date
+    updatedAt: Date
+
+metadata:
+  ns: type
+  visibility: public
+  created: 2025-10-05
+  updated: 2025-10-05
+
+tags:
+  - services-as-software
+  - ai-services
+  - onet
+  - type-system
+---
+
+# Services-as-Software Type System
+
+TypeScript interfaces for defining AI-delivered services based on ONET occupational data. Services are work previously performed by humans, now deliverable by AI agents.
+
+## Overview
+
+**Services-as-Software** enables AI agents to deliver professional services with guaranteed quality, turnaround times, and pricing. Each service maps to ONET occupational tasks and is validated against real-world performance data.
+
+## Core Concept
+
+A **Service** is:
+- Work previously requiring human expertise
+- Now deliverable by AI agents
+- With guaranteed outcomes and SLAs
+- Priced transparently and competitively
+
+## Service Lifecycle
+
+```
+Draft → Active → Order → Fulfillment → Delivery → Review
+```
+
+### 1. Draft
+Define service parameters:
+- ONET occupation mapping
+- Quality specifications
+- Pricing model
+- Fulfillment workflow
+- Agent assignments
+
+### 2. Active
+Service available for orders:
+- Listed in marketplace
+- Agents ready
+- Capacity allocated
+- SLAs published
+
+### 3. Order
+Customer submits request:
+- Provides brief
+- Uploads files
+- Accepts terms
+- Makes payment
+
+### 4. Fulfillment
+AI agents execute:
+- Workflow triggered
+- Steps executed
+- Quality checks
+- Human escalation if needed
+
+### 5. Delivery
+Customer receives:
+- Deliverables
+- Documentation
+- Usage rights
+- Support access
+
+### 6. Review
+Feedback collected:
+- Satisfaction rating
+- Quality metrics
+- Improvement suggestions
+- Service refinement
+
+## ONET Integration
+
+Every service maps to ONET occupational data:
+
+```yaml
+service:
+  occupation: "15-1252.00"  # Software Developers
+  occupationTitle: "Software Developers"
+  tasks:
+    - "15-1252.00.001"  # Analyze user needs
+    - "15-1252.00.002"  # Design software
+  skills:
+    - "Programming"
+    - "Systems Analysis"
+  knowledge:
+    - "Computers and Electronics"
+    - "Engineering and Technology"
+```
+
+## Quality Assurance
+
+Multi-layered quality:
+
+1. **Automated Testing** - Code quality, format compliance
+2. **AI Review** - Semantic analysis, completeness
+3. **Human Review** - Final quality check (if needed)
+4. **Customer Acceptance** - Satisfaction guarantee
+
+## Pricing Models
+
+### Fixed Price
+```yaml
+pricing:
+  type: fixed
+  basePrice: 500
+  currency: USD
+  billingCycle: one-time
+```
+
+### Hourly Rate
+```yaml
+pricing:
+  type: hourly
+  basePrice: 75
+  currency: USD
+  billingCycle: hourly
+  minimumHours: 4
+```
+
+### Subscription
+```yaml
+pricing:
+  type: subscription
+  basePrice: 1999
+  currency: USD
+  billingCycle: monthly
+  tiers:
+    - name: "Basic"
+      price: 1999
+      features: ["10 requests/month", "48h turnaround"]
+    - name: "Pro"
+      price: 4999
+      features: ["50 requests/month", "24h turnaround"]
+```
+
+### Usage-Based
+```yaml
+pricing:
+  type: usage
+  basePrice: 0
+  currency: USD
+  usage:
+    metric: "words"
+    pricePerUnit: 0.01
+    includedUnits: 10000
+```
+
+## Service Capacity
+
+Define throughput limits:
+
+```yaml
+capacity:
+  concurrent: 10  # Parallel executions
+  daily: 50       # Per day
+  weekly: 300     # Per week
+  monthly: 1200   # Per month
+  scaleThreshold: 0.8  # Scale at 80% capacity
+```
+
+## Fulfillment Workflow
+
+Automated execution pipeline:
+
+```yaml
+fulfillmentWorkflow:
+  id: "workflow/content-writing"
+  steps:
+    - id: "analyze-brief"
+      type: automated
+      assignee: "agent/analyzer"
+      duration: { min: 5, max: 15, unit: minutes }
+
+    - id: "generate-content"
+      type: automated
+      assignee: "agent/writer"
+      duration: { min: 30, max: 120, unit: minutes }
+
+    - id: "quality-review"
+      type: automated
+      assignee: "agent/reviewer"
+      duration: { min: 10, max: 30, unit: minutes }
+
+    - id: "human-review"
+      type: manual
+      assignee: "human/editor"
+      duration: { min: 15, max: 60, unit: minutes }
+      condition: "quality_score < 0.9"
+
+    - id: "deliver"
+      type: automated
+      assignee: "agent/delivery"
+      duration: { min: 1, max: 5, unit: minutes }
+```
+
+## Agent Assignment
+
+Assign AI agents to services:
+
+```yaml
+assignedAgents:
+  - id: "agent/content-writer"
+    name: "ContentWriter"
+    type: "specialized"
+    capabilities: ["writing", "editing", "SEO"]
+    model: "claude-3-5-sonnet-20241022"
+
+  - id: "agent/quality-reviewer"
+    name: "QualityReviewer"
+    type: "specialized"
+    capabilities: ["review", "scoring", "feedback"]
+    model: "claude-3-5-sonnet-20241022"
+```
+
+## Human Backup
+
+Human escalation for complex cases:
+
+```yaml
+backupHumans:
+  - id: "human/senior-editor"
+    name: "Senior Editor"
+    role: "editor"
+    skills: ["editing", "publishing", "mentoring"]
+    availability: "business-hours"
+```
+
+## SLA Guarantees
+
+Service level agreements:
+
+```yaml
+sla:
+  availability: 0.99  # 99% uptime
+  responseTime:
+    typical: 30
+    unit: minutes
+  resolutionTime:
+    typical: 24
+    unit: hours
+  qualityTarget: 0.95  # 95% satisfaction
+  penaltyTerms: "Full refund if SLA breach"
+```
+
+## Usage Example
+
+```yaml
+---
+$type: Service
+$id: service/blog-post-writing
+name: "Blog Post Writing"
+description: "AI-written blog posts with SEO optimization"
+category: content
+
+occupation: "27-3043.00"
+occupationTitle: "Writers and Authors"
+tasks:
+  - "27-3043.00.001"
+  - "27-3043.00.005"
+skills: ["Writing", "Reading Comprehension", "Active Listening"]
+
+aiReady: true
+humanBackup: true
+gdpvalScore: 0.92
+
+turnaroundTime:
+  min: 2
+  max: 48
+  typical: 24
+  unit: hours
+
+pricing:
+  type: fixed
+  basePrice: 99
+  currency: USD
+  billingCycle: one-time
+
+deliverable:
+  format: document
+  mimeType: "text/markdown"
+  specifications:
+    wordCount: { min: 800, max: 1200 }
+    readingLevel: "college"
+    seoOptimized: true
+  acceptanceCriteria:
+    - "Passes plagiarism check"
+    - "Includes meta description"
+    - "3+ internal links"
+
+fulfillmentWorkflow: "workflow/blog-writing"
+assignedAgents: ["agent/content-writer", "agent/seo-optimizer"]
+capacity:
+  concurrent: 5
+  daily: 20
+  monthly: 400
+---
+
+# Blog Post Writing Service
+
+Professional AI-written blog posts optimized for SEO and engagement.
+
+## What You Get
+- 800-1,200 word blog post
+- SEO-optimized with keywords
+- Meta description included
+- Plagiarism-free content
+- 24-hour turnaround
+
+## Perfect For
+- Content marketers
+- Small business owners
+- Agencies
+- Bloggers
+
+## How It Works
+1. Submit your topic and keywords
+2. AI researches and writes
+3. Quality review & SEO check
+4. Delivered in 24 hours
+```
+
+## See Also
+
+- **[services/](../services/)** - Service definitions
+- **[workflows/](../workflows/)** - Fulfillment workflows
+- **[agents/](../agents/)** - AI agent definitions
+- **[ONET](https://www.onetcenter.org/)** - Occupational data
+
+---
+
+**Last Updated:** 2025-10-05
+**Status:** Production
+**Maintained By:** Claude Code

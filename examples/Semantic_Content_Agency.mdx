@@ -1,0 +1,330 @@
+---
+$type: Example::Service
+$id: example/semantic-content-agency
+title: Semantic Content Agency Example
+description: Demonstrates Business-as-Code using semantic English API with Schema.org and GS1 EPCIS integration
+tags:
+  - business-as-code
+  - semantic-api
+  - schema-org
+  - epcis
+  - content-agency
+metadata:
+  ns: example
+  visibility: public
+---
+
+# Semantic Content Agency Example
+
+Demonstrates Business-as-Code using the semantic English API that integrates:
+- 4th Grade English Grammar (Subject-Verb-Object)
+- Schema.org (Things and Actions)
+- GS1 EPCIS CBV (5 W's + How)
+
+**Compare with**: [Content Agency Example](./Content_Agency.mdx) (original method-based approach)
+
+## Business Definition (Schema.org compatible)
+
+### AI Content Agency as Schema.org Organization
+
+```typescript
+const contentAgencyOrg: Organization = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  '@id': 'https://content.agency',
+  name: 'AI Content Agency',
+  legalName: 'AI Content Agency Inc.',
+  foundingDate: '2024-01-01',
+  employees: [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      '@id': 'alice',
+      name: 'Alice Johnson',
+      givenName: 'Alice',
+      familyName: 'Johnson',
+      email: 'alice@content.agency',
+      jobTitle: 'CEO & Founder',
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      '@id': 'contentbot-alpha',
+      name: 'ContentBot Alpha',
+      jobTitle: 'Senior AI Writer',
+    }
+  ]
+}
+```
+
+### SEO Blog Post Service (Schema.org Service)
+
+```typescript
+const blogPostService: ServiceThing = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  '@id': 'seo-blog-post',
+  name: 'SEO Blog Post',
+  description: 'Professional blog post optimized for search engines',
+  serviceType: '27-3042.00', // ONET: Technical Writers
+  provider: contentAgencyOrg,
+  offers: [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Offer',
+      name: 'Standard Blog Post',
+      price: 299,
+      priceCurrency: 'USD',
+      availability: 'InStock',
+    }
+  ]
+}
+```
+
+## Semantic Business API Usage
+
+### Example 1: Order Fulfillment (Natural Language)
+
+```typescript
+// Customer creates order
+// Reads like: "Customer Bob creates order #123 at this time for business blog via the dashboard"
+await business
+  .customer('bob@example.com')
+  .creates.order('#123')
+  .at(new Date())
+  .for('business blog content')
+  .via('dashboard')
+  .step('commissioning') // EPCIS: Creating new order
+  .state('active') // EPCIS: Order is active
+
+// Agent accepts work
+await business
+  .agent('contentbot-alpha')
+  .receives.work('#123')
+  .at(new Date())
+  .in('production-queue')
+  .because('capacity-available')
+  .step('accepting')
+  .state('in_progress')
+
+// Agent completes work
+await business
+  .agent('contentbot-alpha')
+  .delivers.deliverable('#123-draft')
+  .at(new Date())
+  .to('bob@example.com')
+  .step('delivering')
+  .state('completed')
+
+// Customer receives deliverable
+await business
+  .customer('bob@example.com')
+  .receives.deliverable('#123-draft')
+  .at(new Date())
+  .via('email')
+  .step('receiving')
+```
+
+### Example 2: Passive Voice (Thing-Centric View)
+
+```typescript
+// Order is created by customer
+await business
+  .order('#456')
+  .is.created
+  .by('customer-carol')
+  .at(new Date())
+  .in('e-commerce-checkout')
+  .step('commissioning')
+
+// Order is assigned to agent
+await business
+  .order('#456')
+  .is.assigned
+  .by('system')
+  .to('contentbot-alpha')
+  .at(new Date())
+  .because('best-match')
+  .step('accepting')
+
+// Work is completed by agent
+await business
+  .deliverable('#456-draft')
+  .is.created
+  .by('contentbot-alpha')
+  .at(new Date())
+  .in('production-environment')
+  .step('delivering')
+  .state('completed')
+```
+
+### Example 3: Compound Sentences (Workflow)
+
+```typescript
+// Agent creates deliverable AND sends notification
+await business
+  .agent('contentbot-alpha')
+  .creates.deliverable('#789-draft')
+  .at(new Date())
+  .and.sends.notification()
+  .to('customer@example.com')
+  .via('email')
+  .with('draft-ready-template')
+  .because('customer-expects-notification')
+
+// Customer receives deliverable BUT requests revision
+await business
+  .customer('customer@example.com')
+  .receives.deliverable('#789-draft')
+  .at(new Date())
+  .but.sends.notification()
+  .to('contentbot-alpha')
+  .with('revision-request')
+  .because('quality-below-threshold')
+```
+
+### Example 4: Questions and Queries
+
+```typescript
+// Boolean queries
+const hasCapacity = await business.agent('contentbot-alpha').has.capacity.for('new-order')
+console.log(`Has capacity: ${hasCapacity}`)
+
+// State checks
+const isCompleted = await business.order('#123').is.completed
+console.log(`Order completed: ${isCompleted}`)
+
+const isPending = await business.order('#123').is.pending
+console.log(`Order pending: ${isPending}`)
+```
+
+### Example 5: Full Business Scenario
+
+```typescript
+console.log('📋 Scenario: Customer orders blog post, agent writes it, customer approves\n')
+
+// 1. Customer creates order
+await business
+  .customer('dave@startup.com')
+  .creates.order('#2025-001')
+  .at(new Date())
+  .for('AI trends blog post')
+  .via('web-app')
+  .with({ topic: 'AI Trends 2026', words: 1500, tone: 'professional' })
+  .step('commissioning')
+  .state('active')
+
+// 2. System assigns to best agent
+await business
+  .system
+  .assigns.work('#2025-001')
+  .to('contentbot-alpha')
+  .at(new Date())
+  .because('highest-quality-score')
+  .step('accepting')
+
+// 3. Agent accepts work
+await business
+  .agent('contentbot-alpha')
+  .receives.work('#2025-001')
+  .at(new Date())
+  .in('production-queue')
+  .step('picking')
+  .state('in_progress')
+
+// 4. Agent creates deliverable
+await business
+  .agent('contentbot-alpha')
+  .creates.deliverable('#2025-001-draft')
+  .at(new Date())
+  .in('production-environment')
+  .using('gpt-4o-model')
+  .step('delivering')
+
+// 5. System checks quality
+await business
+  .system
+  .checks.quality('#2025-001-draft')
+  .at(new Date())
+  .via('quality-automation')
+  .step('inspecting')
+
+// 6. Agent delivers to customer
+await business
+  .agent('contentbot-alpha')
+  .delivers.deliverable('#2025-001-draft')
+  .at(new Date())
+  .to('dave@startup.com')
+  .via('email')
+  .with('delivery-notification')
+  .step('delivering')
+  .state('completed')
+
+// 7. Customer receives and approves
+await business
+  .customer('dave@startup.com')
+  .receives.deliverable('#2025-001-draft')
+  .at(new Date())
+  .and.sends.notification()
+  .to('contentbot-alpha')
+  .with('approval')
+  .because('quality-exceeds-expectations')
+  .step('retail_selling') // Final delivery
+  .state('sold')
+
+console.log(`✅ Full scenario completed`)
+console.log('All events follow Schema.org + EPCIS standards')
+console.log('Ready for semantic search, knowledge graphs, and analytics')
+```
+
+## API Evolution Comparison
+
+### BEFORE (Traditional)
+```typescript
+business.addEventListener('order.created', async (event, ctx) => {
+  const order = event.order
+  const agent = findBestAgent(agents, order.requirements)
+  await ctx.db.update('order', order.id, { assignedTo: agent.id })
+  await ctx.email.send(order.customer.email, 'Order Confirmed', ...)
+})
+```
+
+### MIDDLE (Method-Based)
+```typescript
+business.on.order.created(async (event, ctx) => {
+  const agent = findBestAgent(agents, event.order.requirements)
+  await ctx.db.update('order', event.order.id, { assignedTo: agent.id })
+  await ctx.email.send(event.order.customer.email, 'Order Confirmed', ...)
+})
+```
+
+### AFTER (Semantic English)
+```typescript
+// Natural language business operations
+await business
+  .customer('bob@example.com')
+  .creates.order('#123')
+  .at(new Date())
+  .for('business blog content')
+  .via('dashboard')
+
+// Schema.org + EPCIS compatible
+// Ready for semantic web, knowledge graphs
+// Self-documenting and type-safe
+```
+
+## Benefits
+
+- **Reads like natural English** - 4th grade grammar patterns
+- **Schema.org vocabulary** - Standard semantic types and actions
+- **EPCIS context** - Who, What, When, Where, Why, How captured
+- **Type-safe** - TypeScript validates grammar at compile time
+- **40-60% fewer tokens** - More concise than traditional APIs
+- **Self-documenting** - Code reads like business documentation
+- **Semantic web compatible** - Ready for knowledge graphs and RDF
+
+## See Also
+
+- [Content Agency Example](./Content_Agency.mdx) - Traditional method-based approach
+- [ONET-NAICS Integration](./ONET_NAICS_Integration.mdx) - Complete taxonomy integration
+- [Massive Generation Example](./Massive_Generation.mdx) - Parallel business generation

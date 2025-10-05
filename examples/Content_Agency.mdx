@@ -1,0 +1,543 @@
+---
+$type: Example::Service
+$id: example/content-agency
+title: Complete Services-as-Software Example - AI Content Agency
+description: Full implementation showing how all types work together for an AI-powered content agency
+tags:
+  - services-as-software
+  - business-as-code
+  - ai-agents
+  - content-agency
+  - complete-example
+metadata:
+  ns: example
+  visibility: public
+---
+
+# Complete Services-as-Software Example
+
+**AI Content Agency** - Full implementation showing how all types work together
+
+This example demonstrates:
+- Business definition with StoryBrand and OKRs
+- Service catalog mapped to ONET occupations
+- AI agent workforce with performance tracking
+- Event-driven order fulfillment
+- Quality assurance and SLA management
+- Pricing models and payment processing
+- Customer relationship management
+
+## Business Definition
+
+```typescript
+export const contentAgency: Business = {
+  // ═══ Identity ═══
+  id: 'content-agency-ai',
+  name: 'AI Content Agency',
+  description: 'World-class content creation delivered by AI agents',
+  domain: 'content.ai',
+  industry: '541810', // NAICS: Advertising Agencies
+
+  // ═══ Strategic Vision ═══
+  vision: 'Empower every business with world-class content at software prices',
+  mission: 'Deliver exceptional content faster, cheaper, and better than human agencies',
+  values: [
+    'Quality First - Every piece exceeds expectations',
+    'Speed Matters - Deliver in days, not weeks',
+    'Transparency - Clear pricing, clear timelines, clear communication',
+    'AI-Native - Leverage AI capabilities, human oversight where it matters'
+  ],
+
+  // ═══ StoryBrand Framework ═══
+  storyBrand: {
+    hero: 'Marketing teams and content creators struggling with content production',
+    problem: 'Content creation is slow, expensive, and inconsistent',
+    guide: 'AI Content Agency - Your expert content production partner',
+    solution: 'AI-powered content creation with guaranteed quality and turnaround',
+    callToAction: 'Start Your First Project',
+    success: 'Consistent high-quality content that drives engagement and growth',
+    failure: 'Falling behind competitors due to slow, expensive content production',
+    transformation: 'From content bottleneck to content powerhouse'
+  },
+
+  // ═══ OKRs (Quarterly) ═══
+  okrs: [
+    {
+      objective: 'Establish market leadership in AI content services',
+      keyResults: [
+        {
+          metric: 'Monthly Recurring Revenue',
+          current: 50_000,
+          target: 250_000,
+          unit: 'USD',
+          progress: 20,
+          confidence: 0.7,
+        },
+        {
+          metric: 'Customer Count',
+          current: 45,
+          target: 200,
+          unit: 'customers',
+          progress: 22.5,
+          confidence: 0.75,
+        },
+        {
+          metric: 'Net Promoter Score',
+          current: 62,
+          target: 80,
+          unit: 'score',
+          progress: 77.5,
+          confidence: 0.85
+        },
+        {
+          metric: 'Average Quality Score',
+          current: 8.3,
+          target: 9.0,
+          unit: 'score',
+          progress: 92,
+          confidence: 0.9
+        }
+      ],
+      timeframe: 'quarter',
+      startDate: new Date('2025-10-01'),
+      endDate: new Date('2025-12-31'),
+      level: 'company',
+      status: 'active',
+      progress: 53,
+      health: 'green'
+    }
+  ],
+
+  // ═══ Revenue Model ═══
+  revenue: {
+    streams: [
+      { name: 'Subscription Plans', type: 'subscription', amount: 50_000, percentage: 60, growth: 0.15 },
+      { name: 'One-Time Projects', type: 'service', amount: 25_000, percentage: 30, growth: 0.10 },
+      { name: 'Rush Delivery', type: 'service', amount: 8_333, percentage: 10, growth: 0.20 }
+    ],
+    totalMRR: 50_000,
+    totalARR: 600_000,
+  },
+
+  // ═══ Unit Economics ═══
+  unitEconomics: {
+    cac: 150, // Customer Acquisition Cost
+    ltv: 1_200, // Lifetime Value
+    cacLtvRatio: 8.0, // Excellent!
+    paybackPeriod: 2, // 2 months
+    grossMargin: 0.70,
+    netMargin: 0.42
+  }
+}
+```
+
+## Service Catalog
+
+```typescript
+export const blogPostService: Service = {
+  // ═══ Identity ═══
+  id: 'blog-post-seo',
+  name: 'SEO Blog Post',
+  description: '1,500-2,500 word SEO-optimized blog post with research, writing, and optimization',
+  category: 'content',
+
+  // ═══ ONET Mapping ═══
+  occupation: '27-3042.00', // Technical Writers
+  occupationTitle: 'Technical Writers',
+  tasks: [
+    'Organize material and complete writing assignment according to set standards',
+    'Develop or maintain content using hypertext markup language',
+    'Conduct research to establish technical specifications',
+    'Review published materials and recommend revisions'
+  ],
+  skills: ['Writing', 'Reading Comprehension', 'Active Listening', 'Critical Thinking'],
+  knowledge: ['English Language', 'Communications and Media', 'Customer Service'],
+
+  // ═══ AI Capability ═══
+  gdpvalScore: 0.82, // High AI capability for content writing
+  aiReady: true,
+  humanBackup: true,
+
+  // ═══ Deliverable ═══
+  deliverable: {
+    type: 'document',
+    format: 'markdown',
+    size: { min: 1500, max: 2500, unit: 'words' },
+    specifications: [
+      { name: 'Title', description: 'Engaging, SEO-optimized title', required: true },
+      { name: 'Meta Description', description: '150-160 character search snippet', required: true },
+      { name: 'Keywords', description: 'Target keywords (3-5)', required: true },
+      { name: 'Headers', description: 'H2/H3 structure with keywords', required: true },
+    ]
+  },
+
+  // ═══ Timeline ═══
+  turnaroundTime: { value: 48, unit: 'hours' },
+  minimumTime: { value: 24, unit: 'hours' },
+  rushAvailable: true,
+
+  // ═══ Quality ═══
+  quality: {
+    criteria: [
+      {
+        id: 'seo',
+        name: 'SEO Score',
+        description: 'Surfer SEO content score',
+        weight: 0.3,
+        evaluator: 'automated-test',
+        tool: 'Surfer SEO',
+        passingScore: 75
+      },
+      {
+        id: 'readability',
+        name: 'Readability',
+        description: 'Hemingway grade level',
+        weight: 0.2,
+        evaluator: 'automated-test',
+        tool: 'Hemingway',
+        passingScore: 8
+      },
+      {
+        id: 'originality',
+        name: 'Originality',
+        description: 'Copyscape plagiarism check',
+        weight: 0.3,
+        evaluator: 'automated-test',
+        tool: 'Copyscape',
+        passingScore: 95
+      },
+      {
+        id: 'relevance',
+        name: 'Topic Relevance',
+        description: 'AI evaluation of content alignment with brief',
+        weight: 0.2,
+        evaluator: 'ai',
+        passingScore: 8.0
+      }
+    ],
+    minimumScore: 8.0,
+    reviewProcess: 'automated',
+    acceptanceThreshold: 0.80
+  },
+
+  // ═══ Pricing ═══
+  pricing: {
+    type: 'outcome-based',
+    basePrice: 299,
+    description: 'Per blog post delivered',
+    qualityTiers: [
+      { minScore: 9.0, multiplier: 1.2, label: 'Premium' },
+      { minScore: 8.0, multiplier: 1.0, label: 'Standard' },
+      { minScore: 7.0, multiplier: 0.8, label: 'Basic' }
+    ]
+  },
+
+  // ═══ SLA & Guarantees ═══
+  guarantees: [
+    {
+      type: 'quality',
+      description: 'Minimum 8/10 quality score or free revision',
+      remedy: 'Free revision or full refund',
+    },
+    {
+      type: 'timeline',
+      description: 'Delivery within 48 hours or 20% refund',
+      remedy: '20% refund for each 24 hours delayed',
+    },
+    {
+      type: 'originality',
+      description: '100% original content passing Copyscape',
+      remedy: 'Full refund if plagiarism detected',
+    }
+  ],
+
+  sla: {
+    firstResponseTime: { value: 2, unit: 'hours' },
+    resolutionTime: { value: 48, unit: 'hours' },
+    uptime: 0.99,
+    qualityGuarantee: 8.0,
+    revisionLimit: 2,
+    revisionTurnaround: { value: 24, unit: 'hours' },
+  }
+}
+```
+
+## AI Agent Workforce
+
+```typescript
+export const writerAgent: Agent = {
+  type: 'agent',
+  id: 'writer-gpt4-01',
+  name: 'ContentBot Alpha',
+  role: 'Senior Content Writer',
+  description: 'Expert AI content writer specializing in SEO blog posts',
+
+  // ═══ ONET Mapping ═══
+  occupation: '27-3042.00', // Technical Writers
+  capabilities: [
+    'SEO Content Writing',
+    'Research & Analysis',
+    'Keyword Optimization',
+    'Audience Targeting',
+    'Fact Checking',
+    'Citation Management'
+  ],
+
+  // ═══ AI Configuration ═══
+  model: 'gpt-4o',
+  provider: 'openai',
+  systemPrompt: `You are an expert content writer specializing in SEO-optimized blog posts.
+
+Your responsibilities:
+1. Research the topic thoroughly using provided sources
+2. Write engaging, informative content that ranks well in search
+3. Follow SEO best practices (keyword density, header structure, meta descriptions)
+4. Match the client's brand voice and tone
+5. Ensure 100% original content
+6. Include proper citations and links
+
+Quality standards:
+- Surfer SEO score: 75+
+- Hemingway grade level: 8 or below
+- Copyscape: 95%+ originality
+- Topic relevance: 8/10+
+
+Always deliver content that exceeds expectations.`,
+  temperature: 0.7,
+  maxTokens: 4000,
+
+  // ═══ Performance ═══
+  performance: {
+    tasksCompleted: 847,
+    tasksPerDay: 12,
+    averageQuality: 8.6,
+    successRate: 0.96,
+    onTimeDelivery: 0.98,
+    costPerTask: 2.50,
+    gdpvalScore: 0.82,
+  },
+
+  // ═══ Capacity ═══
+  capacity: {
+    maxConcurrentTasks: 5,
+    maxTasksPerDay: 15,
+    maxTasksPerMonth: 400,
+    currentTasks: 3,
+    availableSlots: 2
+  },
+  currentLoad: 0.60,
+}
+```
+
+## Event Handlers & Workflows
+
+### Order Created Handler
+
+```typescript
+export const handleOrderCreated: EventHandler = async (event, context) => {
+  const { order } = event
+
+  context.log(`New order received: ${order.id}`)
+
+  // 1. Send confirmation email to customer
+  await context.email.send(
+    order.customer.email,
+    'Order Received - Content Agency',
+    `Thank you for your order! We'll deliver your ${order.service.name} within ${order.service.turnaroundTime.value} ${order.service.turnaroundTime.unit}.`
+  )
+
+  // 2. Find best available agent
+  const agents = await context.db.list('agent', {
+    status: 'idle',
+    occupation: '27-3042.00'
+  })
+  const bestAgent = agents.sort((a, b) =>
+    b.performance.averageQuality - a.performance.averageQuality
+  )[0]
+
+  // 3. Assign order
+  await context.db.update('order', order.id, {
+    assignedTo: bestAgent.id,
+    status: 'assigned',
+    assignedAt: new Date()
+  })
+
+  // 4. Notify agent (trigger work start)
+  await context.queue.send('process-order', {
+    orderId: order.id,
+    agentId: bestAgent.id
+  })
+
+  context.log(`Order ${order.id} assigned to ${bestAgent.name}`)
+}
+```
+
+### Daily OKR Update
+
+```typescript
+export const updateOKRs: ScheduledHandler = async context => {
+  context.log('Running daily OKR update...')
+
+  // 1. Calculate current metrics
+  const metrics = {
+    mrr: await calculateMRR(context),
+    customers: await context.db.query(
+      'SELECT COUNT(*) FROM customers WHERE status = ?',
+      ['active']
+    ),
+    nps: await calculateNPS(context),
+    qualityScore: await calculateAvgQuality(context)
+  }
+
+  // 2. Update each key result
+  const okr = await context.db.get('okr', 'q4-2025-company')
+
+  for (const kr of okr.keyResults) {
+    const currentValue = metrics[kr.metric.toLowerCase().replace(/ /g, '_')]
+    kr.current = currentValue
+    kr.progress = ((currentValue - kr.current) / (kr.target - kr.current)) * 100
+    kr.trend = currentValue > kr.current ? 'up' : currentValue < kr.current ? 'down' : 'flat'
+  }
+
+  // 3. Calculate overall progress
+  okr.progress = okr.keyResults.reduce((sum, kr) => sum + kr.progress, 0) / okr.keyResults.length
+
+  // 4. Determine health
+  okr.health = okr.progress >= 70 ? 'green' : okr.progress >= 40 ? 'yellow' : 'red'
+
+  // 5. Save
+  await context.db.update('okr', okr.id, okr)
+
+  // 6. Alert if at-risk
+  if (okr.health === 'red') {
+    await context.slack.send(
+      '#leadership',
+      `⚠️ OKR at risk: "${okr.objective}" (${okr.progress.toFixed(1)}%)`
+    )
+  }
+
+  context.log(`OKR updated: ${okr.progress.toFixed(1)}% complete`)
+}
+```
+
+## Usage Example
+
+### Initialize the Business
+
+```typescript
+export function initContentAgency() {
+  // Set up event handlers
+  contentAgency.events = [handleOrderCreated]
+
+  // Set up schedules
+  contentAgency.schedules = [
+    {
+      pattern: 'day at 06:00',
+      handler: updateOKRs
+    }
+  ]
+
+  // Assign services
+  contentAgency.services = [blogPostService]
+
+  // Assign agents
+  contentAgency.agents = [writerAgent]
+  blogPostService.assignedAgents = [writerAgent]
+
+  return contentAgency
+}
+```
+
+### Register Handlers (Method-Based API)
+
+```typescript
+export function registerHandlers(business: Business) {
+  // Event-driven
+  business.on('order.created', handleOrderCreated)
+
+  // Scheduled
+  business.every('day at 06:00', updateOKRs)
+
+  // Send notifications
+  business.on('order.completed', async (event, ctx) => {
+    await business.send({
+      to: 'email',
+      recipient: event.order.customer.email,
+      subject: 'Your content is ready!',
+      body: 'Your order has been completed and is ready for review.'
+    })
+  })
+
+  // Iterate over entities
+  business.forEach('Order.at-risk', async (order, ctx) => {
+    await ctx.slack.send('#operations', `⚠️ Order ${order.id} is at risk`)
+  })
+}
+```
+
+## Complete Order Flow
+
+```typescript
+export async function exampleOrderFlow() {
+  const business = initContentAgency()
+
+  // 1. Customer submits order
+  const order: Partial<Order> = {
+    serviceId: 'blog-post-seo',
+    customer: {
+      id: 'cust-123',
+      email: 'customer@example.com'
+    } as Customer,
+    brief: {
+      topic: 'How AI is transforming content marketing',
+      keywords: ['AI content', 'content marketing', 'automation'],
+      targetAudience: 'Marketing managers at B2B SaaS companies',
+      tone: 'professional'
+    },
+    price: 299,
+    total: 299,
+    deadline: new Date(Date.now() + 48 * 60 * 60 * 1000)
+  }
+
+  // 2. Order created event fires
+  // → Assigns to best agent
+  // → Sends confirmation email
+  // → Queues for processing
+
+  // 3. Agent processes order
+  // → Generates content
+  // → Runs quality checks
+  // → Delivers to customer
+
+  // 4. Customer receives notification
+  // → Reviews deliverable
+  // → Provides feedback
+  // → Approves or requests revision
+
+  // 5. OKR metrics update
+  // → Revenue increases
+  // → Quality score tracked
+  // → NPS calculated
+}
+```
+
+## Key Metrics
+
+- **MRR**: $50,000 → $250,000 (5x growth target)
+- **ARR**: $600,000
+- **Customers**: 45 → 200 (4.4x growth target)
+- **NPS**: 62 → 80
+- **Quality Score**: 8.3 → 9.0
+- **CAC**: $150
+- **LTV**: $1,200
+- **LTV/CAC Ratio**: 8:1 (Excellent!)
+- **Payback Period**: 2 months
+- **Gross Margin**: 70%
+- **Net Margin**: 42%
+
+## See Also
+
+- [Semantic Content Agency](./Semantic_Content_Agency.mdx) - Semantic English API version
+- [ONET-NAICS Integration](./ONET_NAICS_Integration.mdx) - Complete taxonomy integration
+- [Massive Generation Example](./Massive_Generation.mdx) - Automated business generation
+- [Services-as-Software Types](/types/Services-as-Software.mdx) - Complete type definitions

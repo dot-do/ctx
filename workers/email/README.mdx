@@ -1,0 +1,404 @@
+---
+$type: Worker::Documentation
+$id: worker/email/readme
+worker: email
+title: Email Worker - Transactional Email Service
+description: Multi-provider email delivery with templates, tracking, and webhooks
+---
+
+# Email Worker
+
+**Transactional Email Delivery Service**
+
+## Purpose
+
+Send transactional emails via multiple providers (Resend, WorkOS, AWS SES) with built-in templating, delivery tracking, and webhook handling.
+
+## Key Features
+
+- **Multi-Provider** - Resend (primary), WorkOS, AWS SES
+- **Templating** - Built-in email templates with variable substitution
+- **Tracking** - Delivery status, opens, clicks, bounces
+- **Cold Email** - Specialized cold email sequences with personalization
+- **Webhooks** - Resend delivery status updates
+- **Database Logging** - Full email audit trail
+
+## Architecture
+
+```
+Send Request → Email Worker → Provider API → Delivery → Webhook → Status Update
+```
+
+## Interfaces
+
+### 1. RPC Interface (WorkerEntrypoint)
+
+```typescript
+class EmailService extends WorkerEntrypoint {
+  async send(message: EmailMessage, options?): Promise<EmailResult>
+  async sendTemplate(options: SendTemplateOptions): Promise<EmailResult>
+  async getEmailStatus(id: string): Promise<EmailStatus | null>
+  async listEmails(options: ListEmailsOptions): Promise<EmailLog[]>
+  async resendEmail(id: string): Promise<EmailResult>
+
+  // Cold email
+  async sendColdEmail(options: ColdEmailOptions): Promise<ColdEmailResult>
+  async validateColdEmailTemplate(templateName: string): Promise<boolean>
+}
+```
+
+### 2. HTTP Interface (Hono)
+
+```
+POST   /send              → Send raw email
+POST   /send/template     → Send templated email
+POST   /send/cold         → Send cold email sequence
+GET    /emails            → List emails
+GET    /emails/:id        → Get email details
+GET    /emails/:id/status → Get delivery status
+POST   /emails/:id/resend → Resend email
+GET    /templates         → List email templates
+POST   /webhooks/resend   → Resend webhook handler
+```
+
+## Providers
+
+### 1. Resend (Primary)
+
+Default provider with best API and features:
+
+```typescript
+const resend = new Resend(env.RESEND_API_KEY)
+
+const result = await resend.emails.send({
+  from: 'notifications@services.do',
+  to: 'user@example.com',
+  subject: 'Welcome!',
+  html: '<p>Welcome to our platform</p>',
+  text: 'Welcome to our platform',
+  tags: [{ name: 'category', value: 'onboarding' }]
+})
+```
+
+Features:
+- ✅ Delivery tracking
+- ✅ Webhook support
+- ✅ Analytics dashboard
+- ✅ Email validation
+
+### 2. WorkOS
+
+For organization-based emails:
+
+```typescript
+const workos = new WorkOS(env.WORKOS_API_KEY)
+
+await workos.emails.send({
+  to: 'user@example.com',
+  from: 'team@services.do',
+  subject: 'Team Invitation',
+  html: emailHtml
+})
+```
+
+### 3. AWS SES
+
+For high-volume sending:
+
+```typescript
+const ses = new SESClient({
+  region: 'us-east-1',
+  credentials: {
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY
+  }
+})
+
+await ses.send(new SendEmailCommand({
+  Source: 'noreply@services.do',
+  Destination: { ToAddresses: ['user@example.com'] },
+  Message: {
+    Subject: { Data: 'Hello' },
+    Body: { Html: { Data: emailHtml } }
+  }
+}))
+```
+
+## Email Templates
+
+### Built-in Templates
+
+Located in `src/templates/`:
+
+1. **welcome** - User onboarding
+2. **verification** - Email verification
+3. **password-reset** - Password reset
+4. **invitation** - Team invitation
+5. **receipt** - Payment receipt
+6. **notification** - General notification
+7. **newsletter** - Newsletter broadcast
+8. **cold-outreach** - Cold email outreach
+
+### Template Structure
+
+```typescript
+export interface EmailTemplate {
+  name: string
+  subject: string
+  html: string
+  text: string
+  variables: string[]  // Required variables
+}
+```
+
+Example template:
+
+```typescript
+export const welcomeTemplate: EmailTemplate = {
+  name: 'welcome',
+  subject: 'Welcome to {{appName}}!',
+  html: `
+    <h1>Welcome {{name}}!</h1>
+    <p>We're excited to have you on board.</p>
+    <a href="{{verificationUrl}}">Verify your email</a>
+  `,
+  text: `
+    Welcome {{name}}!
+
+    We're excited to have you on board.
+
+    Verify your email: {{verificationUrl}}
+  `,
+  variables: ['name', 'appName', 'verificationUrl']
+}
+```
+
+### Variable Substitution
+
+```typescript
+export function renderTemplate(
+  templateName: string,
+  variables: Record<string, string>
+): RenderedEmail {
+  const template = getTemplate(templateName)
+
+  let subject = template.subject
+  let html = template.html
+  let text = template.text
+
+  // Replace all {{variable}} with actual values
+  for (const [key, value] of Object.entries(variables)) {
+    const regex = new RegExp(`{{${key}}}`, 'g')
+    subject = subject.replace(regex, value)
+    html = html.replace(regex, value)
+    text = text.replace(regex, value)
+  }
+
+  return { subject, html, text }
+}
+```
+
+## Cold Email System
+
+Specialized system for cold email outreach with personalization and sequencing.
+
+### Features
+
+- **Variable Extraction** - Auto-detect {{variables}} in templates
+- **Validation** - Ensure all required variables are provided
+- **Personalization** - Dynamic content per recipient
+- **Sequences** - Multi-step email campaigns
+- **A/B Testing** - Test subject lines and content
+
+### Send Cold Email
+
+```typescript
+const result = await emailService.sendColdEmail({
+  template: 'cold-outreach-saas',
+  to: 'prospect@company.com',
+  from: 'founder@startup.com',
+  variables: {
+    firstName: 'John',
+    companyName: 'Acme Inc',
+    painPoint: 'manual data entry',
+    solution: 'automated workflows',
+    ctaUrl: 'https://startup.com/demo'
+  },
+  metadata: {
+    campaign: 'q1-2025',
+    segment: 'enterprise',
+    sequence: 'step-1'
+  }
+})
+```
+
+### Cold Email Templates
+
+Located in `src/cold-email.ts`:
+
+- `cold-outreach-saas` - SaaS product pitch
+- `cold-outreach-agency` - Agency services pitch
+- `follow-up-1` - First follow-up
+- `follow-up-2` - Second follow-up
+- `break-up` - Final follow-up
+
+## Delivery Tracking
+
+### Email Status
+
+```typescript
+interface EmailStatus {
+  id: string
+  providerId: string
+  status: 'queued' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed'
+  sentAt?: string
+  deliveredAt?: string
+  openedAt?: string
+  clickedAt?: string
+  bouncedAt?: string
+  error?: string
+}
+```
+
+### Webhook Handling
+
+Resend webhooks update email status:
+
+```typescript
+POST /webhooks/resend
+{
+  "type": "email.delivered",
+  "data": {
+    "email_id": "xxx",
+    "to": "user@example.com",
+    "delivered_at": "2025-01-01T00:00:00Z"
+  }
+}
+```
+
+Supported events:
+- `email.sent`
+- `email.delivered`
+- `email.opened`
+- `email.clicked`
+- `email.bounced`
+- `email.failed`
+
+## Database Logging
+
+All emails logged to database:
+
+```sql
+CREATE TABLE email_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  recipient TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  template TEXT,
+  provider TEXT NOT NULL,
+  provider_id TEXT,
+  status TEXT NOT NULL,
+  sent_at INTEGER,
+  delivered_at INTEGER,
+  opened_at INTEGER,
+  clicked_at INTEGER,
+  bounced_at INTEGER,
+  error TEXT,
+  metadata TEXT,
+  created_at INTEGER NOT NULL
+)
+```
+
+## Usage Examples
+
+### Send Raw Email
+
+```typescript
+await emailService.send({
+  to: 'user@example.com',
+  from: 'notifications@services.do',
+  subject: 'Hello!',
+  html: '<p>This is a test email</p>',
+  text: 'This is a test email'
+})
+```
+
+### Send Templated Email
+
+```typescript
+await emailService.sendTemplate({
+  template: 'welcome',
+  to: 'user@example.com',
+  data: {
+    name: 'John',
+    appName: 'Our App',
+    verificationUrl: 'https://app.com/verify?token=xxx'
+  }
+})
+```
+
+### Check Status
+
+```typescript
+const status = await emailService.getEmailStatus('email_xxx')
+
+console.log(status)
+// {
+//   id: 'email_xxx',
+//   status: 'delivered',
+//   sentAt: '2025-01-01T00:00:00Z',
+//   deliveredAt: '2025-01-01T00:00:05Z'
+// }
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Resend
+RESEND_API_KEY=re_xxx
+
+# WorkOS (optional)
+WORKOS_API_KEY=sk_live_xxx
+
+# AWS SES (optional)
+AWS_ACCESS_KEY_ID=xxx
+AWS_SECRET_ACCESS_KEY=xxx
+AWS_REGION=us-east-1
+
+# Defaults
+DEFAULT_FROM_EMAIL=noreply@services.do
+DEFAULT_FROM_NAME=Services.do
+```
+
+### Service Bindings
+
+```json
+{
+  "services": [
+    { "binding": "DB", "service": "db" }
+  ]
+}
+```
+
+## Testing
+
+```bash
+cd workers/email
+pnpm test
+```
+
+Test coverage: **75%+**
+
+## Related Documentation
+
+- [send-email.mdx](./send-email.mdx) - Send email function
+- [send-template.mdx](./send-template.mdx) - Template rendering
+- [cold-email.mdx](./cold-email.mdx) - Cold email system
+- [webhooks.mdx](./webhooks.mdx) - Webhook handling
+
+## See Also
+
+- **[workers/CLAUDE.md](../../workers/CLAUDE.md)** - Workers architecture
+- **[workers/db/](../db/)** - Database service

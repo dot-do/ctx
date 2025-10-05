@@ -1,0 +1,397 @@
+---
+$type: Example::Service
+$id: example/onet-naics-integration
+title: O*NET + NAICS Integration Example
+description: Complete taxonomy integration connecting Industry → Business → Services → Occupations → Tasks → AI Capability
+tags:
+  - onet
+  - naics
+  - gdpval
+  - taxonomy
+  - knowledge-graph
+metadata:
+  ns: example
+  visibility: public
+---
+
+# O*NET + NAICS Integration Example
+
+Demonstrates complete taxonomy integration:
+- **NAICS**: Classifies the BUSINESS (industry)
+- **O*NET**: Classifies the WORK (occupation/tasks)
+- **Schema.org**: Provides semantic vocabulary
+- **GDPval**: Measures AI capability
+- **EPCIS**: Tracks business events (5 W's + How)
+
+Creates a complete knowledge graph connecting:
+**Industry → Business → Services → Occupations → Tasks → AI Capability**
+
+## Example 1: AI Content Agency
+
+### NAICS Classification
+**541810 - Advertising Agencies**
+
+```typescript
+const contentAgency: Organization = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  '@id': 'https://content.agency',
+  name: 'AI Content Agency',
+  description: 'AI-powered content creation at software prices',
+  legalName: 'AI Content Agency Inc.',
+  foundingDate: '2024-01-01',
+
+  // NAICS Classification
+  naics: '541810', // Advertising Agencies
+  industryCategory: 'Advertising Agencies',
+  additionalType: 'ProfessionalService',
+}
+```
+
+### Employees with O*NET Occupations
+
+```typescript
+const alice: Person = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  '@id': 'alice',
+  name: 'Alice Johnson',
+  jobTitle: 'CEO & Founder',
+  worksFor: contentAgency,
+  hasOccupation: '11-1021.00', // General and Operations Managers
+  knowsAbout: ['Business strategy', 'Marketing', 'Content production', 'AI/ML'],
+  skills: ['Leadership', 'Strategic planning', 'Communication']
+}
+
+const contentBotAlpha: Person = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  '@id': 'contentbot-alpha',
+  name: 'ContentBot Alpha',
+  jobTitle: 'Senior AI Writer',
+  worksFor: contentAgency,
+  hasOccupation: '27-3042.00', // Technical Writers
+  knowsAbout: ['Technical writing', 'SEO', 'Content strategy', 'Research'],
+  skills: ['Writing', 'Editing', 'SEO optimization', 'Research']
+}
+```
+
+### Services Mapped to O*NET Tasks
+
+```typescript
+// Define specific O*NET tasks
+const blogWritingTask: ONETTask = {
+  id: 'task-001',
+  taskId: '27-3042.00-1',
+  description: 'Write original blog posts optimized for search engines and readability',
+  importance: 5, // Very important
+  frequency: 5, // Very frequent
+  isKnowledgeWork: true,
+  requiresJudgment: true,
+  requiresCreativity: true,
+  isRoutine: false,
+  gdpvalScore: 0.82, // High AI capability
+  aiSuitable: true
+}
+
+// SEO Blog Post Service
+const seoBlogPostService: ServiceThing = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  '@id': 'seo-blog-post',
+  name: 'SEO Blog Post',
+  description: 'Professional blog post optimized for search engines with guaranteed quality',
+  serviceType: 'Content Writing',
+  provider: contentAgency,
+
+  // O*NET mapping
+  occupation: '27-3042.00', // Technical Writers
+  tasks: [blogWritingTask],
+  requiresSkills: ['Writing', 'SEO', 'Research', 'Editing'],
+  gdpvalScore: 0.82,
+
+  // Pricing calculated based on occupation and task
+  offers: [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Offer',
+      name: 'Standard Blog Post',
+      price: 299, // Calculated using GDPval methodology
+      priceCurrency: 'USD',
+      availability: 'InStock',
+    }
+  ]
+}
+```
+
+## Example 2: AI Design Agency
+
+### NAICS Classification
+**541430 - Graphic Design Services**
+
+```typescript
+const designAgency: Organization = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  '@id': 'https://design.agency',
+  name: 'AI Design Agency',
+  description: 'AI-powered design services for modern brands',
+
+  naics: '541430', // Graphic Design Services
+  industryCategory: 'Graphic Design Services',
+}
+
+const designBotPro: Person = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  '@id': 'designbot-pro',
+  name: 'DesignBot Pro',
+  jobTitle: 'Senior AI Designer',
+  hasOccupation: '27-1024.00', // Graphic Designers
+  knowsAbout: ['Graphic design', 'Brand identity', 'Typography'],
+  skills: ['Design software', 'Creative direction', 'Brand strategy']
+}
+
+const logoTask: ONETTask = {
+  id: 'task-logo',
+  taskId: '27-1024.00-1',
+  description: 'Design brand logos and visual identity systems',
+  importance: 5,
+  frequency: 4,
+  gdpvalScore: 0.76,
+  aiSuitable: true
+}
+
+const logoDesignService: ServiceThing = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  '@id': 'logo-design',
+  name: 'Logo Design',
+  occupation: '27-1024.00', // Graphic Designers
+  tasks: [logoTask],
+  gdpvalScore: 0.76,
+  offers: [
+    {
+      '@type': 'Offer',
+      name: 'Logo Design Package',
+      price: 499,
+      priceCurrency: 'USD',
+    }
+  ]
+}
+```
+
+## Example 3: AI Software Agency
+
+### NAICS Classification
+**541511 - Custom Computer Programming Services**
+
+```typescript
+const softwareAgency: Organization = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  '@id': 'https://software.agency',
+  name: 'AI Software Agency',
+
+  naics: '541511', // Custom Computer Programming
+  industryCategory: 'Custom Computer Programming Services',
+}
+
+const codeBotElite: Person = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  '@id': 'codebot-elite',
+  name: 'CodeBot Elite',
+  jobTitle: 'Principal AI Engineer',
+  hasOccupation: '15-1252.00', // Software Developers
+  skills: ['TypeScript', 'React', 'Node.js', 'PostgreSQL', 'System architecture']
+}
+
+const apiDevTask: ONETTask = {
+  id: 'task-api',
+  taskId: '15-1252.00-1',
+  description: 'Design and implement RESTful APIs and backend services',
+  importance: 5,
+  frequency: 5,
+  gdpvalScore: 0.85,
+  aiSuitable: true
+}
+
+const apiDevelopmentService: ServiceThing = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  '@id': 'api-development',
+  name: 'API Development',
+  occupation: '15-1252.00', // Software Developers
+  tasks: [apiDevTask],
+  gdpvalScore: 0.85,
+  offers: [
+    {
+      '@type': 'Offer',
+      name: 'Custom API Development',
+      price: 2999,
+      priceCurrency: 'USD',
+    }
+  ]
+}
+```
+
+## Knowledge Graph
+
+The taxonomy connects:
+
+```
+Industry (NAICS)
+  ↓
+Business (Organization)
+  ↓
+Services (ServiceThing)
+  ↓
+Occupations (O*NET)
+  ↓
+Tasks (O*NET Tasks)
+  ↓
+AI Capability (GDPval Score)
+```
+
+### Complete Knowledge Graph Structure
+
+```typescript
+interface KnowledgeGraph {
+  industries: NAICSIndustry[]
+  businesses: Organization[]
+  services: ServiceThing[]
+  occupations: ONETOccupation[]
+  tasks: ONETTask[]
+  people: Person[]
+}
+
+const knowledgeGraph: KnowledgeGraph = {
+  industries: [
+    { code: '541810', title: 'Advertising Agencies', ... },
+    { code: '541430', title: 'Graphic Design Services', ... },
+    { code: '541511', title: 'Custom Computer Programming Services', ... }
+  ],
+
+  businesses: [contentAgency, designAgency, softwareAgency],
+
+  services: [seoBlogPostService, logoDesignService, apiDevelopmentService],
+
+  occupations: [
+    '27-3042.00', // Technical Writers
+    '27-1024.00', // Graphic Designers
+    '15-1252.00', // Software Developers
+  ],
+
+  tasks: [blogWritingTask, logoTask, apiDevTask],
+
+  people: [alice, contentBotAlpha, designBotPro, codeBotElite]
+}
+```
+
+## Queries and Analytics
+
+### Find all services AI can deliver profitably
+
+```typescript
+function findAIServices(graph: KnowledgeGraph): ServiceThing[] {
+  return graph.services.filter(service =>
+    service.gdpvalScore && service.gdpvalScore >= 0.80
+  )
+}
+```
+
+### Find services by industry
+
+```typescript
+function findServicesByIndustry(graph: KnowledgeGraph, naics: NAICSCode): ServiceThing[] {
+  const businesses = graph.businesses.filter(b => b.naics === naics)
+  return graph.services.filter(s =>
+    businesses.some(b => b['@id'] === (s.provider as Organization)?.['@id'])
+  )
+}
+```
+
+### Find services by occupation
+
+```typescript
+function findServicesByOccupation(graph: KnowledgeGraph, onet: ONETCode): ServiceThing[] {
+  return graph.services.filter(s => s.occupation === onet)
+}
+```
+
+### Calculate total market opportunity
+
+```typescript
+function calculateMarketOpportunity(graph: KnowledgeGraph) {
+  const aiServices = findAIServices(graph)
+
+  const avgScore = aiServices.reduce((sum, s) =>
+    sum + (s.gdpvalScore || 0), 0) / aiServices.length
+
+  const avgPrice = graph.services.reduce((sum, s) =>
+    sum + (s.offers?.[0]?.price || 0), 0) / graph.services.length
+
+  const estimatedRevenue = aiServices.length * avgPrice * 100 // 100 orders/month per service
+
+  return {
+    totalServices: graph.services.length,
+    aiSuitableServices: aiServices.length,
+    avgGDPvalScore: avgScore,
+    estimatedRevenue
+  }
+}
+```
+
+## Example Output
+
+```
+═══ ONET + NAICS Knowledge Graph ═══
+
+📊 Industries: 3
+  - 541810: Advertising Agencies
+  - 541430: Graphic Design Services
+  - 541511: Custom Computer Programming Services
+
+🏢 Businesses: 3
+  - AI Content Agency (NAICS: 541810)
+  - AI Design Agency (NAICS: 541430)
+  - AI Software Agency (NAICS: 541511)
+
+🎯 Services: 4
+  - SEO Blog Post (O*NET: 27-3042.00, Score: 0.82)
+  - Technical Documentation (O*NET: 27-3042.00, Score: 0.85)
+  - Logo Design (O*NET: 27-1024.00, Score: 0.76)
+  - API Development (O*NET: 15-1252.00, Score: 0.85)
+
+👥 People: 4
+  - Alice Johnson (CEO & Founder)
+  - ContentBot Alpha (Senior AI Writer)
+  - DesignBot Pro (Senior AI Designer)
+  - CodeBot Elite (Principal AI Engineer)
+
+📈 Market Opportunity:
+  Total Services: 4
+  AI-Suitable: 4
+  Avg GDPval Score: 0.82
+  Est. Monthly Revenue: $119,700
+
+✅ Complete taxonomy integration demonstrated!
+   NAICS → Business → Services → O*NET → Tasks → GDPval
+```
+
+## Benefits
+
+- **Standardized Classification** - Uses official government taxonomies (NAICS, O*NET)
+- **AI Capability Measurement** - GDPval scores indicate which tasks AI can perform well
+- **Semantic Interoperability** - Schema.org types enable knowledge graph integration
+- **Market Discovery** - Systematically explore entire service opportunity space
+- **Pricing Methodology** - Calculate pricing based on occupation, task complexity, and AI capability
+- **Knowledge Graph Ready** - All relationships explicitly modeled for graph databases
+
+## See Also
+
+- [Semantic Content Agency](./Semantic_Content_Agency.mdx) - Semantic English API
+- [Content Agency Example](./Content_Agency.mdx) - Complete business implementation
+- [Massive Generation Example](./Massive_Generation.mdx) - Automated service discovery
+- [Services-as-Software Types](/types/Services-as-Software.mdx) - Complete type definitions

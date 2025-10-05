@@ -1,0 +1,725 @@
+---
+$type: Type::Schema
+$id: type/business-as-code
+title: Business-as-Code Type System
+description: OKR-centric business modeling with RL ground truth
+category: Business Types
+version: 1.0.0
+
+# Core type definitions in concise YAML schema format
+types:
+  Objective:
+    id: string
+    level: enum[holding, company, department, team, ic]
+    owner: string
+    objective: string
+    keyResults: KeyResult[]
+    timeframe:
+      start: Date
+      end: Date
+      quarter: enum[Q1, Q2, Q3, Q4]
+      year: number
+    parent: string?
+    children: string[]?
+    status: enum[draft, active, at-risk, completed, failed, cancelled]
+    progress: number
+    rewardSignals: RewardSignal[]
+    evaluation: EvaluationFramework
+    learningLoop: LearningLoop
+    assignedAgents: string[]
+    operations: string[]
+    metrics: string[]
+    initiatives: string[]?
+    metadata:
+      ns: objective
+      visibility: enum[public, private, unlisted]
+
+  KeyResult:
+    id: string
+    result: string
+    metric: string
+    baseline: number
+    target: number
+    current: number
+    unit: string
+    progress: number
+    automated: boolean
+    dataSource:
+      type: enum[api, database, analytics, manual]
+      endpoint: string?
+      query: string?
+      updateFrequency: enum[realtime, hourly, daily, weekly]?
+    status: enum[on-track, at-risk, off-track, completed]
+    rewardFunction:
+      type: enum[linear, exponential, step, custom]
+      formula: string?
+      weight: number
+    history:
+      - timestamp: Date
+        value: number
+        delta: number
+        reward: number
+
+  RewardSignal:
+    id: string
+    timestamp: Date
+    source: enum[kr-update, kr-completion, milestone, okr-completion, okr-exceeded]
+    objective: string
+    keyResult: string?
+    strength: number
+    delta:
+      metric: string
+      previous: number
+      current: number
+      target: number
+      percentComplete: number
+    economicValue: number?
+    agents: string[]
+    feedback: string
+    improvements: string[]?
+
+  EvaluationFramework:
+    basis: okr-achievement
+    groundTruth: enum[business-kpis, real-world-outcomes]
+    metrics:
+      - keyResult: string
+        weight: number
+        threshold: number
+    rewardFunction:
+      type: enum[weighted-sum, multiplicative, custom]
+      formula: string?
+      normalization: enum[none, z-score, min-max]?
+    frequency: enum[realtime, daily, weekly, monthly, quarterly]
+    thresholds:
+      excellent: number
+      good: number
+      acceptable: number
+      poor: number
+    benchmark:
+      type: enum[historical, peer, target]
+      baseline: number
+
+  LearningLoop:
+    id: string
+    trigger: enum[kr-update, okr-review, milestone, periodic]
+    frequency: enum[realtime, hourly, daily, weekly]
+    feedback: RewardSignal[]
+    insights:
+      - timestamp: Date
+        observation: string
+        hypothesis: string
+        experiment: string?
+    improvements:
+      - timestamp: Date
+        change: string
+        impact: number
+        status: enum[proposed, testing, deployed, validated]
+    experiments:
+      - id: string
+        hypothesis: string
+        variants: string[]
+        metrics: string[]
+        status: enum[running, completed]
+        winner: string?
+    learningRate: number
+    exploration: number
+
+  Company:
+    id: string
+    name: string
+    legalName: string?
+    type: enum[holding, operating, subsidiary, division]
+    parent: string?
+    subsidiaries: string[]?
+    mission: string?
+    vision: string?
+    values: string[]?
+    industry: string
+    vertical: string?
+    objectives: Objective[]
+    currentPeriod:
+      quarter: enum[Q1, Q2, Q3, Q4]
+      year: number
+      startDate: Date
+      endDate: Date
+    okrHistory:
+      - period: string
+        objectives: Objective[]
+        avgCompletion: number
+        totalReward: number
+    roles: Role[]
+    operations: Operation[]
+    offerings: Offering[]
+    metrics: Metric[]
+    resources: Resource[]
+    governance: Governance
+    metadata:
+      ns: company
+      visibility: enum[public, private, unlisted]
+      created: Date
+      updated: Date
+    tags: string[]
+
+  Role:
+    id: string
+    title: string
+    onetCode: string?
+    onetTitle: string?
+    reportsTo: string?
+    directReports: string[]?
+    responsibilities: string[]
+    objectives: string[]
+    keyResults: string[]
+    performanceEvaluation:
+      basis: okr-achievement
+      objectives: string[]
+      targetCompletion: number
+    ksa:
+      knowledge: string[]
+      skills: string[]
+      abilities: string[]
+    assignedTo: enum[human, agent, hybrid]
+    agent: string?
+    person: string?
+    workload:
+      hoursPerWeek: number
+      ftePortion: number
+    compensation:
+      type: enum[salary, hourly, contract, equity, hybrid]
+      amount: number?
+      currency: string?
+      equity: number?
+    metadata:
+      ns: role
+      visibility: enum[public, private, unlisted]
+
+  Operation:
+    id: string
+    name: string
+    description: string
+    category: enum[sales, marketing, operations, finance, hr, product, engineering, support, other]
+    objectives: string[]
+    keyResults: string[]
+    successMetrics:
+      - keyResult: string
+        contribution: number
+    workflow: string?
+    triggers:
+      - type: enum[event, schedule, manual]
+        condition: string
+    steps: ProcessStep[]?
+    roles: string[]
+    resources: string[]?
+    automation:
+      level: number
+      potential: number
+    metadata:
+      ns: operation
+      visibility: enum[public, private, unlisted]
+
+  ProcessStep:
+    id: string
+    name: string
+    type: enum[automated, manual, decision, approval]
+    assignee: string
+    function: string?
+    duration:
+      min: number
+      max: number
+      unit: enum[seconds, minutes, hours, days]
+    dependencies: string[]?
+    condition: string?
+
+  Offering:
+    id: string
+    name: string
+    description: string
+    type: enum[product, service, hybrid, platform]
+    category: string
+    gdpvalTasks: string[]?
+    objectives: string[]
+    keyResults: string[]
+    targets:
+      - keyResult: string
+        target: number
+        current: number
+    segments: string[]
+    valueProposition: string
+    pricing: PricingModel
+    delivery: DeliveryMechanism[]
+    sla: ServiceLevel?
+    related: string[]?
+    revenue:
+      arr: number?
+      mrr: number?
+      ltv: number?
+      cac: number?
+    metadata:
+      ns: offering
+      visibility: enum[public, private, unlisted]
+
+  PricingModel:
+    type: enum[fixed, subscription, usage, tiered, freemium, value-based, dynamic]
+    basePrice: number?
+    currency: string
+    billingCycle: enum[one-time, monthly, quarterly, annually]?
+    tiers:
+      - name: string
+        price: number
+        features: string[]
+        limits: object?
+    usage:
+      metric: string
+      pricePerUnit: number
+      includedUnits: number?
+    volumeDiscounts:
+      - minQuantity: number
+        discountPercent: number
+
+  DeliveryMechanism:
+    type: enum[digital, physical, hybrid, managed-service]
+    execution: enum[automated, manual, hybrid, on-demand]
+    technology:
+      platform: string?
+      apis: string[]?
+      integrations: string[]?
+    fulfillment:
+      typical: string
+      guaranteed: string?
+    capacity:
+      concurrent: number?
+      daily: number?
+      monthly: number?
+
+  ServiceLevel:
+    uptime: number?
+    responseTime:
+      p50: number?
+      p95: number?
+      p99: number?
+    support:
+      critical: string?
+      high: string?
+      normal: string?
+      low: string?
+    quality:
+      accuracy: number?
+      completeness: number?
+      customSatisfaction: number?
+    penalties:
+      - violation: string
+        remedy: string
+
+  Metric:
+    id: string
+    name: string
+    description: string
+    category: enum[financial, operational, customer, employee, product, growth]
+    type: enum[counter, gauge, ratio, percentage, currency, duration]
+    unit: string
+    current: number
+    target: number?
+    keyResults: string[]
+    mapping:
+      - keyResult: string
+        contribution: enum[primary, secondary, supporting]
+        formula: string?
+    source:
+      type: enum[api, database, analytics, manual, calculated]
+      endpoint: string?
+      query: string?
+      calculation: string?
+    updateFrequency: enum[realtime, hourly, daily, weekly, monthly]
+    thresholds:
+      critical: number?
+      warning: number?
+      good: number?
+    history:
+      - timestamp: Date
+        value: number
+    metadata:
+      ns: metric
+      visibility: enum[public, private, unlisted]
+
+  Resource:
+    id: string
+    type: enum[budget, headcount, infrastructure, capital]
+    objectives: string[]
+    allocation:
+      - objective: string
+        amount: number
+        percentage: number
+    budget:
+      total: number
+      allocated: number
+      spent: number
+      currency: string
+      period: enum[monthly, quarterly, annually]
+      breakdown:
+        - category: string
+          amount: number
+          percentage: number
+    headcount:
+      total: number
+      filled: number
+      open: number
+      pipeline: number
+      byDepartment: object?
+      byRole: object?
+    infrastructure:
+      compute:
+        type: string
+        quantity: number
+        cost: number
+      storage:
+        type: string
+        quantity: number
+        cost: number
+      network:
+        type: string
+        quantity: number
+        cost: number
+      other:
+        - type: string
+          quantity: number
+          cost: number
+    capital:
+      equity: number
+      debt: number
+      retained: number
+      reserves: number
+    metadata:
+      ns: resource
+      visibility: enum[public, private, unlisted]
+
+  Governance:
+    authority:
+      - role: string
+        scope: string
+        limits: string[]?
+    approvals:
+      - type: string
+        threshold: number?
+        approvers: string[]
+        escalation: string?
+    policies:
+      - id: string
+        name: string
+        description: string
+        category: string
+        enforced: boolean
+        automated: boolean
+    risk:
+      assessment: string[]
+      mitigation: string[]
+      tolerance: enum[low, medium, high]
+    compliance:
+      - framework: string
+        status: enum[compliant, in-progress, non-compliant]
+        audits:
+          - date: Date
+            result: string
+
+  KSA:
+    knowledge:
+      - code: string
+        name: string
+        level: number?
+    skills:
+      - code: string
+        name: string
+        level: number?
+    abilities:
+      - code: string
+        name: string
+        level: number?
+
+  GDPvalTask:
+    id: string
+    occupation: string
+    industry: string
+    description: string
+    economicValue: number?
+    complexity: enum[low, medium, high]
+    automationPotential: number
+
+metadata:
+  ns: type
+  visibility: public
+  created: 2025-10-05
+  updated: 2025-10-05
+
+tags:
+  - business-as-code
+  - okr
+  - reinforcement-learning
+  - type-system
+---
+
+# Business-as-Code Type System
+
+Express entire businesses as executable specifications that AI agents can autonomously imagine, build, launch, grow, scale, manage, and operate.
+
+## Overview
+
+**Business-as-Code** enables programmatic definition and management of businesses - from holding companies to individual contributors. Using structured MDX files with type-safe schemas, businesses become composable, measurable, and automatable.
+
+## Core Philosophy: OKRs as Ground Truth for Reinforcement Learning
+
+Unlike contrived evals, business KPIs and OKRs represent the **ultimate ground truth** for AI agent performance. This framework positions OKRs as the central organizing principle, with all operations, roles, and metrics linked to objectives.
+
+**Key Insight:** Real-world business outcomes provide natural reward signals for RL, eliminating the need for synthetic evaluation tasks. Agents optimize for actual business success, not test scores.
+
+## Integration Points
+
+### ONET Taxonomy
+- Map roles to 1,016 occupations
+- Structured knowledge, skills, abilities (KSA)
+- 19,000+ task definitions
+- Evidence-based job requirements
+
+### GDPval Framework
+- Measure economic value delivered
+- 1,320 real-world tasks across 44 occupations
+- Link offerings to GDP contribution
+- Track AI automation readiness
+
+### .do Platform
+- Functions for business logic
+- Workflows for process orchestration
+- Agents for autonomous execution
+- Metrics for performance tracking
+
+## Type Hierarchy
+
+```
+Company (root)
+├── Objectives (OKRs) ← CENTRAL ORGANIZING PRINCIPLE
+│   ├── Key Results
+│   ├── Reward Signals
+│   ├── Evaluation Framework
+│   └── Learning Loop
+├── Roles (assigned to OKRs)
+│   ├── Human assignments
+│   ├── AI agent assignments
+│   └── Hybrid teams
+├── Operations (driven by OKRs)
+│   ├── Workflows
+│   ├── Process Steps
+│   └── Automation level
+├── Offerings (contribute to OKRs)
+│   ├── Products
+│   ├── Services
+│   └── Pricing models
+├── Metrics (measure OKRs)
+│   ├── KPIs
+│   ├── Data sources
+│   └── Thresholds
+├── Resources (allocated to OKRs)
+│   ├── Budget
+│   ├── Headcount
+│   ├── Infrastructure
+│   └── Capital
+└── Governance
+    ├── Authority
+    ├── Approvals
+    ├── Policies
+    └── Compliance
+```
+
+## Why OKRs > Contrived Evals
+
+**Traditional AI Evaluation:**
+- ❌ Synthetic benchmarks
+- ❌ Contrived test scenarios
+- ❌ Disconnected from real value
+- ❌ Gaming metrics
+
+**Business-as-Code Evaluation:**
+- ✅ Real business outcomes (revenue, users, quality)
+- ✅ Natural reward signals from actual value creation
+- ✅ Aligned with human stakeholders' goals
+- ✅ Measurable economic impact via GDPval
+- ✅ Continuous learning from operational feedback
+
+## Reward Signals for Reinforcement Learning
+
+Every OKR update generates **reward signals** for AI agents:
+
+1. **Key Result Updates** - Progress toward measurable goals
+2. **Milestone Achievements** - Completing significant markers
+3. **Objective Completion** - Achieving strategic goals
+4. **Objective Exceeded** - Surpassing expectations
+
+**Reward Calculation:**
+```yaml
+rewardFunction:
+  type: linear | exponential | step | custom
+  formula: "(current - baseline) / (target - baseline)"
+  weight: 0.0 - 1.0  # Importance weight
+```
+
+## Learning Loop
+
+Agents continuously improve through OKR feedback:
+
+```yaml
+learningLoop:
+  trigger: kr-update | okr-review | milestone | periodic
+  frequency: realtime | hourly | daily | weekly
+  feedback: [reward signals from business outcomes]
+  insights: [observations → hypotheses → experiments]
+  improvements: [proposed → testing → deployed → validated]
+  learningRate: 0.0 - 1.0
+  exploration: 0.0 - 1.0  # Try new approaches
+```
+
+## Economic Value Tracking
+
+Link business outcomes to real economic value:
+
+**GDPval Integration:**
+- Map offerings to 1,320 real-world tasks
+- Measure automation impact on GDP
+- Track economic value per agent
+- Calculate return on AI investment
+
+**Example:**
+```yaml
+offering:
+  name: "Tax Return Preparation Service"
+  gdpvalTasks: ["tax-preparation", "financial-consulting"]
+  economicValue: $150  # Per task completed
+  automationPotential: 0.85  # 85% automatable
+```
+
+## Usage Examples
+
+### Define a Company
+
+```yaml
+---
+$type: Company
+$id: company/acme-corp
+name: Acme Corp
+type: operating
+industry: SaaS
+
+objectives:
+  - id: q4-2025-revenue
+    objective: "Achieve $1M ARR by Q4 2025"
+    keyResults:
+      - result: "Acquire 100 new customers"
+        metric: "customers"
+        baseline: 20
+        target: 120
+        current: 45
+        unit: "customers"
+      - result: "Increase MRR to $85K"
+        metric: "mrr"
+        baseline: $15000
+        target: $85000
+        current: $35000
+        unit: "USD"
+---
+
+# Acme Corp
+
+SaaS company focused on AI-powered business automation.
+```
+
+### Define a Role
+
+```yaml
+---
+$type: Role
+$id: role/head-of-sales
+title: "Head of Sales"
+onetCode: "11-2022.00"
+onetTitle: "Sales Managers"
+
+objectives: ["q4-2025-revenue"]
+keyResults: ["acquire-100-customers"]
+
+performanceEvaluation:
+  basis: okr-achievement
+  objectives: ["q4-2025-revenue"]
+  targetCompletion: 0.70  # 70% of OKR
+
+assignedTo: hybrid
+agent: "agent/sales-ai"
+person: "person/john-doe"
+---
+
+# Head of Sales
+
+Responsible for achieving revenue growth objectives through customer acquisition.
+```
+
+### Define an Operation
+
+```yaml
+---
+$type: Operation
+$id: operation/lead-qualification
+name: "Lead Qualification Process"
+category: sales
+
+objectives: ["q4-2025-revenue"]
+keyResults: ["acquire-100-customers"]
+
+successMetrics:
+  - keyResult: "acquire-100-customers"
+    contribution: 0.25  # 25% of customer acquisition
+
+automation:
+  level: 0.80  # 80% automated
+  potential: 0.95  # 95% automation potential
+
+workflow: "workflow/qualify-lead"
+---
+
+# Lead Qualification Process
+
+Automated BANT qualification with AI agent review.
+```
+
+## Best Practices
+
+### 1. OKR-First Design
+- Start with objectives, not features
+- All entities should link back to OKRs
+- Measure everything that matters
+
+### 2. Ground Truth Rewards
+- Use real business outcomes, not synthetic tests
+- Calculate rewards from actual value creation
+- Weight rewards by business impact
+
+### 3. Continuous Learning
+- Implement tight feedback loops
+- Run experiments systematically
+- Track and validate improvements
+
+### 4. Economic Value Tracking
+- Map all offerings to GDPval tasks
+- Measure automation ROI
+- Track economic impact per agent
+
+### 5. Human-AI Collaboration
+- Assign roles appropriately (human/agent/hybrid)
+- Leverage human judgment for complex decisions
+- Automate repetitive, high-volume tasks
+
+## See Also
+
+- **[examples/](../examples/)** - Business-as-Code examples
+- **[business/](../business/)** - Company definitions
+- **[ONET](https://www.onetcenter.org/)** - Occupational taxonomy
+- **[GDPval Research](../research/gdpval/)** - Economic value measurement
+
+---
+
+**Last Updated:** 2025-10-05
+**Status:** Production
+**Maintained By:** Claude Code
