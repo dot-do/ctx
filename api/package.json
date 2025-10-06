@@ -1,0 +1,34 @@
+{
+  "name": "api.do",
+  "version": "0.1.0",
+  "description": "API integration implementations (Amazon SES, Apollo.io, Mailgun, SendGrid)",
+  "type": "module",
+  "scripts": {
+    "build": "velite",
+    "dev": "velite --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "keywords": [
+    "mdx",
+    "api",
+    "integrations",
+    "amazon-ses",
+    "apollo-io",
+    "mailgun",
+    "sendgrid"
+  ],
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "velite": "^0.1.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dot-do/ctx.git",
+    "directory": "api"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,81 @@
+---
+title: APIs.dev
+$type: API
+category: API-Platform
+name: APIs.dev
+description: Developer-first API marketplace - REST, GraphQL, gRPC, WebSocket with code generation and interactive playground
+domain: apis.dev
+baseUrl: https://apis.dev
+protocol: REST
+authentication: [API Key, OAuth 2.0]
+pricing: freemium
+
+payload:
+  collections:
+    apis:
+      slug: apis
+      fields:
+        - name: name
+          type: text
+          required: true
+        - name: protocol
+          type: select
+          options: [REST, GraphQL, gRPC, WebSocket]
+        - name: category
+          type: select
+          options: [payment, communication, ai-ml, data, infrastructure]
+
+features:
+  multiProtocol:
+    enabled: true
+    protocols: [REST, GraphQL, gRPC, WebSocket]
+
+  codeGeneration:
+    enabled: true
+    languages: [JavaScript, TypeScript, Python, Go, Ruby, PHP, Java, C#, Rust, Swift]
+
+  playground:
+    enabled: true
+    interactive: true
+    saveRequests: true
+
+pricing:
+  free:
+    apis: unlimited
+    calls: 1000/month
+    playground: true
+    codeGen: true
+
+  pro:
+    price: 29
+    period: /month
+    calls: 100000/month
+    analytics: true
+    support: email
+
+seo:
+  title: APIs.dev - Developer-First API Marketplace
+  description: 10,000+ APIs. REST, GraphQL, gRPC, WebSocket. Code generation in 10+ languages. Interactive playground.
+  keywords:
+    - api marketplace
+    - rest api
+    - graphql api
+    - code generation
+---
+
+# APIs.dev
+
+**10,000+ APIs. One developer experience.**
+
+REST, GraphQL, gRPC, WebSocket support with code generation in 10+ languages and interactive playground.
+
+## Features
+
+- **Multi-Protocol** - REST, GraphQL, gRPC, WebSocket
+- **Code Generation** - 10+ languages
+- **Interactive Playground** - Test before integrating
+- **10,000+ APIs** - All major providers
+
+---
+
+**APIs.dev** - APIs made easy.

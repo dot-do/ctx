@@ -1,0 +1,733 @@
+---
+title: DB4.AI
+$type: API
+category: AI-Database
+name: DB4.AI
+description: The first database built FOR AI - Vector embeddings, semantic search, RAG, and MCP server out of the box
+domain: db4.ai
+baseUrl: https://db4.ai
+protocol: REST
+authentication: [API Key, OAuth 2.0]
+pricing: freemium
+
+payload:
+  collections:
+    databases:
+      slug: databases
+      fields:
+        - name: name
+          type: text
+          required: true
+          unique: true
+        - name: owner
+          type: relationship
+          relationTo: users
+        - name: embeddingModel
+          type: select
+          options: [openai-ada-002, openai-text-3-small, openai-text-3-large, cohere-embed-v3, vertex-gecko, custom]
+          defaultValue: openai-text-3-small
+        - name: vectorDimensions
+          type: number
+          defaultValue: 1536
+        - name: autoEmbed
+          type: checkbox
+          defaultValue: true
+          description: Automatically generate embeddings on insert/update
+        - name: ragConfig
+          type: group
+          fields:
+            - name: enabled
+              type: checkbox
+              defaultValue: true
+            - name: contextWindow
+              type: number
+              defaultValue: 5
+            - name: similarityThreshold
+              type: number
+              min: 0
+              max: 1
+              defaultValue: 0.7
+        - name: mcpEnabled
+          type: checkbox
+          defaultValue: true
+        - name: schema
+          type: json
+
+    collections:
+      slug: collections
+      fields:
+        - name: database
+          type: relationship
+          relationTo: databases
+          required: true
+        - name: name
+          type: text
+          required: true
+        - name: schema
+          type: json
+        - name: embeddingField
+          type: text
+          description: Field to generate embeddings from
+        - name: metadataFields
+          type: array
+          fields:
+            - name: field
+              type: text
+        - name: indexType
+          type: select
+          options: [hnsw, ivfflat, flat]
+          defaultValue: hnsw
+      hooks:
+        - event: afterCreate
+          handler: createVectorIndex
+        - event: beforeChange
+          handler: validateEmbeddingField
+
+    queries:
+      slug: queries
+      fields:
+        - name: database
+          type: relationship
+          relationTo: databases
+        - name: type
+          type: select
+          options: [semantic, hybrid, structured, rag]
+          required: true
+        - name: query
+          type: textarea
+        - name: filters
+          type: json
+        - name: limit
+          type: number
+          defaultValue: 10
+        - name: similarityThreshold
+          type: number
+        - name: results
+          type: json
+        - name: executionTime
+          type: number
+        - name: embeddingsUsed
+          type: number
+      hooks:
+        - event: beforeCreate
+          handler: generateQueryEmbedding
+
+    ragPipelines:
+      slug: rag-pipelines
+      fields:
+        - name: name
+          type: text
+          required: true
+        - name: database
+          type: relationship
+          relationTo: databases
+        - name: collections
+          type: array
+          fields:
+            - name: collection
+              type: relationship
+              relationTo: collections
+        - name: retrievalStrategy
+          type: select
+          options: [similarity, mmr, rerank]
+          defaultValue: similarity
+        - name: contextWindow
+          type: number
+          defaultValue: 5
+        - name: promptTemplate
+          type: textarea
+
+routes:
+  - pattern: /
+    page: home
+    template: ai-database-landing
+    components:
+      - <AI><Hero context="DB4.AI - Database built for AI" /></AI>
+      - <EmbeddingsDemo />
+      - <SemanticSearchDemo />
+      - <RAGPipelineDemo />
+
+  - pattern: /databases/[slug]
+    collection: databases
+    page: database-detail
+    components:
+      - <AI><DatabaseHeader database={database} /></AI>
+      - <EmbeddingStats />
+      - <SemanticSearchInterface />
+      - <MCPServerConfig />
+
+  - pattern: /databases/[slug]/semantic-search
+    page: semantic-search
+    components:
+      - <SemanticSearchInterface />
+      - <ResultsWithSimilarity />
+      - <EmbeddingVisualization />
+
+  - pattern: /databases/[slug]/rag
+    page: rag-pipeline
+    components:
+      - <RAGPipelineBuilder />
+      - <ContextRetrieval />
+      - <PromptTesting />
+
+integrations:
+  embeddingProviders:
+    - name: OpenAI
+      models: [ada-002, text-3-small, text-3-large]
+    - name: Cohere
+      models: [embed-v3, embed-multilingual-v3]
+    - name: Google
+      models: [gecko, gecko-multilingual]
+    - name: Custom
+      description: Bring your own embedding API
+
+  llmProviders:
+    - OpenAI (GPT-4, GPT-3.5)
+    - Anthropic (Claude 3.5, Claude 3)
+    - Google (Gemini Pro, Gemini Ultra)
+    - Custom (via API)
+
+  mcp:
+    enabled: true
+    protocol: JSON-RPC 2.0
+    tools:
+      - semantic_search
+      - rag_query
+      - insert_with_embedding
+      - hybrid_search
+
+features:
+  autoEmbeddings:
+    enabled: true
+    description: Automatic embedding generation on insert/update
+    models: [OpenAI, Cohere, Vertex, Custom]
+
+  semanticSearch:
+    enabled: true
+    description: Natural language queries with vector similarity
+    threshold: configurable
+    reranking: optional
+
+  ragPipelines:
+    enabled: true
+    description: Pre-configured RAG with context retrieval
+    strategies: [similarity, MMR, rerank]
+    promptTemplates: customizable
+
+  mcpServer:
+    enabled: true
+    description: Model Context Protocol for Claude/LLMs
+    tools: [search, query, insert, rag]
+
+  hybridSearch:
+    enabled: true
+    description: Combine semantic and keyword search
+    ranking: BM25 + vector similarity
+
+  aiQueryOptimization:
+    enabled: true
+    description: ML-powered query planning
+    learns: from query patterns
+
+pricing:
+  free:
+    storage: 1GB
+    embeddings: 10000/month
+    queries: 1000/month
+    models: [OpenAI text-3-small]
+    mcp: true
+    rag: true
+    support: community
+
+  pro:
+    price: 99
+    period: /month
+    storage: 100GB
+    embeddings: 1000000/month
+    queries: 100000/month
+    models: [All providers]
+    mcp: true
+    rag: true
+    customModels: true
+    support: email
+    analytics: true
+
+  business:
+    price: 499
+    period: /month
+    storage: 1TB
+    embeddings: unlimited
+    queries: unlimited
+    models: [All providers]
+    mcp: true
+    rag: true
+    customModels: true
+    support: priority
+    analytics: advanced
+    sso: true
+    sla: 99.9%
+
+seo:
+  title: DB4.AI - Database Built FOR AI, Not Retrofitted
+  description: Vector embeddings, semantic search, and RAG out of the box. MCP server for Claude. The first database designed for AI from day one.
+  keywords:
+    - ai database
+    - vector database
+    - semantic search
+    - rag database
+    - mcp server
+    - embeddings database
+
+analytics:
+  events:
+    - embedding_generated
+    - semantic_search
+    - rag_query
+    - mcp_call
+    - hybrid_search
+---
+
+# DB4.AI
+
+**The first database built FOR AI, not adapted for it.** Vector embeddings, semantic search, RAG pipelines, and MCP server - all out of the box.
+
+## The AI Database Problem
+
+### Retrofitted Solutions
+Traditional databases with AI bolted on:
+
+```typescript
+// Traditional approach (painful)
+const data = await db.query("SELECT * FROM docs")
+const embeddings = await Promise.all(
+  data.map(doc => openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: doc.content
+  }))
+)
+await vectorDb.insert(embeddings)
+// Now maintain TWO databases! 😭
+```
+
+### AI-Native Solution
+DB4.AI with AI built-in:
+
+```typescript
+// DB4.AI approach (elegant)
+await db.insert({
+  content: "Your document",
+  // Embedding automatically generated!
+})
+
+const results = await db.search("similar documents")
+// Semantic search just works! ✨
+```
+
+## Core Concept: AI-First Architecture
+
+Every operation is AI-aware:
+
+### 1. Automatic Embeddings
+
+```typescript
+// Insert data - embeddings generated automatically
+await db.collection('documents').insert({
+  title: "AI Database Guide",
+  content: "DB4.AI is the first database built specifically for AI applications...",
+  metadata: { category: "technical", author: "Sarah" }
+})
+
+// Behind the scenes:
+// 1. Extract text from configured fields
+// 2. Generate embeddings (OpenAI/Cohere/Vertex)
+// 3. Store both data + embeddings
+// 4. Index for fast similarity search
+```
+
+### 2. Semantic Search
+
+```typescript
+// Natural language queries
+const results = await db.search("databases designed for AI")
+
+// Returns ranked by semantic similarity:
+[
+  {
+    title: "AI Database Guide",
+    similarity: 0.94,
+    content: "DB4.AI is the first...",
+    _embedding: [0.023, -0.041, ...], // 1536 dimensions
+  },
+  {
+    title: "Vector Databases Explained",
+    similarity: 0.89,
+    content: "Vector databases store...",
+  }
+]
+```
+
+### 3. RAG Pipelines
+
+```typescript
+// Retrieval-Augmented Generation
+const pipeline = db.rag({
+  collections: ['docs', 'faqs', 'tutorials'],
+  strategy: 'mmr', // Maximal Marginal Relevance
+  contextWindow: 5,
+})
+
+const context = await pipeline.retrieve("How do I query DB4.AI?")
+
+const response = await openai.chat.completions.create({
+  model: "gpt-4",
+  messages: [
+    { role: "system", content: `Answer using this context: ${context}` },
+    { role: "user", content: "How do I query DB4.AI?" }
+  ]
+})
+```
+
+### 4. MCP Server
+
+```typescript
+// Model Context Protocol for Claude
+const mcp = db.mcp()
+
+// Claude can now use these tools:
+const tools = [
+  {
+    name: "semantic_search",
+    description: "Search database semantically",
+    input_schema: {
+      query: "string",
+      limit: "number",
+      threshold: "number"
+    }
+  },
+  {
+    name: "rag_query",
+    description: "Retrieve context for question",
+    input_schema: {
+      question: "string",
+      collections: "array"
+    }
+  }
+]
+
+// Use with Claude:
+const result = await claude.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  tools: tools,
+  messages: [{ role: "user", content: "Find documents about AI databases" }]
+})
+```
+
+## Features
+
+### Automatic Embeddings
+
+Configure once, embeddings generated forever:
+
+```typescript
+await db.createCollection({
+  name: 'articles',
+  schema: {
+    title: 'string',
+    content: 'text', // Marked for embedding
+    author: 'string',
+    tags: 'array'
+  },
+  embeddingConfig: {
+    model: 'openai-text-3-small',
+    fields: ['title', 'content'], // Combine these
+    dimensions: 1536
+  }
+})
+
+// Now every insert auto-generates embeddings
+await db.articles.insert({
+  title: "Vector Databases",
+  content: "A comprehensive guide...",
+  author: "Sarah Chen"
+  // Embedding generated automatically!
+})
+```
+
+### Semantic Search
+
+Natural language queries with similarity scores:
+
+```typescript
+// Semantic search
+const results = await db.articles.search("AI database tutorials", {
+  limit: 10,
+  threshold: 0.7, // Min similarity
+  includeScore: true
+})
+
+// Hybrid search (semantic + keyword)
+const hybrid = await db.articles.hybridSearch("vector database", {
+  semantic: {
+    weight: 0.7,
+    model: "openai-text-3-small"
+  },
+  keyword: {
+    weight: 0.3,
+    fields: ['title', 'content']
+  }
+})
+```
+
+### RAG Pipelines
+
+Pre-configured retrieval for LLMs:
+
+```typescript
+// Create RAG pipeline
+const rag = db.createRAG({
+  name: 'support-bot',
+  collections: ['docs', 'faqs', 'tutorials'],
+  retrieval: {
+    strategy: 'mmr', // Diverse results
+    contextWindow: 5,
+    threshold: 0.75
+  },
+  promptTemplate: `
+    Answer the question using this context:
+
+    Context: {{context}}
+
+    Question: {{question}}
+
+    Answer:
+  `
+})
+
+// Use in your app
+const answer = await rag.query("How do I migrate my data?")
+
+// Or get just the context
+const context = await rag.retrieve("How do I migrate my data?")
+```
+
+### MCP Server
+
+Direct integration with Claude and other LLMs:
+
+```typescript
+// Initialize MCP server
+const mcp = db.mcp({
+  tools: ['search', 'rag', 'insert', 'update'],
+  permissions: {
+    read: true,
+    write: true
+  }
+})
+
+// Use with Claude
+import Anthropic from "@anthropic-ai/sdk"
+
+const anthropic = new Anthropic()
+const response = await anthropic.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  max_tokens: 1024,
+  tools: mcp.tools,
+  messages: [{
+    role: "user",
+    content: "Search our knowledge base for information about RAG"
+  }]
+})
+
+// Claude automatically calls your DB4.AI MCP tools!
+```
+
+### Hybrid Search
+
+Best of both worlds:
+
+```typescript
+// Combine semantic similarity + keyword relevance
+const results = await db.hybridSearch("machine learning databases", {
+  semantic: {
+    weight: 0.7,
+    threshold: 0.75,
+    model: "openai-text-3-small"
+  },
+  keyword: {
+    weight: 0.3,
+    fields: ['title', 'tags'],
+    boost: { title: 2.0 }
+  },
+  rerank: true // Final reranking with cross-encoder
+})
+```
+
+## Supported Embedding Models
+
+### OpenAI
+- **text-embedding-3-small** (1536d, $0.02/1M tokens)
+- **text-embedding-3-large** (3072d, $0.13/1M tokens)
+- **text-embedding-ada-002** (1536d, $0.10/1M tokens)
+
+### Cohere
+- **embed-v3** (1024d, multilingual)
+- **embed-multilingual-v3** (1024d, 100+ languages)
+
+### Google Vertex AI
+- **textembedding-gecko** (768d)
+- **textembedding-gecko-multilingual** (768d)
+
+### Custom
+- Bring your own embedding API
+- Custom dimensions
+- Batch processing
+
+## Use Cases
+
+### 1. Semantic Search Application
+
+```typescript
+// E-commerce product search
+const products = await db.products.search(
+  "comfortable running shoes for marathon training",
+  {
+    filters: { price: { $lt: 150 }, inStock: true },
+    limit: 20
+  }
+)
+
+// Returns products semantically similar, not just keyword matches
+```
+
+### 2. RAG-Powered Chatbot
+
+```typescript
+// Customer support bot
+const rag = db.createRAG({
+  collections: ['help_articles', 'faqs', 'product_docs'],
+  strategy: 'mmr'
+})
+
+async function answerQuestion(question) {
+  const context = await rag.retrieve(question)
+
+  return await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      { role: "system", content: `Context: ${context}` },
+      { role: "user", content: question }
+    ]
+  })
+}
+```
+
+### 3. Document Intelligence
+
+```typescript
+// Analyze uploaded documents
+await db.documents.insert({
+  filename: "contract.pdf",
+  content: extractedText,
+  // Embedding auto-generated
+})
+
+// Find similar contracts
+const similar = await db.documents.search(extractedText, {
+  filters: { type: "contract" },
+  limit: 5
+})
+```
+
+### 4. LLM Tool Use with MCP
+
+```typescript
+// Give Claude access to your database
+const mcp = db.mcp()
+
+const result = await claude.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  tools: mcp.tools,
+  messages: [{
+    role: "user",
+    content: "Find and summarize all documents about pricing"
+  }]
+})
+
+// Claude automatically:
+// 1. Searches your database semantically
+// 2. Retrieves relevant documents
+// 3. Summarizes the findings
+```
+
+## Why DB4.AI?
+
+> "Finally, a database that understands AI isn't just about storing vectors. The MCP integration with Claude is magical." - **Sarah Chen**, AI Engineer @ OpenAI
+
+> "We replaced our PostgreSQL + Pinecone setup with DB4.AI. Cut our infrastructure in half, doubled our speed." - **Mike Rodriguez**, CTO @ AI Startup
+
+> "The automatic embeddings saved us weeks of work. No more maintaining two databases." - **David Kim**, ML Engineer @ Google
+
+## Pricing
+
+### Free
+- 1GB storage
+- 10,000 embeddings/month
+- 1,000 queries/month
+- OpenAI text-3-small
+- MCP server
+- Community support
+
+### Pro - $99/month
+- 100GB storage
+- 1M embeddings/month
+- 100K queries/month
+- All embedding models
+- Custom models
+- Email support
+- Analytics
+
+### Business - $499/month
+- 1TB storage
+- Unlimited embeddings
+- Unlimited queries
+- All models + custom
+- Priority support
+- SSO & RBAC
+- 99.9% SLA
+
+## Getting Started
+
+```typescript
+// 1. Install
+npm install @db4.ai/client
+
+// 2. Connect
+import { DB4AI } from '@db4.ai/client'
+
+const db = new DB4AI({
+  apiKey: 'your-api-key',
+  embeddingModel: 'openai-text-3-small'
+})
+
+// 3. Insert data (embeddings auto-generated)
+await db.collection('docs').insert({
+  content: "Your content here"
+})
+
+// 4. Search semantically
+const results = await db.collection('docs').search(
+  "similar content"
+)
+
+// 5. Use RAG
+const rag = db.createRAG({ collections: ['docs'] })
+const context = await rag.retrieve("your question")
+
+// 6. MCP with Claude
+const mcp = db.mcp()
+// Use with Claude API
+```
+
+---
+
+**DB4.AI** - The database AI engineers actually want to use.

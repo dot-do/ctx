@@ -1,0 +1,450 @@
+---
+id: amazon-ses-send
+source: amazon-ses
+function: send
+name: Amazon SES Send Email
+description: Send emails via Amazon Simple Email Service with AWS infrastructure
+method: POST
+path: /v2/email/outbound-emails
+category: email-service-provider
+authentication:
+  type: aws_signature_v4
+  location: header
+rate_limits:
+  sandbox: 1 email/second, 200/day
+  production_initial: 14 emails/second, 50000/day
+  production_scaled: Auto-scales based on usage
+cost:
+  sending: $0.10 per 1000 emails
+  attachments: $0.12 per GB
+  dedicated_ip: $24.95 per month per IP
+  free_tier_ec2: 62000 emails/month when sending from EC2
+request_schema:
+  Content:
+    type: object
+    required: true
+    properties:
+      Simple:
+        type: object
+        properties:
+          Subject:
+            Data: string
+            Charset: string (default UTF-8)
+          Body:
+            Html:
+              Data: string
+              Charset: string
+            Text:
+              Data: string
+              Charset: string
+      Raw:
+        type: object
+        properties:
+          Data: string (base64 encoded MIME message)
+      Template:
+        type: object
+        properties:
+          TemplateName: string
+          TemplateData: string (JSON)
+  Destination:
+    type: object
+    properties:
+      ToAddresses: array of strings
+      CcAddresses: array of strings
+      BccAddresses: array of strings
+  FromEmailAddress:
+    type: string
+    required: true
+    description: Verified sender email
+  ReplyToAddresses:
+    type: array
+    items: string
+  ConfigurationSetName:
+    type: string
+    description: Configuration set for tracking
+  EmailTags:
+    type: array
+    items:
+      Name: string
+      Value: string
+    max_items: 50
+  FeedbackForwardingEmailAddress:
+    type: string
+    description: Email for bounce/complaint notifications
+response_schema:
+  success:
+    status: 200
+    body:
+      MessageId: string (unique message identifier)
+  error:
+    status: 4xx or 5xx
+    body:
+      Error:
+        Code: string
+        Message: string
+metadata:
+  ns: api
+  visibility: public
+tags:
+  - email
+  - esp
+  - amazon-ses
+  - aws
+  - transactional
+---
+
+# Amazon SES Send Email API
+
+Send transactional and marketing emails using Amazon Simple Email Service with AWS's reliable infrastructure and cost-effective pricing.
+
+## Features
+
+- **AWS Infrastructure**: Built on Amazon's global network
+- **Cost-Effective**: $0.10 per 1,000 emails
+- **High Scalability**: Auto-scales to millions/day
+- **Configuration Sets**: Granular tracking and control
+- **Email Receiving**: Two-way email communication
+- **Virtual Deliverability Manager**: AI-powered insights
+
+## Usage
+
+```typescript
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2'
+
+const sesClient = new SESv2Client({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+})
+
+export async function sendEmail(params: SendEmailParams): Promise<SendEmailResponse> {
+  const command = new SendEmailCommand({
+    FromEmailAddress: params.from,
+    Destination: {
+      ToAddresses: Array.isArray(params.to) ? params.to : [params.to],
+      CcAddresses: params.cc,
+      BccAddresses: params.bcc,
+    },
+    Content: {
+      Simple: {
+        Subject: {
+          Data: params.subject,
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Html: params.html ? {
+            Data: params.html,
+            Charset: 'UTF-8',
+          } : undefined,
+          Text: params.text ? {
+            Data: params.text,
+            Charset: 'UTF-8',
+          } : undefined,
+        },
+      },
+    },
+    ConfigurationSetName: params.configurationSet || process.env.SES_CONFIGURATION_SET,
+    EmailTags: params.tags?.map(tag => ({
+      Name: typeof tag === 'string' ? 'tag' : tag.name,
+      Value: typeof tag === 'string' ? tag : tag.value,
+    })),
+    ReplyToAddresses: params.replyTo ? [params.replyTo] : undefined,
+  })
+
+  try {
+    const response = await sesClient.send(command)
+    return {
+      messageId: response.MessageId,
+      status: 'sent',
+    }
+  } catch (error) {
+    throw new Error(`SES error: ${error.message}`)
+  }
+}
+
+// Example: Simple email
+await sendEmail({
+  from: 'hello@yourdomain.com',
+  to: 'recipient@example.com',
+  subject: 'Welcome to Our Platform',
+  html: '<h1>Welcome!</h1><p>Thanks for signing up.</p>',
+  text: 'Welcome! Thanks for signing up.',
+  configurationSet: 'cold-email-tracking',
+  tags: [
+    { name: 'campaign_id', value: 'campaign-123' },
+    { name: 'contact_id', value: 'contact-456' },
+  ],
+})
+
+// Example: Batch send
+await Promise.all(
+  recipients.map(recipient =>
+    sendEmail({
+      from: 'hello@yourdomain.com',
+      to: recipient,
+      subject: 'Newsletter',
+      html: '<p>Check out our latest updates!</p>',
+      configurationSet: 'newsletter',
+    })
+  )
+)
+
+// Example: Using template
+await sendEmail({
+  from: 'hello@yourdomain.com',
+  to: 'user@example.com',
+  template: {
+    name: 'email-verification',
+    data: JSON.stringify({
+      verification_link: 'https://example.com/verify/abc123',
+      first_name: 'John',
+    }),
+  },
+  configurationSet: 'transactional',
+})
+```
+
+## Response Example
+
+```typescript
+// Success (200 OK)
+{
+  MessageId: '0100018d1234abcd-12345678-1234-1234-1234-123456789abc-000000'
+}
+
+// Error (MessageRejected)
+{
+  Error: {
+    Code: 'MessageRejected',
+    Message: 'Email address is not verified. The following identities failed the check in region US-EAST-1: hello@yourdomain.com'
+  }
+}
+```
+
+## Best Practices
+
+### Moving Out of Sandbox
+All new SES accounts start in sandbox mode:
+
+```typescript
+// Check if account is in sandbox
+import { GetAccountCommand } from '@aws-sdk/client-sesv2'
+
+const account = await sesClient.send(new GetAccountCommand({}))
+console.log('Production access:', account.ProductionAccessEnabled)
+
+// Request production access via AWS Console:
+// 1. Navigate to SES Console
+// 2. Click "Request production access"
+// 3. Describe your use case
+// 4. Wait 24-48 hours for approval
+```
+
+### Domain Verification
+```typescript
+// Verify domain via DNS records
+import { PutEmailIdentityCommand } from '@aws-sdk/client-sesv2'
+
+await sesClient.send(new PutEmailIdentityCommand({
+  EmailIdentity: 'yourdomain.com',
+  DkimSigningAttributes: {
+    DomainSigningSelector: 'ses', // Optional custom selector
+  },
+}))
+
+// Add DNS records provided in response
+// - TXT record for domain verification
+// - 3 CNAME records for DKIM
+```
+
+### Configuration Sets
+```typescript
+// Create configuration set for tracking
+import { CreateConfigurationSetCommand } from '@aws-sdk/client-sesv2'
+
+await sesClient.send(new CreateConfigurationSetCommand({
+  ConfigurationSetName: 'cold-email-tracking',
+  TrackingOptions: {
+    CustomRedirectDomain: 'track.yourdomain.com', // Optional
+  },
+  DeliveryOptions: {
+    TlsPolicy: 'REQUIRE', // Enforce TLS
+  },
+}))
+
+// Add event destination for webhooks
+import { CreateConfigurationSetEventDestinationCommand } from '@aws-sdk/client-sesv2'
+
+await sesClient.send(new CreateConfigurationSetEventDestinationCommand({
+  ConfigurationSetName: 'cold-email-tracking',
+  EventDestinationName: 'webhook',
+  EventDestination: {
+    Enabled: true,
+    MatchingEventTypes: ['SEND', 'DELIVERY', 'OPEN', 'CLICK', 'BOUNCE', 'COMPLAINT'],
+    HttpsDestination: {
+      HttpsUrl: 'https://api.services.do/webhooks/amazon-ses',
+    },
+  },
+}))
+```
+
+### Error Handling
+```typescript
+async function sendWithRetry(params: SendEmailParams, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await sendEmail(params)
+    } catch (error) {
+      const shouldRetry = [
+        'Throttling',
+        'ServiceUnavailable',
+        'InternalFailure',
+      ].includes(error.Code)
+
+      if (shouldRetry && i < maxRetries - 1) {
+        await sleep(Math.pow(2, i) * 1000) // Exponential backoff
+        continue
+      }
+
+      // Handle specific errors
+      if (error.Code === 'MessageRejected') {
+        if (error.Message.includes('not verified')) {
+          throw new Error('Email address not verified')
+        }
+        if (error.Message.includes('sandbox')) {
+          throw new Error('Account in sandbox mode - request production access')
+        }
+      } else if (error.Code === 'AccountSendingPausedException') {
+        throw new Error('Account sending paused - contact AWS support')
+      }
+
+      throw error
+    }
+  }
+}
+```
+
+### Rate Limiting
+```typescript
+// Respect send rate limits
+class SESRateLimiter {
+  private tokens: number
+  private lastRefill: number
+  private readonly maxTokens: number
+  private readonly refillRate: number
+
+  constructor(sendingRate: number) {
+    this.maxTokens = sendingRate
+    this.refillRate = sendingRate
+    this.tokens = sendingRate
+    this.lastRefill = Date.now()
+  }
+
+  async acquire() {
+    this.refill()
+
+    if (this.tokens >= 1) {
+      this.tokens -= 1
+      return
+    }
+
+    const waitTime = (1 - this.tokens) / this.refillRate * 1000
+    await sleep(waitTime)
+    this.tokens = 0
+  }
+
+  private refill() {
+    const now = Date.now()
+    const timePassed = (now - this.lastRefill) / 1000
+    this.tokens = Math.min(
+      this.maxTokens,
+      this.tokens + timePassed * this.refillRate
+    )
+    this.lastRefill = now
+  }
+}
+
+const rateLimiter = new SESRateLimiter(14) // 14 emails/second
+
+for (const recipient of recipients) {
+  await rateLimiter.acquire()
+  await sendEmail({ to: recipient, ... })
+}
+```
+
+### Cost Optimization
+```typescript
+// Calculate costs
+function estimateCost(emailCount: number, avgSizeKB: number = 50) {
+  const sendingCost = (emailCount / 1000) * 0.10
+  const attachmentCost = (emailCount * avgSizeKB / 1024 / 1024) * 0.12
+
+  return {
+    sending: sendingCost.toFixed(2),
+    attachments: attachmentCost.toFixed(2),
+    total: (sendingCost + attachmentCost).toFixed(2),
+  }
+}
+
+console.log(estimateCost(100000)) // 100K emails
+// { sending: '10.00', attachments: '0.57', total: '10.57' }
+```
+
+## Webhook Events
+
+SES publishes events via Configuration Sets:
+- `send` - Email sent from SES
+- `delivery` - Successfully delivered
+- `open` - Email opened (requires configuration)
+- `click` - Link clicked (requires configuration)
+- `bounce` - Hard or soft bounce
+- `complaint` - Spam complaint
+- `reject` - Rejected before sending
+- `renderingFailure` - Template rendering failed
+
+Configure event destination:
+```
+https://api.services.do/webhooks/amazon-ses
+```
+
+## Error Codes
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| MessageRejected | Invalid sender/recipient | Verify identities |
+| MailFromDomainNotVerified | Domain not verified | Complete DNS setup |
+| ConfigurationSetDoesNotExist | Invalid config set | Create config set |
+| Throttling | Rate limit exceeded | Implement backoff |
+| AccountSendingPausedException | Account suspended | Contact AWS support |
+
+## Integration with ESP Gateway
+
+```typescript
+// Normalized interface via esp-gateway service
+const result = await env.ESP_GATEWAY.send({
+  provider: 'amazon-ses',
+  message: {
+    to: 'recipient@example.com',
+    from: { email: 'hello@yourdomain.com', name: 'Sales Team' },
+    subject: 'Cold Email Subject',
+    html: '<p>Email content</p>',
+    text: 'Email content',
+  },
+  options: {
+    trackOpens: true,
+    trackClicks: true,
+    tags: ['campaign-123', 'cold-email'],
+    configurationSet: 'cold-email-tracking',
+  },
+})
+```
+
+## Related APIs
+
+- [amazon-ses.verify](./amazon-ses.verify.mdx) - Verify email/domain
+- [sendgrid.send](./sendgrid.send.mdx) - Alternative ESP
+- [mailgun.send](./mailgun.send.mdx) - Alternative ESP
+
+export { sendEmail, sendWithRetry, SESRateLimiter }

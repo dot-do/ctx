@@ -1,0 +1,265 @@
+---
+title: API.Mt
+$type: API
+category: AI-Gateway
+name: API.Mt
+description: Universal AI-native API gateway - 10,000+ APIs accessible to LLMs via MCP with semantic routing and auto-generated tools
+domain: api.mt
+baseUrl: https://api.mt
+protocol: REST
+authentication: [API Key, OAuth 2.0]
+pricing: freemium
+
+payload:
+  collections:
+    apis:
+      slug: apis
+      fields:
+        - name: name
+          type: text
+          required: true
+        - name: provider
+          type: text
+        - name: category
+          type: select
+          options: [payment, communication, ai-ml, data, maps, weather, social, finance]
+        - name: embeddingModel
+          type: select
+          options: [openai-text-3-small]
+          defaultValue: openai-text-3-small
+        - name: mcpTool
+          type: json
+          description: Auto-generated MCP tool definition
+        - name: llmToolSchema
+          type: json
+          description: OpenAI/Anthropic tool schema
+
+    routes:
+      slug: routes
+      fields:
+        - name: api
+          type: relationship
+          relationTo: apis
+        - name: pattern
+          type: text
+        - name: semanticIntent
+          type: text
+        - name: embedding
+          type: array
+          items: number
+
+features:
+  mcpGateway:
+    enabled: true
+    description: MCP server for all 10,000+ APIs
+    claude: true
+    gpt: true
+
+  semanticRouting:
+    enabled: true
+    description: AI determines best API for the task
+    embedding: true
+    intent: natural language
+
+  autoToolGeneration:
+    enabled: true
+    description: Auto-generate OpenAI/Anthropic tool definitions
+    formats: [OpenAI, Anthropic, LangChain, CrewAI]
+
+  intelligentCaching:
+    enabled: true
+    description: Semantic caching of API responses
+    embedding: true
+
+pricing:
+  free:
+    apis: 100
+    calls: 1000/month
+    mcp: true
+    routing: true
+    support: community
+
+  pro:
+    price: 199
+    period: /month
+    apis: unlimited
+    calls: 100000/month
+    mcp: true
+    routing: advanced
+    support: email
+
+  business:
+    price: 999
+    period: /month
+    apis: unlimited
+    calls: unlimited
+    mcp: true
+    routing: advanced
+    support: priority
+    sla: 99.9%
+
+seo:
+  title: API.Mt - Universal AI-Native API Gateway with MCP
+  description: 10,000+ APIs accessible to LLMs. MCP server, semantic routing, auto-generated tools. The API layer AI agents need.
+  keywords:
+    - ai api gateway
+    - mcp server
+    - semantic api routing
+    - llm tools
+    - api for ai agents
+---
+
+# API.Mt
+
+**One API to rule them all.** 10,000+ APIs accessible to LLMs via MCP server, with semantic routing and auto-generated tool definitions.
+
+## The Problem: APIs Aren't Built for AI
+
+Traditional approach:
+```typescript
+// Manually define tools for LLM
+const tools = [
+  {
+    name: "get_weather",
+    description: "Get current weather",
+    parameters: { location: "string" }
+  },
+  {
+    name: "send_email",
+    description: "Send an email",
+    parameters: { to: "string", subject: "string", body: "string" }
+  }
+  // ... manually define 100+ more tools? 😭
+]
+```
+
+API.Mt approach:
+```typescript
+// All APIs available automatically via MCP
+const mcp = await apimt.mcp()
+
+const response = await claude.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  tools: mcp.allTools, // 10,000+ APIs!
+  messages: [{
+    role: "user",
+    content: "Check weather in Seattle and email it to john@example.com"
+  }]
+})
+// Claude automatically uses weather + email APIs ✨
+```
+
+## Core Features
+
+### 1. MCP Server for All APIs
+
+```typescript
+import { APIMt } from '@api.mt/client'
+import Anthropic from '@anthropic-ai/sdk'
+
+const apimt = new APIMt({ apiKey: 'your-key' })
+const claude = new Anthropic()
+
+// Get MCP tools for specific categories
+const tools = await apimt.mcp.getTools(['weather', 'email', 'maps'])
+
+const response = await claude.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  tools: tools,
+  messages: [{
+    role: "user",
+    content: "Find weather in user's location and send summary"
+  }]
+})
+```
+
+### 2. Semantic API Routing
+
+AI determines best API for the task:
+
+```typescript
+// Natural language → API route
+const result = await apimt.route(
+  "I need to send a text message",
+  { context: { user, preferences } }
+)
+
+// Returns: Twilio SMS API (best match)
+// Not: SendGrid (email), Slack (team messaging)
+```
+
+### 3. Auto-Generated LLM Tools
+
+```typescript
+// For OpenAI
+const openaiTools = await apimt.generateTools('openai', ['payment', 'weather'])
+
+// For Anthropic
+const claudeTools = await apimt.generateTools('anthropic', ['maps', 'email'])
+
+// For LangChain
+const langchainTools = await apimt.generateTools('langchain', ['all'])
+```
+
+### 4. RAG Context from API Responses
+
+```typescript
+// Automatically embed API responses for context
+const context = await apimt.executeWithRAG(
+  'weather-api',
+  { location: 'Seattle' },
+  { embedResponse: true }
+)
+
+// Use context in next LLM call
+const analysis = await gpt4.analyze(context)
+```
+
+## Use Cases
+
+### AI Agent with Full API Access
+
+```typescript
+const agent = await apimt.createAgent({
+  name: 'business-assistant',
+  apis: ['calendar', 'email', 'crm', 'analytics'],
+  llm: 'gpt-4'
+})
+
+await agent.task("Schedule meeting with top 5 leads")
+// Agent automatically:
+// 1. Queries CRM for top leads
+// 2. Checks calendar availability
+// 3. Sends meeting invites via email
+```
+
+### Semantic API Discovery
+
+```typescript
+// Find APIs by describing what you need
+const apis = await apimt.discover(
+  "I need to process payments and handle subscriptions"
+)
+
+// Returns: Stripe, PayPal, Braintree (ranked by relevance)
+```
+
+### Multi-API Workflows
+
+```typescript
+await apimt.workflow({
+  task: "Monitor competitor prices and alert if changes",
+  apis: ['web-scraping', 'price-tracking', 'slack'],
+  schedule: 'daily'
+})
+```
+
+## Pricing
+
+**Free:** 100 APIs, 1K calls/month, MCP, Basic routing
+**Pro ($199/mo):** Unlimited APIs, 100K calls, Advanced routing
+**Business ($999/mo):** Unlimited everything, 99.9% SLA, Priority support
+
+---
+
+**API.Mt** - The API layer AI agents actually need.

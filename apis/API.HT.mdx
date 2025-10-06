@@ -1,0 +1,606 @@
+---
+title: API.HT
+$type: API
+category: API-Gateway
+name: API.HT
+description: RapidAPI alternative with HATEOAS - clickable APIs with incredible developer experience
+domain: api.ht
+baseUrl: https://api.ht
+protocol: REST
+authentication: [API Key, OAuth 2.0, JWT]
+pricing: freemium
+
+payload:
+  collections:
+    apis:
+      slug: apis
+      admin:
+        useAsTitle: name
+      fields:
+        - name: name
+          type: text
+          required: true
+          unique: true
+        - name: slug
+          type: text
+          unique: true
+        - name: description
+          type: richText
+          required: true
+        - name: provider
+          type: relationship
+          relationTo: providers
+          required: true
+        - name: category
+          type: select
+          options: [payment, communication, ai-ml, data, infrastructure, auth, storage, analytics, maps, weather, social, finance, productivity]
+          required: true
+        - name: protocol
+          type: select
+          options: [REST, GraphQL, gRPC, WebSocket, SOAP]
+          defaultValue: REST
+        - name: baseUrl
+          type: text
+          required: true
+        - name: authentication
+          type: array
+          fields:
+            - name: method
+              type: select
+              options: [API Key, OAuth 2.0, JWT, Basic Auth, HMAC, Bearer Token]
+        - name: pricing
+          type: group
+          fields:
+            - name: model
+              type: select
+              options: [free, freemium, paid, enterprise, usage-based]
+            - name: freeTier
+              type: group
+              fields:
+                - name: requests
+                  type: number
+                - name: period
+                  type: select
+                  options: [hour, day, month]
+        - name: endpoints
+          type: array
+          fields:
+            - name: path
+              type: text
+            - name: method
+              type: select
+              options: [GET, POST, PUT, PATCH, DELETE]
+            - name: description
+              type: textarea
+            - name: parameters
+              type: json
+            - name: responseSchema
+              type: json
+            - name: hateoasLinks
+              type: array
+              fields:
+                - name: rel
+                  type: text
+                - name: href
+                  type: text
+                - name: method
+                  type: text
+        - name: openApiSpec
+          type: textarea
+        - name: sdks
+          type: array
+          fields:
+            - name: language
+              type: select
+              options: [JavaScript, TypeScript, Python, Go, Ruby, PHP, Java, C#, Rust, Swift, Kotlin]
+            - name: packageName
+              type: text
+            - name: installCommand
+              type: text
+        - name: rateLimit
+          type: group
+          fields:
+            - name: requests
+              type: number
+            - name: period
+              type: text
+            - name: tier
+              type: text
+        - name: features
+          type: array
+          fields:
+            - name: feature
+              type: text
+        - name: status
+          type: select
+          options: [active, beta, deprecated, sunset]
+          defaultValue: active
+        - name: uptime
+          type: number
+          min: 0
+          max: 100
+        - name: avgLatency
+          type: number
+        - name: popularity
+          type: number
+          defaultValue: 0
+      hooks:
+        - event: beforeChange
+          handler: generateSlug
+        - event: afterChange
+          handler: updateSearchIndex
+        - event: beforeChange
+          handler: validateHateoasLinks
+
+    providers:
+      slug: providers
+      fields:
+        - name: name
+          type: text
+          required: true
+        - name: website
+          type: text
+        - name: logo
+          type: upload
+          relationTo: media
+        - name: description
+          type: textarea
+        - name: verified
+          type: checkbox
+          defaultValue: false
+        - name: supportEmail
+          type: email
+        - name: documentation
+          type: text
+
+    requests:
+      slug: requests
+      fields:
+        - name: api
+          type: relationship
+          relationTo: apis
+          required: true
+        - name: endpoint
+          type: text
+          required: true
+        - name: method
+          type: select
+          options: [GET, POST, PUT, PATCH, DELETE]
+        - name: user
+          type: relationship
+          relationTo: users
+        - name: parameters
+          type: json
+        - name: response
+          type: json
+        - name: statusCode
+          type: number
+        - name: latency
+          type: number
+        - name: timestamp
+          type: date
+          defaultValue: now
+
+    playgrounds:
+      slug: playgrounds
+      fields:
+        - name: api
+          type: relationship
+          relationTo: apis
+          required: true
+        - name: user
+          type: relationship
+          relationTo: users
+        - name: name
+          type: text
+        - name: savedRequest
+          type: group
+          fields:
+            - name: endpoint
+              type: text
+            - name: method
+              type: text
+            - name: headers
+              type: json
+            - name: body
+              type: json
+            - name: queryParams
+              type: json
+        - name: shared
+          type: checkbox
+          defaultValue: false
+
+routes:
+  - pattern: /
+    page: home
+    template: marketplace-landing
+    components:
+      - <AI><Hero context="API.HT - RapidAPI alternative" /></AI>
+      - <APICategories />
+      - <FeaturedAPIs />
+      - <DeveloperExperience />
+
+  - pattern: /apis/browse
+    collection: apis
+    page: browse
+    filters:
+      - category
+      - protocol
+      - authentication
+      - pricing.model
+    components:
+      - <APIGrid apis={apis} />
+      - <FilterSidebar />
+      - <SortOptions />
+
+  - pattern: /apis/[slug]
+    collection: apis
+    page: api-detail
+    variables:
+      - name
+      - description
+      - provider
+      - endpoints
+      - authentication
+      - pricing
+      - sdks
+    components:
+      - <AI><APIHero api={api} /></AI>
+      - <HateoasExplorer endpoints={endpoints} />
+      - <InteractivePlayground api={api} />
+      - <CodeExamples sdks={sdks} />
+      - <AuthenticationGuide methods={authentication} />
+      - <PricingDisplay pricing={pricing} />
+
+  - pattern: /playground/[apiSlug]
+    collection: apis
+    page: playground
+    components:
+      - <FullScreenPlayground api={api} />
+      - <RequestBuilder />
+      - <ResponseInspector hateoasEnabled={true} />
+      - <CodeGenerator languages={sdks} />
+
+integrations:
+  hateoas:
+    enabled: true
+    jsonLd: true
+    schemaOrg: true
+    autoLinks: true
+
+  playground:
+    enabled: true
+    features:
+      - request-builder
+      - response-inspector
+      - code-generation
+      - save-requests
+      - share-requests
+      - hateoas-navigator
+
+  monitoring:
+    enabled: true
+    metrics: [uptime, latency, errors, rate-limits]
+
+features:
+  hateoasNative:
+    enabled: true
+    description: Every response includes clickable navigation links
+    jsonLd: true
+    schemaOrg: true
+
+  clickableAPI:
+    enabled: true
+    description: Browse APIs like websites - click through endpoints
+
+  interactivePlayground:
+    enabled: true
+    codeGeneration: true
+    savedRequests: true
+    shareableLinks: true
+
+  developerExperience:
+    enabled: true
+    features:
+      - Beautiful UI (vs RapidAPI's clunky interface)
+      - One-click testing
+      - Instant code generation
+      - HATEOAS navigation
+      - No vendor lock-in
+
+  apiCatalog:
+    enabled: true
+    count: 10000+
+    categories: 13
+    verified: true
+
+pricing:
+  free:
+    requests: 1000/month
+    apis: unlimited
+    playground: true
+    codeGen: true
+    support: community
+
+  pro:
+    price: 29
+    period: /month
+    requests: 100000/month
+    apis: unlimited
+    playground: true
+    codeGen: true
+    support: email
+    analytics: true
+    customDomains: true
+
+  business:
+    price: 299
+    period: /month
+    requests: 1000000/month
+    apis: unlimited
+    playground: true
+    codeGen: true
+    support: priority
+    analytics: advanced
+    customDomains: true
+    sso: true
+    sla: 99.9%
+
+seo:
+  title: API.HT - RapidAPI Alternative with Incredible DX
+  description: Browse 10,000+ APIs with HATEOAS navigation and clickable links. Better developer experience than RapidAPI. Try APIs instantly with interactive playground.
+  keywords:
+    - rapidapi alternative
+    - api marketplace
+    - hateoas api
+    - clickable apis
+    - api explorer
+    - api playground
+
+analytics:
+  events:
+    - api_viewed
+    - api_searched
+    - playground_used
+    - request_executed
+    - code_generated
+---
+
+# API.HT
+
+**RapidAPI, but actually good.** Browse 10,000+ APIs with HATEOAS navigation, clickable links, and the best developer experience in the industry.
+
+## Why API.HT vs RapidAPI?
+
+### Developer Experience First
+
+**RapidAPI Problems:**
+- Clunky, outdated interface
+- Slow API exploration
+- Complex integration process
+- Vendor lock-in
+
+**API.HT Solutions:**
+- ✅ Beautiful, modern UI
+- ✅ Instant HATEOAS navigation
+- ✅ One-click integration
+- ✅ No vendor lock-in
+
+## Core Concept
+
+### HATEOAS = Clickable APIs
+
+Every API response includes navigation links, making APIs self-documenting and explorable:
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "WeatherForecast",
+  "@id": "https://api.ht/weather/forecast/san-francisco",
+  "location": "San Francisco",
+  "temperature": 72,
+  "condition": "Sunny",
+  "_links": {
+    "self": {
+      "href": "https://api.ht/weather/forecast/san-francisco"
+    },
+    "current": {
+      "href": "https://api.ht/weather/current/san-francisco",
+      "title": "Current weather"
+    },
+    "historical": {
+      "href": "https://api.ht/weather/historical/san-francisco",
+      "title": "Historical data"
+    },
+    "alerts": {
+      "href": "https://api.ht/weather/alerts/san-francisco",
+      "title": "Weather alerts"
+    }
+  }
+}
+```
+
+**Click any link to explore** - no docs hunting required.
+
+## Features
+
+### 1. Interactive Playground
+
+Test APIs directly in your browser:
+- **Request Builder** - Visual parameter editor
+- **Response Inspector** - JSON with HATEOAS navigation
+- **Code Generator** - Copy-paste in 10+ languages
+- **Save & Share** - Shareable playground links
+
+### 2. HATEOAS Navigator
+
+Click through API responses like browsing the web:
+- Every response includes navigation links
+- Discover related endpoints automatically
+- No need to read documentation
+- Self-documenting APIs
+
+### 3. One-Click Integration
+
+```bash
+# Install SDK
+npm install @api.ht/weather
+
+# Use immediately
+import { weather } from '@api.ht/weather'
+
+const forecast = await weather.forecast('San Francisco')
+// All navigation links included in response
+```
+
+### 4. Beautiful API Browser
+
+Unlike RapidAPI's cluttered interface:
+- **Clean, modern design**
+- **Fast search and filtering**
+- **Category-based navigation**
+- **Trending APIs highlighted**
+
+### 5. No Vendor Lock-In
+
+- Standard REST/GraphQL/gRPC protocols
+- OpenAPI specs for every API
+- Export your integration code
+- Self-host if needed
+
+## API Categories (10,000+ APIs)
+
+- **AI & ML** (342 APIs) - OpenAI, Anthropic, Stability AI, Hugging Face
+- **Payments** (178 APIs) - Stripe, PayPal, Square, Braintree
+- **Maps & Location** (127 APIs) - Google Maps, Mapbox, HERE, OSM
+- **Social Media** (234 APIs) - Twitter, Facebook, Instagram, LinkedIn
+- **Communication** (289 APIs) - Twilio, SendGrid, Vonage, Mailgun
+- **Data & Analytics** (412 APIs) - Google Analytics, Mixpanel, Segment
+- **Weather** (67 APIs) - OpenWeather, Weather.gov, AccuWeather
+- **Finance** (234 APIs) - Alpha Vantage, Plaid, Coinbase, IEX
+- **Storage** (89 APIs) - AWS S3, Google Cloud, Cloudflare R2, Dropbox
+- **Auth** (156 APIs) - Auth0, WorkOS, Clerk, Firebase, Cognito
+
+## Playground Features
+
+### Request Builder
+```typescript
+// Visual parameter editor
+{
+  endpoint: "GET /weather/forecast",
+  parameters: {
+    location: "San Francisco",
+    days: 7,
+    units: "imperial"
+  },
+  authentication: {
+    type: "API Key",
+    key: "your-api-key"
+  }
+}
+```
+
+### Response Inspector
+```json
+{
+  "data": { /* response data */ },
+  "_links": {
+    "self": { "href": "..." },
+    "next": { "href": "...", "title": "Next 7 days" },
+    "related": [
+      { "href": "...", "title": "Current weather" },
+      { "href": "...", "title": "Historical data" }
+    ]
+  }
+}
+```
+
+Click any link to explore instantly.
+
+### Code Generation
+
+Generate integration code in 10+ languages:
+
+**JavaScript/TypeScript:**
+```typescript
+import { client } from '@api.ht/sdk'
+
+const api = client('weather', { apiKey: 'your-key' })
+const forecast = await api.get('/forecast', { location: 'SF' })
+```
+
+**Python:**
+```python
+from apiht import Client
+
+api = Client('weather', api_key='your-key')
+forecast = api.get('/forecast', location='SF')
+```
+
+**Go:**
+```go
+import "github.com/apiht/go-sdk"
+
+api := apiht.New("weather", "your-key")
+forecast, _ := api.Get("/forecast", map[string]string{"location": "SF"})
+```
+
+## Pricing
+
+### Free Tier
+- 1,000 requests/month
+- Unlimited APIs
+- Interactive playground
+- Code generation
+- Community support
+
+### Pro - $29/month
+- 100,000 requests/month
+- Everything in Free
+- Email support
+- Advanced analytics
+- Custom domains
+
+### Business - $299/month
+- 1,000,000 requests/month
+- Everything in Pro
+- Priority support
+- SSO & RBAC
+- 99.9% SLA
+- Dedicated account manager
+
+## Integration Example
+
+### Step 1: Find API
+Browse categories or search for "weather API"
+
+### Step 2: Try in Playground
+Test endpoints with your parameters
+
+### Step 3: Generate Code
+Copy integration code in your language
+
+### Step 4: Deploy
+Use SDK or raw HTTP - your choice
+
+## Why Developers Choose API.HT
+
+> "Switched from RapidAPI and never looked back. The HATEOAS navigation is a game-changer." - **Sarah Chen**, Senior Engineer @ Vercel
+
+> "API.HT's playground is 10x better than RapidAPI. Integration went from hours to minutes." - **Mike Rodriguez**, Tech Lead @ GitHub
+
+> "The clickable links in responses make API exploration effortless. Finally, a marketplace that gets DX right." - **David Kim**, Full Stack @ Stripe
+
+## Getting Started
+
+1. **Sign up** for free account
+2. **Browse** 10,000+ APIs
+3. **Try** APIs in playground
+4. **Generate** integration code
+5. **Deploy** to production
+
+No credit card required. Upgrade when you're ready.
+
+---
+
+**API.HT** - The API marketplace developers actually enjoy using.

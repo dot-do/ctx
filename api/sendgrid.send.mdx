@@ -1,0 +1,395 @@
+---
+id: sendgrid-send
+source: sendgrid
+function: send
+name: SendGrid Send Email
+description: Send transactional and marketing emails via SendGrid API
+method: POST
+path: /v3/mail/send
+category: email-service-provider
+authentication:
+  type: api_key
+  location: header
+  key_name: Authorization
+  value_prefix: Bearer
+rate_limits:
+  free: 100 requests/second
+  essentials: 600 requests/second
+  pro: 3000 requests/second
+cost:
+  free_tier: 3000 emails/month
+  essentials: $19.95 for 50000 emails/month
+  pro: $89.95 for 1500000 emails/month
+request_schema:
+  personalizations:
+    type: array
+    required: true
+    description: Array of recipient personalizations
+    items:
+      to:
+        type: array
+        required: true
+        items:
+          email: string
+          name: string
+      cc:
+        type: array
+        items:
+          email: string
+          name: string
+      bcc:
+        type: array
+        items:
+          email: string
+          name: string
+      subject:
+        type: string
+        description: Email subject (overrides global)
+      custom_args:
+        type: object
+        description: Custom tracking data
+  from:
+    type: object
+    required: true
+    properties:
+      email: string
+      name: string
+  reply_to:
+    type: object
+    properties:
+      email: string
+      name: string
+  subject:
+    type: string
+    required: true
+    description: Email subject line
+  content:
+    type: array
+    required: true
+    description: Email content (HTML and/or text)
+    items:
+      type: string (text/plain or text/html)
+      value: string
+  attachments:
+    type: array
+    items:
+      content: string (base64)
+      filename: string
+      type: string (MIME type)
+      disposition: string (inline or attachment)
+  template_id:
+    type: string
+    description: SendGrid dynamic template ID
+  tracking_settings:
+    type: object
+    properties:
+      click_tracking:
+        enable: boolean
+        enable_text: boolean
+      open_tracking:
+        enable: boolean
+        substitution_tag: string
+      subscription_tracking:
+        enable: boolean
+  categories:
+    type: array
+    items: string
+    description: Up to 10 categories for stats
+  send_at:
+    type: number
+    description: Unix timestamp for scheduled send
+response_schema:
+  success:
+    status: 202
+    headers:
+      X-Message-Id: string (message ID for tracking)
+  error:
+    status: 4xx or 5xx
+    body:
+      errors:
+        type: array
+        items:
+          message: string
+          field: string
+          help: string
+metadata:
+  ns: api
+  visibility: public
+tags:
+  - email
+  - esp
+  - sendgrid
+  - transactional
+---
+
+# SendGrid Send Email API
+
+Send transactional and marketing emails using SendGrid's v3 API with comprehensive tracking, templating, and deliverability features.
+
+## Features
+
+- **High Deliverability**: Industry-leading inbox placement
+- **Dynamic Templates**: Handlebars templating engine
+- **Batch Sending**: Up to 1,000 recipients per request
+- **Tracking**: Opens, clicks, bounces, spam reports
+- **Scheduled Sends**: Queue emails for future delivery
+- **A/B Testing**: Subject line and content testing
+
+## Usage
+
+```typescript
+export async function sendEmail(params: SendEmailParams): Promise<SendEmailResponse> {
+  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(`SendGrid error: ${error.errors[0].message}`)
+  }
+
+  return {
+    messageId: response.headers.get('X-Message-Id'),
+    status: response.status,
+  }
+}
+
+// Example: Simple email
+await sendEmail({
+  personalizations: [{
+    to: [{ email: 'recipient@example.com', name: 'John Doe' }],
+    subject: 'Welcome to Our Platform',
+    custom_args: {
+      campaign_id: 'campaign-123',
+      contact_id: 'contact-456',
+    },
+  }],
+  from: {
+    email: 'hello@yourdomain.com',
+    name: 'Sales Team',
+  },
+  content: [{
+    type: 'text/html',
+    value: '<h1>Welcome!</h1><p>Thanks for signing up.</p>',
+  }],
+  tracking_settings: {
+    click_tracking: { enable: true },
+    open_tracking: { enable: true },
+  },
+})
+
+// Example: Batch send to multiple recipients
+await sendEmail({
+  personalizations: [
+    { to: [{ email: 'user1@example.com' }], subject: 'Hello User 1' },
+    { to: [{ email: 'user2@example.com' }], subject: 'Hello User 2' },
+    { to: [{ email: 'user3@example.com' }], subject: 'Hello User 3' },
+  ],
+  from: { email: 'hello@yourdomain.com' },
+  content: [{ type: 'text/html', value: '<p>Hello!</p>' }],
+})
+
+// Example: Using dynamic template
+await sendEmail({
+  personalizations: [{
+    to: [{ email: 'user@example.com' }],
+    dynamic_template_data: {
+      first_name: 'John',
+      verification_link: 'https://example.com/verify/abc123',
+    },
+  }],
+  from: { email: 'hello@yourdomain.com' },
+  template_id: 'd-abc123def456',
+})
+```
+
+## Response Example
+
+```typescript
+// Success (202 Accepted)
+{
+  messageId: 'abc123def456.filterdrecv-p3mdw1-6b469f4cf8-km2zl-17-61E6C95B-8.0',
+  status: 202
+}
+
+// Error (400 Bad Request)
+{
+  errors: [
+    {
+      message: 'The from email does not contain a valid address.',
+      field: 'from.email',
+      help: 'http://sendgrid.com/docs/API_Reference/Web_API_v3/Mail/errors.html#message.from.email'
+    }
+  ]
+}
+```
+
+## Best Practices
+
+### Authentication & DNS
+- Use verified sender addresses only
+- Set up domain authentication (SPF, DKIM)
+- Brand your links with custom subdomain
+- Consider dedicated IP for high volume (>100K/month)
+
+### Deliverability
+```typescript
+// Best practices for high deliverability
+const emailConfig = {
+  from: {
+    email: 'hello@yourdomain.com', // Verified domain
+    name: 'Sales Team', // Recognizable name
+  },
+  reply_to: {
+    email: 'replies@yourdomain.com', // Monitored inbox
+  },
+  tracking_settings: {
+    click_tracking: { enable: true }, // Track engagement
+    open_tracking: { enable: true },
+  },
+  categories: ['cold-outreach', 'campaign-123'], // For analytics
+}
+```
+
+### Rate Limiting & Errors
+```typescript
+async function sendWithRetry(params: SendEmailParams, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await sendEmail(params)
+    } catch (error) {
+      if (error.status === 429) {
+        // Rate limited - exponential backoff
+        await sleep(Math.pow(2, i) * 1000)
+        continue
+      } else if (error.status >= 500) {
+        // Server error - retry
+        await sleep(1000)
+        continue
+      } else {
+        // Client error - don't retry
+        throw error
+      }
+    }
+  }
+  throw new Error('Max retries exceeded')
+}
+```
+
+### Batch Sending
+```typescript
+// Efficiently send to multiple recipients
+function batchRecipients(emails: string[], batchSize = 1000) {
+  const batches = []
+  for (let i = 0; i < emails.length; i += batchSize) {
+    batches.push(emails.slice(i, i + batchSize))
+  }
+  return batches
+}
+
+for (const batch of batchRecipients(emailList)) {
+  await sendEmail({
+    personalizations: batch.map(email => ({
+      to: [{ email }],
+    })),
+    from: { email: 'hello@yourdomain.com' },
+    content: [{ type: 'text/html', value: htmlContent }],
+  })
+}
+```
+
+### Custom Arguments for Tracking
+```typescript
+// Add metadata for webhook event correlation
+await sendEmail({
+  personalizations: [{
+    to: [{ email: 'user@example.com' }],
+    custom_args: {
+      campaign_id: 'campaign-123',
+      contact_id: 'contact-456',
+      user_id: 'user-789',
+      sequence_step: '2',
+    },
+  }],
+  // ... rest of email
+})
+```
+
+## Webhook Events
+
+SendGrid sends webhooks for these events:
+- `processed` - Email accepted by SendGrid
+- `delivered` - Successfully delivered to recipient
+- `open` - Email opened (pixel tracking)
+- `click` - Link clicked
+- `bounce` - Hard or soft bounce
+- `dropped` - Dropped before sending (invalid, unsubscribed, etc.)
+- `deferred` - Temporary failure, will retry
+- `unsubscribe` - Recipient unsubscribed
+- `spamreport` - Marked as spam
+- `group_unsubscribe` - Unsubscribed from specific group
+
+Configure webhook endpoint:
+```
+https://api.services.do/webhooks/sendgrid
+```
+
+## Error Handling
+
+```typescript
+try {
+  await sendEmail(params)
+} catch (error) {
+  if (error.status === 400) {
+    // Bad request - fix the payload
+    console.error('Invalid request:', error.errors)
+  } else if (error.status === 401) {
+    // Invalid API key
+    console.error('Authentication failed')
+  } else if (error.status === 429) {
+    // Rate limited - implement backoff
+    await queueForRetry(params)
+  } else if (error.status >= 500) {
+    // Server error - retry later
+    await queueForRetry(params)
+  }
+}
+```
+
+## Integration with ESP Gateway
+
+```typescript
+// Normalized interface via esp-gateway service
+const result = await env.ESP_GATEWAY.send({
+  provider: 'sendgrid',
+  message: {
+    to: 'recipient@example.com',
+    from: { email: 'hello@yourdomain.com', name: 'Sales Team' },
+    subject: 'Cold Email Subject',
+    html: '<p>Email content</p>',
+    text: 'Email content',
+  },
+  options: {
+    trackOpens: true,
+    trackClicks: true,
+    tags: ['campaign-123', 'cold-email'],
+    customArgs: {
+      campaign_id: 'campaign-123',
+      contact_id: 'contact-456',
+    },
+  },
+})
+```
+
+## Related APIs
+
+- [sendgrid.validate](./sendgrid.validate.mdx) - Validate email addresses
+- [mailgun.send](./mailgun.send.mdx) - Alternative ESP
+- [amazon-ses.send](./amazon-ses.send.mdx) - Alternative ESP
+
+export { sendEmail, sendWithRetry }

@@ -1,0 +1,102 @@
+---
+title: SaaS.dev
+$type: API
+category: SaaS-Platform
+name: SaaS.dev
+description: SaaS backend API platform - Multi-tenancy, subscriptions, usage metering, and billing out of the box
+domain: saas.dev
+baseUrl: https://saas.dev
+protocol: REST
+authentication: [API Key, OAuth 2.0, JWT]
+pricing: freemium
+
+payload:
+  collections:
+    tenants:
+      slug: tenants
+      fields:
+        - name: name
+          type: text
+          required: true
+        - name: subdomain
+          type: text
+          unique: true
+
+    subscriptions:
+      slug: subscriptions
+      fields:
+        - name: tenant
+          type: relationship
+          relationTo: tenants
+        - name: plan
+          type: select
+          options: [free, pro, business, enterprise]
+        - name: status
+          type: select
+          options: [active, canceled, past_due]
+
+features:
+  multiTenancy:
+    enabled: true
+    description: Tenant isolation built-in
+
+  subscriptions:
+    enabled: true
+    provider: Stripe
+    plans: customizable
+
+  usageMetering:
+    enabled: true
+    tracking: automatic
+    billing: usage-based
+
+  authRBAC:
+    enabled: true
+    roles: customizable
+    permissions: granular
+
+pricing:
+  free:
+    tenants: 3
+    users: 10 per tenant
+    calls: 1000/month
+
+  pro:
+    price: 99
+    period: /month
+    tenants: unlimited
+    users: unlimited
+    calls: 100000/month
+
+seo:
+  title: SaaS.dev - SaaS Backend as an API
+  description: Multi-tenancy, subscriptions, usage metering, and billing out of the box. Build SaaS faster.
+  keywords:
+    - saas backend
+    - multi-tenancy api
+    - subscription management
+    - usage metering
+---
+
+# SaaS.dev
+
+**SaaS infrastructure as an API.**
+
+Multi-tenancy, subscriptions, usage metering, and billing out of the box. Focus on your product, not infrastructure.
+
+## Features
+
+- **Multi-Tenancy** - Tenant isolation built-in
+- **Subscriptions** - Stripe integration
+- **Usage Metering** - Track and bill automatically
+- **Auth & RBAC** - Roles and permissions
+
+## Use Cases
+
+- **B2B SaaS** - Enterprise ready
+- **Marketplaces** - Multi-tenant
+- **APIs** - Usage-based billing
+
+---
+
+**SaaS.dev** - Build SaaS, not infrastructure.

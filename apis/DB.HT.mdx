@@ -1,0 +1,671 @@
+---
+title: DB.HT
+$type: API
+category: Database
+name: DB.HT
+description: Database APIs with incredible DX - browse your database like the web with HATEOAS and JSON-LD
+domain: db.ht
+baseUrl: https://db.ht
+protocol: REST
+authentication: [API Key, OAuth 2.0]
+pricing: freemium
+
+payload:
+  collections:
+    databases:
+      slug: databases
+      fields:
+        - name: name
+          type: text
+          required: true
+          unique: true
+        - name: slug
+          type: text
+          unique: true
+        - name: owner
+          type: relationship
+          relationTo: users
+          required: true
+        - name: type
+          type: select
+          options: [postgresql, mysql, mongodb, sqlite, clickhouse]
+          required: true
+        - name: connectionString
+          type: text
+          admin:
+            condition: false
+        - name: schema
+          type: json
+        - name: tables
+          type: array
+          fields:
+            - name: tableName
+              type: text
+            - name: columns
+              type: json
+            - name: relationships
+              type: array
+              fields:
+                - name: foreignKey
+                  type: text
+                - name: referencedTable
+                  type: text
+                - name: referencedColumn
+                  type: text
+        - name: access
+          type: select
+          options: [private, team, public]
+          defaultValue: private
+      hooks:
+        - event: afterCreate
+          handler: introspectSchema
+        - event: afterChange
+          handler: generateHateoasRoutes
+
+    queries:
+      slug: queries
+      fields:
+        - name: database
+          type: relationship
+          relationTo: databases
+          required: true
+        - name: user
+          type: relationship
+          relationTo: users
+        - name: name
+          type: text
+        - name: sqlQuery
+          type: textarea
+        - name: visualPath
+          type: text
+        - name: saved
+          type: checkbox
+          defaultValue: false
+        - name: shared
+          type: checkbox
+          defaultValue: false
+        - name: results
+          type: json
+        - name: executionTime
+          type: number
+        - name: timestamp
+          type: date
+          defaultValue: now
+
+    visualQueries:
+      slug: visual-queries
+      fields:
+        - name: database
+          type: relationship
+          relationTo: databases
+        - name: user
+          type: relationship
+          relationTo: users
+        - name: name
+          type: text
+        - name: startTable
+          type: text
+        - name: navigationPath
+          type: array
+          fields:
+            - name: step
+              type: text
+            - name: relation
+              type: text
+            - name: table
+              type: text
+        - name: filters
+          type: json
+        - name: generatedSql
+          type: textarea
+          admin:
+            readOnly: true
+
+routes:
+  - pattern: /
+    page: home
+    template: database-landing
+    components:
+      - <AI><Hero context="DB.HT - Database APIs with great DX" /></AI>
+      - <ClickableDemo />
+      - <VisualQueryBuilder />
+      - <ComparisonToSQL />
+
+  - pattern: /databases/[slug]
+    collection: databases
+    page: database-explorer
+    variables:
+      - name
+      - type
+      - tables
+      - schema
+    components:
+      - <AI><DatabaseHeader database={database} /></AI>
+      - <TableNavigator tables={tables} />
+      - <SchemaVisualization schema={schema} />
+      - <QuickActions />
+
+  - pattern: /databases/[slug]/tables/[table]
+    page: table-explorer
+    components:
+      - <TableView table={table} hateoasEnabled={true} />
+      - <RelationshipNavigator />
+      - <DataGrid clickable={true} />
+      - <FilterBuilder />
+
+  - pattern: /databases/[slug]/query
+    page: query-builder
+    components:
+      - <VisualQueryBuilder />
+      - <SQLEditor />
+      - <ResultsViewer hateoasEnabled={true} />
+      - <SaveQuery />
+
+integrations:
+  databases:
+    supported: [PostgreSQL, MySQL, MongoDB, SQLite, ClickHouse]
+    connectors: [direct, tunnel, proxy]
+
+  hateoas:
+    enabled: true
+    jsonLd: true
+    schemaOrg: true
+    relationshipLinks: true
+
+  visualization:
+    enabled: true
+    schemaGraph: true
+    erDiagram: true
+    queryBuilder: true
+
+features:
+  hateoasNavigation:
+    enabled: true
+    description: Click through database relationships like web links
+    example: |
+      GET /databases/shop/tables/customers/rows/123
+      {
+        "@type": "Customer",
+        "@id": "/databases/shop/tables/customers/rows/123",
+        "id": 123,
+        "name": "John Doe",
+        "email": "john@example.com",
+        "_links": {
+          "self": { "href": "/databases/shop/tables/customers/rows/123" },
+          "orders": {
+            "href": "/databases/shop/tables/orders?customer_id=123",
+            "title": "All orders for this customer"
+          },
+          "addresses": {
+            "href": "/databases/shop/tables/addresses?customer_id=123",
+            "title": "Customer addresses"
+          },
+          "payments": {
+            "href": "/databases/shop/tables/payments?customer_id=123",
+            "title": "Payment methods"
+          }
+        }
+      }
+
+  visualQueryBuilder:
+    enabled: true
+    description: Build queries by clicking through relationships
+    noSqlRequired: true
+
+  clickableResults:
+    enabled: true
+    description: Every query result includes navigation links
+
+  livePreview:
+    enabled: true
+    description: See data changes in real-time
+
+  schemaIntrospection:
+    enabled: true
+    automatic: true
+    relationships: detected
+
+pricing:
+  free:
+    databases: 3
+    queries: 1000/month
+    storage: 1GB
+    visualBuilder: true
+    hateoasApi: true
+    support: community
+
+  pro:
+    price: 49
+    period: /month
+    databases: unlimited
+    queries: 100000/month
+    storage: 100GB
+    visualBuilder: true
+    hateoasApi: true
+    teamAccess: 5 users
+    support: email
+    analytics: true
+
+  business:
+    price: 299
+    period: /month
+    databases: unlimited
+    queries: unlimited
+    storage: 1TB
+    visualBuilder: true
+    hateoasApi: true
+    teamAccess: unlimited
+    support: priority
+    analytics: advanced
+    sso: true
+    sla: 99.9%
+
+seo:
+  title: DB.HT - Browse Your Database Like the Web
+  description: Database APIs with HATEOAS navigation and clickable links. No SQL required. Visual query builder with incredible developer experience.
+  keywords:
+    - database api
+    - hateoas database
+    - visual query builder
+    - no sql required
+    - clickable database
+    - database explorer
+
+analytics:
+  events:
+    - database_connected
+    - query_executed
+    - table_navigated
+    - relationship_clicked
+    - visual_query_built
+---
+
+# DB.HT
+
+**Browse your database like the web.** No SQL required. Click through relationships, visualize schemas, and query data with the best DX in the industry.
+
+## The Problem with Database APIs
+
+**Traditional Approach:**
+```sql
+-- Step 1: Find customer
+SELECT * FROM customers WHERE id = 123;
+
+-- Step 2: Find their orders (copy customer_id manually)
+SELECT * FROM orders WHERE customer_id = 123;
+
+-- Step 3: Find order items (copy order_ids manually)
+SELECT * FROM order_items WHERE order_id IN (456, 789);
+
+-- Step 4: Join everything (write complex query)
+SELECT customers.*, orders.*, order_items.*
+FROM customers
+JOIN orders ON customers.id = orders.customer_id
+JOIN order_items ON orders.id = order_items.order_id
+WHERE customers.id = 123;
+```
+
+**DB.HT Approach:**
+```javascript
+// Step 1: Get customer (includes navigation links)
+GET /databases/shop/tables/customers/rows/123
+
+// Response includes clickable links:
+{
+  "@type": "Customer",
+  "id": 123,
+  "name": "John Doe",
+  "_links": {
+    "orders": { "href": "/tables/orders?customer_id=123" }
+  }
+}
+
+// Step 2: Click "orders" link
+GET /tables/orders?customer_id=123
+
+// Done! No SQL, no joins, just click.
+```
+
+## Core Concept: HATEOAS for Databases
+
+Every database query returns **JSON-LD with navigation links**, making relationships clickable:
+
+### Example: Customer Record
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Customer",
+  "@id": "https://db.ht/shop/customers/123",
+  "id": 123,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "created_at": "2024-01-15T10:30:00Z",
+  "_links": {
+    "self": {
+      "href": "/shop/customers/123",
+      "title": "This customer"
+    },
+    "orders": {
+      "href": "/shop/orders?customer_id=123",
+      "title": "All orders",
+      "count": 42
+    },
+    "addresses": {
+      "href": "/shop/addresses?customer_id=123",
+      "title": "Shipping addresses",
+      "count": 3
+    },
+    "payments": {
+      "href": "/shop/payments?customer_id=123",
+      "title": "Payment methods",
+      "count": 2
+    },
+    "reviews": {
+      "href": "/shop/reviews?customer_id=123",
+      "title": "Product reviews",
+      "count": 18
+    }
+  }
+}
+```
+
+**Click any link** to navigate to related data. No SQL required.
+
+## Features
+
+### 1. Visual Query Builder
+
+Build queries by clicking through relationships:
+
+```
+1. Start: customers table
+2. Click: "orders" relationship
+3. Click: "order_items" relationship
+4. Add filter: order_date > '2024-01-01'
+5. Click: Generate Query
+```
+
+**Result:**
+- Visual diagram of your query
+- Generated SQL (if you want it)
+- HATEOAS API endpoint
+- Clickable results
+
+### 2. Clickable Relationships
+
+Navigate your database like browsing the web:
+
+```
+customers/123
+  ↓ click "orders"
+orders?customer_id=123
+  ↓ click order "456"
+orders/456
+  ↓ click "items"
+order_items?order_id=456
+  ↓ click item "789"
+order_items/789
+  ↓ click "product"
+products/999
+```
+
+### 3. Automatic Schema Introspection
+
+Connect your database, we detect:
+- All tables and columns
+- Primary and foreign keys
+- Relationships and constraints
+- Indexes and types
+
+**Then generate:**
+- HATEOAS routes for all tables
+- Navigation links for all relationships
+- Visual schema diagram
+- ER diagram
+
+### 4. Live Data Preview
+
+See your data update in real-time:
+- WebSocket connections
+- Change notifications
+- Automatic refresh
+- Optimistic updates
+
+### 5. No SQL Required
+
+Build complex queries visually:
+
+**Query:** "Find all high-value customers who haven't ordered in 30 days"
+
+**Visual Builder:**
+```
+1. customers table
+2. JOIN orders (relationship)
+3. FILTER: orders.total > $1000
+4. FILTER: orders.date < 30 days ago
+5. GROUP BY: customer
+```
+
+**Generated SQL:**
+```sql
+SELECT c.*, SUM(o.total) as lifetime_value
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE o.created_at < NOW() - INTERVAL '30 days'
+GROUP BY c.id
+HAVING SUM(o.total) > 1000
+```
+
+But you never had to write SQL!
+
+## API Examples
+
+### Browse Tables
+
+```bash
+GET https://db.ht/shop/tables
+
+# Response
+{
+  "tables": [
+    {
+      "name": "customers",
+      "href": "/shop/tables/customers",
+      "rows": 15234
+    },
+    {
+      "name": "orders",
+      "href": "/shop/tables/orders",
+      "rows": 48219
+    }
+  ]
+}
+```
+
+### Get Table Data
+
+```bash
+GET https://db.ht/shop/tables/customers?limit=10
+
+# Response (with HATEOAS links)
+{
+  "data": [
+    {
+      "id": 123,
+      "name": "John Doe",
+      "_links": {
+        "orders": { "href": "/shop/orders?customer_id=123" }
+      }
+    }
+  ],
+  "_links": {
+    "next": { "href": "/shop/tables/customers?limit=10&offset=10" },
+    "schema": { "href": "/shop/tables/customers/schema" }
+  }
+}
+```
+
+### Navigate Relationships
+
+```bash
+# Click "orders" link from customer
+GET https://db.ht/shop/orders?customer_id=123
+
+# Response (with more links)
+{
+  "data": [
+    {
+      "id": 456,
+      "total": 129.99,
+      "_links": {
+        "items": { "href": "/shop/order_items?order_id=456" },
+        "customer": { "href": "/shop/customers/123" }
+      }
+    }
+  ]
+}
+```
+
+## Use Cases
+
+### 1. Data Exploration
+
+Browse your database without writing SQL:
+- Click through relationships
+- Filter and sort visually
+- Export results
+- Save queries
+
+### 2. API Generation
+
+Auto-generate RESTful APIs:
+- HATEOAS-compliant
+- JSON-LD responses
+- Automatic pagination
+- Built-in filtering
+
+### 3. Dashboard Building
+
+Build admin dashboards:
+- Drag-and-drop query builder
+- Live data updates
+- Relationship navigation
+- No backend code
+
+### 4. Data Migration
+
+Explore source and target schemas:
+- Visual comparison
+- Relationship mapping
+- Data preview
+- Migration scripts
+
+## Supported Databases
+
+- **PostgreSQL** - Full support
+- **MySQL** - Full support
+- **MongoDB** - Document navigation
+- **SQLite** - File-based databases
+- **ClickHouse** - Analytics queries
+
+## Integration Example
+
+### Connect Database
+
+```typescript
+import { db } from '@db.ht/client'
+
+const database = await db.connect({
+  name: 'shop',
+  type: 'postgresql',
+  host: 'db.example.com',
+  database: 'production',
+  user: 'readonly',
+  password: '***'
+})
+```
+
+### Navigate Data
+
+```typescript
+// Get customer (with HATEOAS links)
+const customer = await database
+  .table('customers')
+  .get(123)
+
+// Click "orders" link
+const orders = await customer.follow('orders')
+
+// Click first order's "items" link
+const items = await orders[0].follow('items')
+
+// All done with clicks, no SQL!
+```
+
+### Visual Query
+
+```typescript
+// Build query visually
+const query = database
+  .from('customers')
+  .join('orders')
+  .where('orders.total', '>', 1000)
+  .groupBy('customer')
+
+// Execute
+const results = await query.execute()
+
+// Results include HATEOAS links
+results.forEach(row => {
+  console.log(row._links) // Navigation links
+})
+```
+
+## Why DB.HT?
+
+> "Finally, a database API that doesn't require a PhD in SQL. The clickable links are brilliant." - **Sarah Chen**, Full Stack Engineer
+
+> "We built our entire admin panel using DB.HT's visual query builder. Zero SQL written." - **Mike Rodriguez**, Tech Lead
+
+> "The HATEOAS navigation makes data exploration so intuitive. It's like browsing a website." - **David Kim**, Backend Developer
+
+## Pricing
+
+### Free
+- 3 databases
+- 1,000 queries/month
+- 1GB storage
+- Visual query builder
+- HATEOAS API
+- Community support
+
+### Pro - $49/month
+- Unlimited databases
+- 100,000 queries/month
+- 100GB storage
+- Team access (5 users)
+- Email support
+- Analytics dashboard
+
+### Business - $299/month
+- Unlimited everything
+- Priority support
+- SSO & RBAC
+- 99.9% SLA
+- Dedicated account manager
+- Custom integrations
+
+## Getting Started
+
+1. **Connect** your database
+2. **Explore** schema visually
+3. **Click** through relationships
+4. **Build** queries without SQL
+5. **Deploy** HATEOAS APIs
+
+No credit card required for free tier.
+
+---
+
+**DB.HT** - The database API developers actually enjoy using.

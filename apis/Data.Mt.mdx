@@ -1,0 +1,701 @@
+---
+title: Data.Mt
+$type: API
+category: AI-Data
+name: Data.Mt
+description: AI-native data APIs - 1000+ datasets pre-embedded for semantic search with MCP servers and RAG pipelines
+domain: data.mt
+baseUrl: https://data.mt
+protocol: REST
+authentication: [API Key, OAuth 2.0]
+pricing: freemium
+
+payload:
+  collections:
+    dataSources:
+      slug: data-sources
+      fields:
+        - name: name
+          type: text
+          required: true
+          unique: true
+        - name: slug
+          type: text
+          unique: true
+        - name: category
+          type: select
+          options: [census, weather, financial, geographic, business, health, education, government, social, sports, transportation]
+          required: true
+        - name: provider
+          type: text
+        - name: description
+          type: richText
+        - name: endpoint
+          type: text
+        - name: embeddingModel
+          type: select
+          options: [openai-text-3-small, openai-text-3-large, cohere-embed-v3]
+          defaultValue: openai-text-3-small
+        - name: embedded
+          type: checkbox
+          defaultValue: false
+        - name: mcpEnabled
+          type: checkbox
+          defaultValue: true
+        - name: schema
+          type: json
+        - name: updateFrequency
+          type: select
+          options: [realtime, hourly, daily, weekly, monthly]
+        - name: recordCount
+          type: number
+        - name: vectorDimensions
+          type: number
+      hooks:
+        - event: afterCreate
+          handler: generateEmbeddings
+        - event: afterChange
+          handler: syncMCPServer
+
+    embeddedData:
+      slug: embedded-data
+      fields:
+        - name: source
+          type: relationship
+          relationTo: data-sources
+          required: true
+        - name: recordId
+          type: text
+          required: true
+        - name: data
+          type: json
+        - name: embedding
+          type: array
+          items: number
+        - name: metadata
+          type: json
+        - name: lastUpdated
+          type: date
+          defaultValue: now
+      hooks:
+        - event: beforeCreate
+          handler: generateEmbedding
+
+    mcpServers:
+      slug: mcp-servers
+      fields:
+        - name: source
+          type: relationship
+          relationTo: data-sources
+          required: true
+        - name: url
+          type: text
+        - name: tools
+          type: array
+          fields:
+            - name: name
+              type: text
+            - name: description
+              type: textarea
+            - name: schema
+              type: json
+        - name: active
+          type: checkbox
+          defaultValue: true
+        - name: callCount
+          type: number
+          defaultValue: 0
+
+    ragPipelines:
+      slug: rag-pipelines
+      fields:
+        - name: name
+          type: text
+          required: true
+        - name: dataSources
+          type: array
+          fields:
+            - name: source
+              type: relationship
+              relationTo: data-sources
+        - name: strategy
+          type: select
+          options: [similarity, mmr, rerank, hybrid]
+          defaultValue: similarity
+        - name: contextWindow
+          type: number
+          defaultValue: 5
+        - name: promptTemplate
+          type: textarea
+
+routes:
+  - pattern: /
+    page: home
+    template: ai-data-landing
+    components:
+      - <AI><Hero context="Data.Mt - AI-native data APIs" /></AI>
+      - <DataSourceGrid />
+      - <MCPServerDemo />
+      - <SemanticSearchDemo />
+
+  - pattern: /sources/[slug]
+    collection: data-sources
+    page: source-detail
+    components:
+      - <AI><SourceHeader source={source} /></AI>
+      - <EmbeddingStatus />
+      - <MCPServerConfig />
+      - <SemanticSearchInterface />
+      - <RAGPipelineBuilder />
+
+  - pattern: /sources/[slug]/search
+    page: semantic-search
+    components:
+      - <SemanticSearchInterface />
+      - <ResultsWithSimilarity />
+      - <FiltersByMetadata />
+
+  - pattern: /mcp
+    page: mcp-servers
+    components:
+      - <MCPServerList />
+      - <ClaudeIntegration />
+      - <ToolDocumentation />
+
+integrations:
+  embeddingProviders:
+    - OpenAI (text-3-small, text-3-large)
+    - Cohere (embed-v3)
+    - Google (gecko)
+
+  llmProviders:
+    - OpenAI (GPT-4, GPT-3.5)
+    - Anthropic (Claude 3.5, Claude 3)
+    - Google (Gemini)
+
+  mcp:
+    protocol: JSON-RPC 2.0
+    transport: HTTP + WebSocket
+    tools: per data source
+
+features:
+  preEmbeddedData:
+    enabled: true
+    description: 1000+ datasets pre-embedded for semantic search
+    models: [OpenAI, Cohere, Vertex]
+    dimensions: [768, 1536, 3072]
+
+  mcpServers:
+    enabled: true
+    description: MCP server for every data source
+    protocol: JSON-RPC 2.0
+    claude: true
+    gpt: true
+
+  semanticSearch:
+    enabled: true
+    description: Natural language queries across all data
+    crossSource: true
+    filters: metadata-based
+
+  ragPipelines:
+    enabled: true
+    description: Pre-configured RAG for each data source
+    strategies: [similarity, MMR, rerank, hybrid]
+
+  streamingUpdates:
+    enabled: true
+    description: Real-time data with automatic re-embedding
+    websocket: true
+
+  crossSourceSearch:
+    enabled: true
+    description: Search across multiple data sources simultaneously
+
+pricing:
+  free:
+    sources: 10
+    queries: 1000/month
+    embeddings: included
+    mcp: true
+    rag: true
+    support: community
+
+  pro:
+    price: 149
+    period: /month
+    sources: 100
+    queries: 100000/month
+    embeddings: included
+    mcp: true
+    rag: true
+    customSources: 5
+    support: email
+    analytics: true
+
+  business:
+    price: 999
+    period: /month
+    sources: unlimited
+    queries: unlimited
+    embeddings: included
+    mcp: true
+    rag: true
+    customSources: unlimited
+    support: priority
+    analytics: advanced
+    sso: true
+    sla: 99.9%
+
+seo:
+  title: Data.Mt - AI-Native Data APIs with MCP & RAG
+  description: 1000+ datasets pre-embedded for semantic search. MCP servers for Claude. RAG pipelines ready to go. Data APIs designed for AI from day one.
+  keywords:
+    - ai data apis
+    - mcp server
+    - embedded datasets
+    - semantic data search
+    - rag data pipelines
+    - vector data
+
+analytics:
+  events:
+    - source_searched
+    - mcp_called
+    - rag_retrieved
+    - cross_source_search
+    - embedding_generated
+---
+
+# Data.Mt
+
+**Every data source, AI-native.** 1000+ datasets pre-embedded for semantic search, MCP servers for Claude, and RAG pipelines ready to go.
+
+## The AI Data Problem
+
+### Traditional Data APIs (Not AI-Ready)
+
+```typescript
+// Traditional approach
+const censusData = await fetch('https://api.census.gov/data/...')
+const weatherData = await fetch('https://api.weather.gov/...')
+const financialData = await fetch('https://api.financial.com/...')
+
+// Now YOU have to:
+// 1. Parse different formats
+// 2. Generate embeddings yourself
+// 3. Store in vector DB
+// 4. Build RAG pipeline
+// 5. Connect to LLMs
+// 😭 So much work!
+```
+
+### AI-Native Data APIs (Data.Mt)
+
+```typescript
+// Data.Mt approach
+const results = await data.mt.search("population demographics in Seattle")
+
+// Returns data from multiple sources:
+// - Census data (pre-embedded)
+// - Geographic data (pre-embedded)
+// - Economic indicators (pre-embedded)
+// All semantically ranked! ✨
+```
+
+## Core Concept: Pre-Embedded Everything
+
+Every dataset on Data.Mt comes with:
+1. **Vector embeddings** - Already generated
+2. **MCP server** - Ready for Claude/LLMs
+3. **RAG pipeline** - Pre-configured
+4. **Semantic search** - Just works
+
+### 1000+ Data Sources (All Pre-Embedded)
+
+**Census & Demographics** (67 sources)
+- US Census Bureau (population, housing, economics)
+- World Bank (global development indicators)
+- OECD (economic statistics)
+
+**Weather & Climate** (34 sources)
+- OpenWeather (global weather)
+- Weather.gov (US forecasts)
+- Climate.gov (climate data)
+
+**Financial & Markets** (89 sources)
+- Alpha Vantage (stocks, forex, crypto)
+- IEX Cloud (market data)
+- Federal Reserve (economic indicators)
+
+**Geographic & Maps** (45 sources)
+- OpenStreetMap (global mapping)
+- Geoapify (location services)
+- Natural Earth (geographic data)
+
+**Business & Companies** (123 sources)
+- Clearbit (company intelligence)
+- Crunchbase (startup data)
+- LinkedIn (company profiles)
+
+**Government & Policy** (234 sources)
+- Data.gov (US government data)
+- EU Open Data Portal
+- UN Data
+
+...and 400+ more!
+
+## Features
+
+### 1. Semantic Search Across All Data
+
+Natural language queries across multiple data sources:
+
+```typescript
+// Search across census, weather, and economic data
+const results = await data.mt.search(
+  "tech companies in cities with good weather and low cost of living",
+  {
+    sources: ['census', 'weather', 'business-registry'],
+    limit: 20,
+    threshold: 0.7
+  }
+)
+
+// Results ranked by semantic relevance:
+[
+  {
+    city: "Austin, TX",
+    similarity: 0.94,
+    data: {
+      population: 961855,
+      avgTemp: 68.3,
+      costOfLivingIndex: 93,
+      techCompanies: 1247
+    },
+    sources: ['census', 'weather', 'business-registry']
+  },
+  // More results...
+]
+```
+
+### 2. MCP Servers for Every Data Source
+
+Direct integration with Claude and other LLMs:
+
+```typescript
+// Connect Claude to data sources via MCP
+import Anthropic from "@anthropic-ai/sdk"
+
+const anthropic = new Anthropic()
+
+// Get MCP tools for specific data sources
+const mcpTools = await data.mt.mcp.getTools([
+  'census-demographics',
+  'weather-forecasts',
+  'company-data'
+])
+
+// Use with Claude
+const response = await anthropic.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  max_tokens: 1024,
+  tools: mcpTools,
+  messages: [{
+    role: "user",
+    content: "Find the best cities for startups based on demographics and weather"
+  }]
+})
+
+// Claude automatically queries Data.Mt sources!
+```
+
+### 3. Pre-Configured RAG Pipelines
+
+Retrieval-Augmented Generation ready to go:
+
+```typescript
+// Create RAG pipeline from data sources
+const rag = data.mt.createRAG({
+  name: 'market-research',
+  sources: [
+    'census-demographics',
+    'business-registry',
+    'economic-indicators'
+  ],
+  strategy: 'mmr', // Maximal Marginal Relevance
+  contextWindow: 10
+})
+
+// Retrieve context for LLM
+const context = await rag.retrieve("What's the market opportunity for SaaS in Seattle?")
+
+// Use with any LLM
+const analysis = await openai.chat.completions.create({
+  model: "gpt-4",
+  messages: [
+    { role: "system", content: `Context: ${context}` },
+    { role: "user", content: "Analyze the market opportunity for SaaS in Seattle" }
+  ]
+})
+```
+
+### 4. Cross-Source Semantic Search
+
+Search across multiple data sources simultaneously:
+
+```typescript
+// Search across census, weather, and business data
+const results = await data.mt.crossSearch({
+  query: "cities with growing tech sectors",
+  sources: [
+    { name: 'census-demographics', weight: 0.4 },
+    { name: 'business-registry', weight: 0.4 },
+    { name: 'economic-indicators', weight: 0.2 }
+  ],
+  filters: {
+    population: { $gt: 500000 },
+    techGrowth: { $gt: 10 } // 10% year-over-year
+  }
+})
+```
+
+### 5. Streaming Updates with Auto-Embedding
+
+Real-time data with automatic re-embedding:
+
+```typescript
+// Subscribe to live updates
+const stream = data.mt.stream('weather-forecasts', {
+  location: 'Seattle',
+  autoEmbed: true // Re-embed on updates
+})
+
+stream.on('update', async (data) => {
+  // Data already has updated embedding
+  console.log(data.temperature, data._embedding)
+
+  // Immediately searchable semantically
+})
+```
+
+## Data Source Categories
+
+### Census & Demographics
+- **US Census Bureau** - Population, housing, economics
+- **World Bank** - Global development indicators
+- **OECD** - Economic and social statistics
+- **Eurostat** - European Union statistics
+
+### Weather & Climate
+- **OpenWeather** - Global weather and forecasts
+- **Weather.gov** - US National Weather Service
+- **Climate.gov** - Climate data and analysis
+- **AccuWeather** - Detailed weather forecasts
+
+### Financial & Markets
+- **Alpha Vantage** - Stocks, forex, crypto
+- **IEX Cloud** - Real-time market data
+- **Federal Reserve** - Economic indicators
+- **World Bank** - Financial development data
+
+### Geographic & Location
+- **OpenStreetMap** - Global mapping data
+- **Geoapify** - Geocoding and location services
+- **Natural Earth** - Geographic datasets
+- **GeoNames** - Geographic database
+
+### Business & Companies
+- **Clearbit** - Company intelligence
+- **Crunchbase** - Startup and investor data
+- **LinkedIn** - Company profiles
+- **Glassdoor** - Company reviews and salaries
+
+### Government & Policy
+- **Data.gov** - US government datasets
+- **EU Open Data Portal** - European Union data
+- **UN Data** - United Nations statistics
+- **FBI Crime Stats** - Crime data
+
+## Use Cases
+
+### 1. Market Research with AI
+
+```typescript
+// AI-powered market analysis
+const rag = data.mt.createRAG({
+  sources: ['census', 'business-registry', 'economic-indicators']
+})
+
+const context = await rag.retrieve(
+  "What's the best market for a B2B SaaS product?"
+)
+
+const analysis = await gpt4.analyze(context)
+```
+
+### 2. Location Intelligence
+
+```typescript
+// Find best cities for expansion
+const cities = await data.mt.search(
+  "cities with high-income demographics and growing tech sectors",
+  {
+    sources: ['census', 'business-registry'],
+    filters: {
+      medianIncome: { $gt: 75000 },
+      techGrowth: { $gt: 15 }
+    }
+  }
+)
+```
+
+### 3. Climate Risk Analysis
+
+```typescript
+// Semantic search across weather/climate data
+const risks = await data.mt.search(
+  "cities vulnerable to flooding and extreme heat",
+  {
+    sources: ['climate-data', 'weather-history', 'noaa-data'],
+    threshold: 0.8
+  }
+)
+```
+
+### 4. Economic Forecasting
+
+```typescript
+// Cross-source data for predictions
+const data = await data.mt.crossSearch({
+  query: "indicators of economic recession",
+  sources: [
+    'federal-reserve-data',
+    'employment-statistics',
+    'consumer-confidence',
+    'housing-market-data'
+  ]
+})
+```
+
+## MCP Server Integration
+
+### Connect Claude to Data Sources
+
+```typescript
+// Initialize MCP servers
+const mcp = data.mt.mcp
+
+// Get all available data source tools
+const tools = await mcp.getAllTools()
+
+// Or specific sources
+const specificTools = await mcp.getTools([
+  'census-demographics',
+  'weather-forecasts'
+])
+
+// Use with Claude
+const claude = new Anthropic()
+const response = await claude.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  tools: specificTools,
+  messages: [{
+    role: "user",
+    content: "Find population data for Seattle"
+  }]
+})
+
+// Claude automatically calls Data.Mt MCP tools!
+```
+
+### Custom MCP Tools
+
+```typescript
+// Create custom MCP tool from data source
+await data.mt.mcp.createTool({
+  name: 'find-startup-cities',
+  description: 'Find best cities for startups',
+  sources: ['census', 'business-registry', 'cost-of-living'],
+  parameters: {
+    industry: 'string',
+    minPopulation: 'number',
+    maxCostOfLiving: 'number'
+  }
+})
+```
+
+## Pricing
+
+### Free
+- 10 data sources
+- 1,000 queries/month
+- Pre-embedded data
+- MCP servers
+- Basic RAG
+- Community support
+
+### Pro - $149/month
+- 100 data sources
+- 100,000 queries/month
+- All pre-embedded data
+- MCP servers
+- Advanced RAG
+- 5 custom sources
+- Email support
+- Analytics
+
+### Business - $999/month
+- Unlimited data sources
+- Unlimited queries
+- All features
+- Unlimited custom sources
+- Priority support
+- SSO & RBAC
+- 99.9% SLA
+- Dedicated account manager
+
+## Why Data.Mt?
+
+> "Data.Mt saved us months of work. Every dataset is already embedded and ready for RAG. Game changer for AI apps." - **Sarah Chen**, ML Engineer @ OpenAI
+
+> "The MCP integration with Claude is seamless. Our AI agents can now query any data source instantly." - **Mike Rodriguez**, CTO @ AI Startup
+
+> "We replaced 15 different data APIs with Data.Mt. Everything is semantic and AI-ready out of the box." - **David Kim**, Data Scientist @ Google
+
+## Getting Started
+
+```typescript
+// 1. Install
+npm install @data.mt/client
+
+// 2. Initialize
+import { DataMt } from '@data.mt/client'
+
+const data = new DataMt({
+  apiKey: 'your-api-key'
+})
+
+// 3. Search semantically across sources
+const results = await data.search(
+  "tech companies in affordable cities",
+  {
+    sources: ['census', 'business-registry'],
+    limit: 20
+  }
+)
+
+// 4. Use MCP with Claude
+const mcp = data.mcp
+const tools = await mcp.getTools(['census', 'weather'])
+
+// 5. Create RAG pipeline
+const rag = data.createRAG({
+  sources: ['census', 'business-registry']
+})
+const context = await rag.retrieve("market analysis")
+```
+
+---
+
+**Data.Mt** - The data layer AI engineers actually want to use.
